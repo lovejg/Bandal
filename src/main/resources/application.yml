@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: bandal
+
+  datasource:
+    # docker-compose.yml에서 5433으로 열었다. 기본 포트 5432는 다른 프로젝트가 쓴다.
+    url: jdbc:postgresql://localhost:5433/bandal
+    username: bandal
+    password: bandal
+
+  jpa:
+    hibernate:
+      # 앱을 띄울 때 테이블을 새로 만들고, 내릴 때 지운다.
+      # 엔티티를 자주 고치는 지금 단계에 편하다. Phase 2에서 Flyway로 바꾼다.
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: true
+    # 기본값이 true라서 컨트롤러가 응답을 다 쓸 때까지 DB 커넥션을 잡고 있는다.
+    # 커넥션을 오래 물고 있으면 나중에 부하 테스트에서 그대로 병목이 된다. 꺼둔다.
+    open-in-view: false
+
+logging:
+  level:
+    # 실행되는 SQL을 눈으로 본다. JPA가 뭘 하는지 모르고 넘어가지 않기 위해서.
+    org.hibernate.SQL: debug
+    # 물음표 자리에 실제로 들어간 값까지 보여준다.
+    org.hibernate.orm.jdbc.bind: trace
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

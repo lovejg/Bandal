@@ -1,0 +1,18 @@
+# 에디터 공통 설정. IntelliJ가 자동으로 읽어서 Ctrl+Alt+L 정렬에도 적용된다.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# yml은 들여쓰기가 문법이라 2칸이 관례다.
+[*.{yml,yaml}]
+indent_size = 2
+
+# 마크다운은 줄 끝 공백 두 칸이 줄바꿈 의미라서 지우지 않는다.
+[*.md]
+trim_trailing_whitespace = false

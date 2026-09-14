@@ -1,0 +1,50 @@
+# 로컬 개발용 인프라. 애플리케이션은 여기 없고 IDE에서 직접 띄운다.
+# 실행: docker compose up -d   /  중지: docker compose down
+# 데이터까지 날리려면: docker compose down -v
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: bandal-postgres
+    environment:
+      POSTGRES_DB: bandal
+      POSTGRES_USER: bandal
+      POSTGRES_PASSWORD: bandal
+    ports:
+      # 왼쪽이 내 컴퓨터 포트, 오른쪽이 컨테이너 안 포트.
+      # 다른 프로젝트가 기본 포트 5432를 쓰고 있어서 밖으로는 5433으로 연다.
+      - "5433:5432"
+    volumes:
+      # 이름 붙인 볼륨에 데이터를 두면 컨테이너를 지워도 DB가 남는다.
+      - bandal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bandal -d bandal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Phase 1 후반(인증)부터 쓴다. 지금은 띄워만 두고 애플리케이션은 연결하지 않는다.
+  redis:
+    image: redis:7-alpine
+    container_name: bandal-redis
+    ports:
+      # 같은 이유로 기본 포트 6379 대신 6380.
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 로컬 개발용 가짜 메일 서버. 앱이 보낸 인증 메일이 밖으로 나가지 않고 여기 쌓인다.
+  # http://localhost:8025 에서 받은 메일을 눈으로 확인한다.
+  # Phase 1 3단계(이메일 인증)부터 쓴다.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: bandal-mailpit
+    ports:
+      - "1025:1025"  # SMTP - 앱이 여기로 메일을 보낸다
+      - "8025:8025"  # 웹 UI - 사람이 여기서 확인한다
+
+volumes:
+  bandal-postgres-data:
