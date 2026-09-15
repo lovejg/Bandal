@@ -1,9 +1,6 @@
 package com.bandal.university;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,10 +15,11 @@ public class University {
 
     private String name;
 
-    private String campusName;
+    @Column(nullable = false, unique = true)
+    private String emailDomain;
 
-    public University(String name, String campusName) {
+    public University(String name, String emailDomain) {
         this.name = name;
-        this.campusName = campusName;
+        this.emailDomain = emailDomain;
     }
 }

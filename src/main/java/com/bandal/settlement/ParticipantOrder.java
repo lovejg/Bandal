@@ -7,6 +7,6 @@ public record ParticipantOrder(
 
         boolean host,
 
-        long menuTotalPrice
+        long menuTotalAmount
 ) {
 }

@@ -32,7 +32,7 @@ class PickupSpotRepositoryTest {
     @DisplayName("거점을 저장하고 다시 꺼내면 이름, 설명, 소속 대학이 그대로다")
     void saveAndFindById() {
         // given
-        University university = universityRepository.save(new University("한국대학교", "서울캠퍼스"));
+        University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         PickupSpot spot = new PickupSpot(university, "제1기숙사 로비", "정문 쪽 출입구");
 
         // when
@@ -52,7 +52,7 @@ class PickupSpotRepositoryTest {
     @DisplayName("거점을 조회해도 소속 대학은 바로 가져오지 않는다")
     void universityIsLazy() {
         // given
-        University university = universityRepository.save(new University("한국대학교", "서울캠퍼스"));
+        University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         PickupSpot saved = pickupSpotRepository.save(new PickupSpot(university, "공학관 앞", null));
         entityManager.flush();
         entityManager.clear();

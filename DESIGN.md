@@ -72,9 +72,10 @@
   블랙리스트는 Redis에 둔다.
 - **회원가입이 곧 거점 자격 확인이다**: 학교 이메일 인증을 통과하면 그 학교 소속이
   확정되고, 그 학교의 모든 거점에 접근할 수 있다. 별도의 거점 인증 개념은 두지 않는다.
-- **대학 하나에 이메일 도메인이 여러 개일 수 있다**: 학부와 대학원이 다르거나
-  (`@school.ac.kr` vs `@student.school.ac.kr`) 캠퍼스별로 갈리는 경우가 있다.
-  University에 도메인 컬럼 하나를 두면 막히므로 허용 도메인을 별도 테이블로 뺀다.
+- **대학은 학교 단위, 이메일 도메인은 학교당 하나**: University에 `emailDomain` 컬럼을
+  두고 전체에서 unique로 막는다. 이메일만 보면 소속 학교가 하나로 정해진다. 캠퍼스는
+  따로 두지 않고 거점 이름으로 구분한다. 도메인이 여러 개인 학교가 확인되면 그때 테이블로
+  뺀다. (ADR-014)
 - **인증 메일 발송**: 로컬 개발에서는 Mailpit 컨테이너로 받아서 웹 UI로 확인한다.
   실제 발송은 배포 시점(Phase 2)에 정한다.
 
@@ -86,19 +87,17 @@
 
 | 개념 | 설명 | 주요 필드 |
 | --- | --- | --- |
-| University | 대학 | id, name, campusName |
-| UniversityEmailDomain | 허용 이메일 도메인 | id, universityId, domain |
-| User | 사용자 | id, universityId, email, password, nickname, emailVerifiedAt, trustScore |
+| University | 대학 (학교 단위) | id, name, emailDomain (unique, ADR-014) |
+| User | 사용자 | id, universityId, email(unique), password(해시), nickname(unique), emailVerifiedAt(null이면 미인증), trustScore(int, 50에서 시작) (ADR-015, 016) |
 | EmailVerificationToken | 가입 인증 토큰 | id, userId, token, expiresAt, usedAt |
 | PickupSpot | 수령 거점 | id, universityId, name, description (좌표 없음, ADR-013) |
-| GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status, deliveryFee, totalPaidAmount(기록용, nullable) |
+| GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만) (ADR-017) |
 | Participation | 방 참여 | id, groupOrderId, userId, joinedAt, status |
 | OrderItem | 담은 메뉴 | id, participationId, menuName, price, quantity |
 | Settlement | 정산 내역 | id, groupOrderId, userId, itemTotal, feeShare, totalDue, paidAt |
 
 관계
 
-- University 1 - N UniversityEmailDomain
 - University 1 - N User, University 1 - N PickupSpot
 - User 1 - N GroupOrder (방장으로서)
 - User 1 - N EmailVerificationToken (재전송하면 여러 개가 쌓인다)

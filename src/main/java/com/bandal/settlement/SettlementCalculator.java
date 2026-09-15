@@ -20,8 +20,8 @@ public class SettlementCalculator {
                 .map(p -> {
                     long feeShare = p.host() ? hostDeliveryFee : generalDeliveryFee;
 
-                    return new SettlementResult(p.userId(), p.menuTotalPrice(), feeShare,
-                            p.menuTotalPrice() + feeShare);
+                    return new SettlementResult(p.userId(), p.menuTotalAmount(), feeShare,
+                            p.menuTotalAmount() + feeShare);
                 }).toList();
     }
 }

@@ -4,13 +4,13 @@ package com.bandal.settlement;
 public record SettlementResult(
         Long userId,
 
-        long menuTotalPrice,
+        long menuTotalAmount,
 
         // 배달비 1/n
         long deliveryFeeShare,
 
-        // menuTotalPrice + deliveryFeeShare
+        // menuTotalAmount + deliveryFeeShare
         // 총 정산 금액(개인)
-        long totalPrice
+        long totalAmount
 ) {
 }

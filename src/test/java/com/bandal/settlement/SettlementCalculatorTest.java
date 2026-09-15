@@ -55,10 +55,10 @@ class SettlementCalculatorTest {
 
         // then 1: 모두의 부담액을 더하면 실제 주문 금액(메뉴 70000 + 배달비 3000)과 정확히 같다.
         // 이 조건이 이번 단계의 핵심이라 먼저 검사한다.
-        long sumOfTotalPrice = results.stream()
-                .mapToLong(SettlementResult::totalPrice)
+        long sumOfTotalAmount = results.stream()
+                .mapToLong(SettlementResult::totalAmount)
                 .sum();
-        assertThat(sumOfTotalPrice).isEqualTo(73000L);
+        assertThat(sumOfTotalAmount).isEqualTo(73000L);
 
         // then 2: 남는 4원은 방장에게만 붙는다.
         assertThat(results).containsExactlyInAnyOrder(
