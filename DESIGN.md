@@ -91,8 +91,8 @@
 | User | 사용자 | id, universityId, email(unique), password(해시), nickname(unique), emailVerifiedAt(null이면 미인증), trustScore(int, 50에서 시작) (ADR-015, 016) |
 | EmailVerificationToken | 가입 인증 토큰 | id, userId, token, expiresAt, usedAt |
 | PickupSpot | 수령 거점 | id, universityId, name, description (좌표 없음, ADR-013) |
-| GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만) (ADR-017) |
-| Participation | 방 참여 | id, groupOrderId, userId, joinedAt, status |
+| GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만), cancelType(취소된 방만, 이름으로 저장) (ADR-017, 021) |
+| Participation | 방 참여 (방장 포함) | id, groupOrderId, userId, joinedAt. (groupOrderId, userId) unique. 이탈하면 행 삭제 (ADR-019) |
 | OrderItem | 담은 메뉴 | id, participationId, menuName, price, quantity |
 | Settlement | 정산 내역 | id, groupOrderId, userId, itemTotal, feeShare, totalDue, paidAt |
 
@@ -104,6 +104,20 @@
 - GroupOrder 1 - N Participation, Participation 1 - N OrderItem
 - PickupSpot 1 - N GroupOrder
 - GroupOrder 1 - N Settlement
+
+```mermaid
+erDiagram
+  university ||--o{ users : "소속"
+  university ||--o{ pickup_spot : "거점"
+  users ||--o{ group_order : "방장(host)"
+  pickup_spot ||--o{ group_order : "수령 장소"
+  group_order ||--o{ participation : "참여"
+  users ||--o{ participation : "참여자"
+  participation ||--o{ order_item : "담은 메뉴 (예정)"
+  group_order ||--o{ settlement : "정산표 (예정)"
+  users ||--o{ settlement : "낼 사람 (예정)"
+  users ||--o{ email_verification_token : "가입 인증 (예정)"
+```
 
 User가 University를 직접 들고 있으므로 "이 방에 참여할 자격이 있는가"는
 `user.universityId == groupOrder.pickupSpot.universityId` 한 줄로 끝난다.
@@ -133,8 +147,9 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
   +--------+--> 취소
 ```
 
-- 모집중 -> 마감: 마감 시각 도달 또는 방장의 수동 마감. 마감 시점에 최소주문금액을
-  못 채웠으면 마감 대신 자동 취소. 방장 포함 2명이 안 돼도 마감할 수 없다.
+- 모집중 -> 마감: 마감 시각 도달 또는 방장의 수동 마감. 방장 포함 2명 이상, 메뉴 합계가
+  최소주문금액 이상이어야 마감된다. 조건이 안 되면 수동 마감은 거부되고(모집중 유지),
+  마감 시각 도달은 자동 취소된다. (ADR-020)
 - 마감 -> 주문완료: 방장이 실제 주문 후 배달비를 입력하는 시점(총 결제금액은 선택 입력).
   이때 정산표가 생성된다.
 - 주문완료 -> 배달완료 -> 정산완료: 방장이 전이시킨다. 정산완료는 모든 참여자의
@@ -142,8 +157,10 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
 
 취소 규칙
 
-- 방 전체 취소: `모집중`에서는 방장이 언제든. `마감` 상태에서는 방장만, 사유를 남기고.
-  `주문완료` 이후에는 취소 불가(이미 돈이 나갔으므로).
+- 방 전체 취소는 방장만 한다. `모집중`에서는 언제든(사유 선택). `마감` 상태에서는 사유를
+  남겨야 한다. `주문완료` 이후에는 취소 불가(이미 돈이 나갔으므로).
+- 취소된 방은 지우지 않고 `취소` 상태로 남긴다. 취소 종류(방장-모집중, 방장-마감 뒤,
+  마감 시각 미달)를 함께 남겨 나중에 신뢰도 감점 근거로 쓴다. (ADR-021)
 - 참여자 개별 이탈: `모집중`에서만 자유롭게. `마감` 이후에는 불가.
 
 ## 6. 기술 스택
@@ -252,7 +269,9 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
 - **비밀번호 재설정 플로우가 Phase 1에 필요한가.** 이메일 인증 토큰 구조를 거의
   그대로 재사용할 수 있어서 같이 하는 게 싸 보이기는 한다.
 - **노쇼와 미입금 제재를 어디까지 할지.** trustScore를 도메인에 넣긴 했지만 어떻게
-  쌓고 어떻게 쓸지는 아직 모르겠다.
+  쌓고 어떻게 쓸지는 아직 모르겠다. 방장은 전원 몫을 먼저 결제하므로(정원 10명이면
+  20만 원 안팎) 미입금 위험을 방장이 떠안는다. 앱이 돈을 받아두는 방식은 ADR-002로
+  막혀 있으니, 정원 상한, 신뢰도 낮은 사람의 참여 제한, 미입금 제재로 줄이는 쪽을 검토한다.
 - **한 사람이 같은 시간대에 여러 방에 참여할 수 있는가.**
 - **최소주문금액을 못 채운 채 마감 시각이 온 방을 자동 취소하는 게 맞는지.** 방장이
   "그냥 내가 더 담아서 진행할게"를 선택할 수 있어야 할 수도 있다.

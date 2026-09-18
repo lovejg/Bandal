@@ -17,11 +17,11 @@ public class SettlementCalculator {
         long hostDeliveryFee = deliveryFee - generalDeliveryFee * (participants.size() - 1);
 
         return participants.stream()
-                .map(p -> {
-                    long feeShare = p.host() ? hostDeliveryFee : generalDeliveryFee;
+            .map(p -> {
+                long feeShare = p.host() ? hostDeliveryFee : generalDeliveryFee;
 
-                    return new SettlementResult(p.userId(), p.menuTotalAmount(), feeShare,
-                            p.menuTotalAmount() + feeShare);
-                }).toList();
+                return new SettlementResult(p.userId(), p.menuTotalAmount(), feeShare,
+                    p.menuTotalAmount() + feeShare);
+            }).toList();
     }
 }

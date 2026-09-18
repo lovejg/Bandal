@@ -91,6 +91,7 @@ class GroupOrderRepositoryTest {
         assertThat(found.getDeliveryFee()).isNull();
         assertThat(found.getTotalPaidAmount()).isNull();
         assertThat(found.getCancelReason()).isNull();
+        assertThat(found.getCancelType()).isNull();
     }
 
     @Test
@@ -106,6 +107,24 @@ class GroupOrderRepositoryTest {
                 .getSingleResult();
 
         assertThat(stored).isEqualTo("RECRUITING");
+    }
+
+    @Test
+    @DisplayName("취소 종류도 DB에 이름으로 저장되고, 다시 꺼내면 그대로다")
+    void cancelTypeIsStoredAsName() {
+        GroupOrder groupOrder = new GroupOrder(host, pickupSpot, "○○마라탕", 15_000, DEADLINE, 4);
+        groupOrder.cancelByHost(host.getId(), null);
+        GroupOrder saved = groupOrderRepository.saveAndFlush(groupOrder);
+
+        Object stored = entityManager
+                .createNativeQuery("select cancel_type from group_order where id = :id")
+                .setParameter("id", saved.getId())
+                .getSingleResult();
+        assertThat(stored).isEqualTo("HOST_WHILE_RECRUITING");
+
+        entityManager.clear();
+        GroupOrder found = groupOrderRepository.findById(saved.getId()).orElseThrow();
+        assertThat(found.getCancelType()).isEqualTo(CancelType.HOST_WHILE_RECRUITING);
     }
 
     @Test
