@@ -198,3 +198,144 @@ java.lang.IllegalStateException: 에러 발생
 같은 `Long` 객체를 재사용해서 주소 비교가 우연히 맞았던 것이다. 운영처럼 값만 같은 다른
 객체를 넣자 방장이 자기 방을 못 닫는 버그가 드러났다. `Long`은 -128~127만 캐시하기 때문에
 개발 초기의 작은 id로는 절대 안 보이고, id가 128을 넘는 순간 터지는 종류의 버그다."
+
+---
+
+## 2026-09-22. 지연로딩 프록시를 `==`로 비교할 뻔했다 (피해 감)
+
+**이 항목은 재현하지 않았다.** 코드를 쓰기 직전에 지적을 받아서 다른 방식으로 짰다.
+겪은 게 아니라 피해 간 것이라 증상 칸에 붙일 에러 메시지가 없다. 그래도 남기는 이유는
+`Long !=`(2026-09-18)와 실패 방식이 같은데, 그때보다 더 안 보이는 자리이기 때문이다.
+
+**상황** Phase 1, 메뉴 담기/빼기. `Participation.removeItem(requesterId, item)`에서 "이 메뉴가
+정말 이 참여의 것인가"를 확인해야 했다. 남의 메뉴를 뺄 수 있으면 안 되니까.
+
+**쓰려던 코드**
+
+```java
+if (item.getParticipation() != this) { // 다른 참여의 메뉴
+    throw new IllegalStateException("에러 발생");
+}
+```
+
+**왜 위험한가** `OrderItem.participation`은 `FetchType.LAZY`다. Hibernate는 메뉴를 읽을 때
+참여 테이블을 같이 읽지 않고, `Participation`을 상속한 프록시 객체를 대신 넣는다. 안에는
+id만 있고, 다른 getter를 처음 부를 때 SELECT가 나간다.
+
+```java
+found.getParticipation().getClass()  // Participation$HibernateProxy$...
+```
+
+`==`는 주소 비교라서, 실체와 프록시를 비교하면 값이 같아도 다르다고 나올 수 있다.
+`equals`를 재정의하지 않았으므로 `equals`도 결과가 같다.
+
+**더 고약한 점** 같은 영속성 컨텍스트 안에서 그 참여를 이미 꺼내 썼다면 Hibernate가 같은
+객체를 돌려주므로 `==`가 맞아떨어진다. 즉 **되는 경우가 있다.** 한 트랜잭션 안에서
+`findById`로 참여를 먼저 꺼내는 테스트만 짜면 통과하고, 메뉴부터 꺼내는 경로에서만 틀린다.
+`Long !=`가 작은 id에서만 우연히 맞았던 것과 똑같은 구조다. 조건이 "숫자 크기"에서
+"어떤 순서로 로딩했는가"로 바뀌었을 뿐이고, 이쪽이 훨씬 눈에 안 띈다.
+
+**대신 쓴 방법**
+
+```java
+Long ownerId = item.getParticipation().getId();      // 프록시도 id는 알고 있어서 SELECT가 안 나간다
+if (!Objects.equals(ownerId, this.id)) {
+    throw new IllegalStateException("에러 발생");
+}
+```
+
+`getParticipation()`을 안 쓰는 게 아니라, 꺼낸 것을 **객체로 비교하지 않는다.** id만 꺼내면
+프록시가 초기화되지도 않아서 쿼리도 늘지 않는다.
+
+**배운 것**
+- 엔티티끼리 같은 행인지 볼 때는 객체가 아니라 id를 비교한다. 지연로딩이 걸려 있으면
+  한쪽이 프록시일 수 있다.
+- 프록시에서 `getId()`는 공짜다. 다른 getter는 SELECT를 부른다. 이 차이가 "id로 비교"가
+  성능상으로도 맞는 이유다.
+- "될 때도 있고 안 될 때도 있는 비교"가 제일 위험하다. 되는 쪽만 보는 테스트를 짜면
+  통과해버린다. 자바에서 대문자 타입을 `==`로 비교하고 있으면 일단 의심한다.
+
+**포트폴리오 각도** "지연로딩 연관을 `==`로 비교하려다 멈췄다. `@ManyToOne(LAZY)`는 프록시를
+넣기 때문에 실체와 주소가 다를 수 있고, 같은 영속성 컨텍스트에서 이미 로딩됐을 때만 우연히
+맞는다. 로딩 순서에 따라 결과가 달라지는 비교라 테스트로도 잘 안 잡힌다. 엔티티 동일성은
+id로 비교하도록 했고, 프록시는 id를 이미 갖고 있어 추가 쿼리도 나가지 않는다."
+
+---
+
+## 2026-09-22. 메뉴가 하나도 없는 방의 합계를 구하니 SUM이 NULL을 돌려줬다
+
+**상황** Phase 1, 메뉴 담기(OrderItem). 방의 메뉴 합계를 `OrderItemRepository`의 JPQL로
+구한다. 마감 조건(최소주문금액을 채웠나) 판정에 쓸 숫자다.
+
+```java
+@Query("""
+    SELECT SUM(oi.unitPrice * oi.quantity) from OrderItem oi
+    WHERE oi.participation.groupOrder.id = :groupOrderId
+    """)
+long sumAmountByGroupOrderId(@Param("groupOrderId") Long groupOrderId);
+```
+
+**증상** 메뉴가 있는 방을 더하는 테스트는 전부 통과했고, 아무도 메뉴를 담지 않은 방
+하나만 터졌다. 85개 중 1개 실패.
+
+```
+OrderItemRepositoryTest > 아무도 메뉴를 담지 않은 방의 합계는 0이다 FAILED
+
+org.springframework.aop.AopInvocationException: Null return value from advice
+does not match primitive return type for:
+public abstract long com.bandal.participation.OrderItemRepository.sumAmountByGroupOrderId(java.lang.Long)
+```
+
+**원인** SQL에서 `COUNT`와 `SUM`은 빈 결과를 다르게 다룬다. `COUNT`는 행을 세므로 행이
+없으면 0이다. `SUM`은 값을 더하므로 더할 값이 없으면 "합계가 없다"는 뜻의 NULL이다.
+SQL의 NULL은 "값이 0"이 아니라 "값이 없다"라서, 0으로 대신 채워주지 않는다.
+
+그 NULL이 자바로 넘어오는데 반환 타입이 기본형 `long`이라 담을 자리가 없다. 스프링이
+프록시에서 언박싱하려다 위 예외를 냈다.
+
+**해결** DB 쪽에서 0으로 바꾼다.
+
+```java
+SELECT COALESCE(SUM(oi.unitPrice * oi.quantity), 0) from OrderItem oi
+WHERE oi.participation.groupOrder.id = :groupOrderId
+```
+
+85개 전부 통과.
+
+**시도하지 않은 대안** 반환 타입을 `Long`으로 바꾸고 자바에서 null을 처리할 수도 있다.
+그러면 이 메서드를 부르는 모든 곳이 null을 신경 써야 하고, `closeByHost(..., total)`에
+그대로 넘기면 더 늦게, 더 엉뚱한 자리에서 NPE가 난다. 한 군데서 막는 쪽을 택했다.
+
+**배운 것**
+- 집계 함수의 빈 결과를 먼저 생각한다. `COUNT`는 0, `SUM`/`AVG`/`MAX`/`MIN`은 NULL이다.
+- 반환 타입이 기본형인데 NULL이 올 수 있으면 언박싱에서 터진다. 쿼리에서 `COALESCE`로
+  막거나, 막을 수 없으면 `Optional`이나 래퍼 타입으로 받아 호출부에서 처리한다.
+- 실제로 터지는 시점은 "방장이 방만 만들고 아직 아무도 메뉴를 안 담은 상태"다. 개발 중에는
+  항상 데이터를 채워놓고 보기 때문에 잘 안 보이고, 배포하면 가장 흔한 상태에서 나온다.
+  빈 상태를 확인하는 테스트가 없었으면 그대로 나갔다.
+
+**같이 나온 것들** (같은 단계에서 겪었고, 한 줄씩 고친 것)
+
+- `@Query` 안에 자바처럼 `==`를 썼다. JPQL은 SQL 계열이라 `=` 하나다.
+  `BadJpqlGrammarException: token '=', extraneous input '='`. 더 인상적이었던 건 이 한 줄
+  때문에 `orderItemRepository` 빈 생성이 실패하면서 **`@DataJpaTest` 44개가 전부 죽었다**는
+  점이다. 개별 테스트만 보면 원인이 안 보이고 `Caused by`를 끝까지 따라가야 나온다.
+  쿼리 오타를 런타임이 아니라 뜨는 순간 잡아준다는 점에서는 좋은 성질이다.
+- `oi.participation.groupOrder = :groupOrderId`로 엔티티와 `Long`을 비교했다.
+  `InvalidDataAccessApiUsageException: argument [1] is not assignable to GroupOrder`.
+  JPQL은 테이블이 아니라 객체 그래프를 타는 언어여서 `.groupOrder`는 컬럼이 아니라 객체다.
+  `.groupOrder.id`로 한 칸 더 내려가면 되고, participation 테이블에 group_order_id가 이미
+  있으므로 조인도 늘지 않는다.
+- 예외를 `new`만 하고 `throw`를 빼먹었다(세 군데). 자바에서 예외도 그냥 객체라서 문법상
+  멀쩡하고 경고도 없다. 검사가 통째로 무력화됐고 `Expecting code to raise a throwable.`로
+  드러났다.
+- 주인 확인을 참여 행의 id(`this.id`)와 요청자 id로 했다. 서로 다른 테이블의 번호다.
+  이때 **거절을 확인하는 테스트는 전부 통과했다.** 항상 거절하고 있었기 때문이다. 성공하는
+  경우를 보는 테스트가 없었으면 멀쩡해 보였을 것이다. 2026-09-18 항목과 같은 교훈이다.
+
+**포트폴리오 각도** "메뉴 합계를 SUM으로 구했는데, 메뉴가 하나도 없는 방에서만 실패했다.
+SQL의 SUM은 대상 행이 없으면 0이 아니라 NULL을 돌려주고, 반환 타입이 기본형 `long`이라
+언박싱에서 터진 것이다. COUNT는 0을 주기 때문에 같은 모양이라고 생각하기 쉽다. 쿼리에
+COALESCE를 넣어 DB 경계에서 막았고, 자바 쪽으로 null을 흘려보내 호출부마다 처리하게 하는
+방식은 택하지 않았다. 빈 상태를 확인하는 테스트가 없었다면 '방을 막 만들었을 때'라는 가장
+흔한 상황에서 났을 버그다."

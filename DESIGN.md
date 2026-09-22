@@ -93,7 +93,7 @@
 | PickupSpot | 수령 거점 | id, universityId, name, description (좌표 없음, ADR-013) |
 | GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만), cancelType(취소된 방만, 이름으로 저장) (ADR-017, 021) |
 | Participation | 방 참여 (방장 포함) | id, groupOrderId, userId, joinedAt. (groupOrderId, userId) unique. 이탈하면 행 삭제 (ADR-019) |
-| OrderItem | 담은 메뉴 | id, participationId, menuName, price, quantity |
+| OrderItem | 담은 메뉴 한 줄 | id, participationId, menuName, options(자유 문자열, nullable), unitPrice(옵션 포함 단가), quantity. 빼면 행 삭제 (ADR-022) |
 | Settlement | 정산 내역 | id, groupOrderId, userId, itemTotal, feeShare, totalDue, paidAt |
 
 관계
@@ -113,7 +113,7 @@ erDiagram
   pickup_spot ||--o{ group_order : "수령 장소"
   group_order ||--o{ participation : "참여"
   users ||--o{ participation : "참여자"
-  participation ||--o{ order_item : "담은 메뉴 (예정)"
+  participation ||--o{ order_item : "담은 메뉴"
   group_order ||--o{ settlement : "정산표 (예정)"
   users ||--o{ settlement : "낼 사람 (예정)"
   users ||--o{ email_verification_token : "가입 인증 (예정)"
@@ -129,6 +129,8 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
 지켜야 하는 불변식
 
 - `마감` 이후에는 Participation과 OrderItem을 변경할 수 없다.
+- OrderItem의 `unitPrice`는 옵션 금액까지 포함한 한 개 값이다. 한 줄 금액은
+  `unitPrice * quantity`이고, 방의 메뉴 합계는 그 방에 속한 모든 줄의 합이다. (ADR-022)
 - Participation 수는 capacity를 넘을 수 없다. (Phase 3 동시성 문제의 핵심)
 - 방장 포함 2명 이상이어야 마감할 수 있다. 혼자 시킬 거면 배달앱에서 바로 시키면 된다.
   이 검사는 정산 계산기가 아니라 GroupOrder의 마감 전이에서 한다. (ADR-011)
@@ -272,6 +274,9 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
   쌓고 어떻게 쓸지는 아직 모르겠다. 방장은 전원 몫을 먼저 결제하므로(정원 10명이면
   20만 원 안팎) 미입금 위험을 방장이 떠안는다. 앱이 돈을 받아두는 방식은 ADR-002로
   막혀 있으니, 정원 상한, 신뢰도 낮은 사람의 참여 제한, 미입금 제재로 줄이는 쪽을 검토한다.
+- **메뉴명, 옵션, 가격을 사람이 직접 입력하는 한 오타와 금액 실수를 막을 수 없다.** 가게
+  연동이 없는 MVP에서는 방장이 주문 직전에 배달앱 장바구니로 확인하는 것 말고 방법이 없다.
+  나중에 가게 메뉴판을 우리가 저장하게 되면 옵션을 구조화된 테이블로 올릴 수 있다. (ADR-022)
 - **한 사람이 같은 시간대에 여러 방에 참여할 수 있는가.**
 - **최소주문금액을 못 채운 채 마감 시각이 온 방을 자동 취소하는 게 맞는지.** 방장이
   "그냥 내가 더 담아서 진행할게"를 선택할 수 있어야 할 수도 있다.
