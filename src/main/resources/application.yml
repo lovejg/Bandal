@@ -20,6 +20,22 @@ spring:
     # 커넥션을 오래 물고 있으면 나중에 부하 테스트에서 그대로 병목이 된다. 꺼둔다.
     open-in-view: false
 
+  data:
+    redis:
+      # docker-compose.yml에서 6380으로 열었다
+      host: localhost
+      port: 6380
+
+# 토큰 설정 (ADR-024, 026)
+jwt:
+  # HS256이라 32바이트 이상이어야 한다. 개발용이고, 배포할 때는 환경변수로 옮긴다.
+  # 이 값이 새면 누구나 남의 토큰을 만들 수 있다.
+  secret: bandal-local-dev-secret-key-change-me-in-production
+  # 액세스 토큰은 짧게. 탈취돼도 피해 시간을 줄인다
+  access-token-minutes: 15
+  # 리프레시 토큰은 길게. 이건 Redis에 저장해서 로그아웃 때 지운다
+  refresh-token-days: 14
+
 logging:
   level:
     # 실행되는 SQL을 눈으로 본다. JPA가 뭘 하는지 모르고 넘어가지 않기 위해서.

@@ -8,7 +8,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 
 import java.time.Instant;
 
-// 방장은 본문이 아니라 X-User-Id 헤더에서 읽는다. 본문으로 받으면 남을 방장으로 만들 수 있다
+// 방장은 본문이 아니라 토큰에서 읽는다. 본문으로 받으면 남을 방장으로 만들 수 있다 (ADR-024)
 public record CreateGroupOrderRequest(
 
         @NotNull(message = "수령 거점을 골라주세요")

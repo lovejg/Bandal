@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 // 로컬에서 손으로 호출해보려면 대학, 거점, 사용자가 먼저 있어야 한다.
@@ -21,9 +22,13 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class DevDataSeeder implements ApplicationRunner {
 
+    // 개발용 계정의 비밀번호. 로컬에서만 쓴다
+    private static final String DEV_PASSWORD = "password1234";
+
     private final UniversityRepository universityRepository;
     private final PickupSpotRepository pickupSpotRepository;
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -37,19 +42,21 @@ public class DevDataSeeder implements ApplicationRunner {
         PickupSpot spot = pickupSpotRepository.save(
                 new PickupSpot(hankuk, "제1기숙사 로비", "정문 쪽 계단 옆"));
 
-        // 비밀번호는 아직 쓰지 않는다. 가입 기능을 만들 때 진짜 해시로 바뀐다
-        User host = userRepository.save(new User(hankuk, "kim@hankuk.ac.kr", "not-a-real-hash", "배고파"));
-        User member = userRepository.save(new User(hankuk, "lee@hankuk.ac.kr", "not-a-real-hash", "마라탕러버"));
-        User outsider = userRepository.save(new User(minguk, "park@minguk.ac.kr", "not-a-real-hash", "외부인"));
+        // 로그인해서 토큰을 받아야 하므로 진짜 해시로 넣는다. 셋 다 비밀번호가 같다
+        String password = passwordEncoder.encode(DEV_PASSWORD);
+        User host = userRepository.save(new User(hankuk, "kim@hankuk.ac.kr", password, "배고파"));
+        User member = userRepository.save(new User(hankuk, "lee@hankuk.ac.kr", password, "마라탕러버"));
+        User outsider = userRepository.save(new User(minguk, "park@minguk.ac.kr", password, "외부인"));
 
         log.info("""
 
-                ===== 개발용 데이터 =====
+                ===== 개발용 데이터 (비밀번호는 모두 {}) =====
                 거점(pickupSpotId) : {}  한국대학교 제1기숙사 로비
-                방장(X-User-Id)    : {}  배고파
-                참여자(X-User-Id)  : {}  마라탕러버
-                외부인(X-User-Id)  : {}  외부인 (민국대학교, 참여하면 409)
-                ========================
-                """, spot.getId(), host.getId(), member.getId(), outsider.getId());
+                방장   : id {}  kim@hankuk.ac.kr   배고파
+                참여자 : id {}  lee@hankuk.ac.kr   마라탕러버
+                외부인 : id {}  park@minguk.ac.kr  민국대학교라 참여하면 409
+                POST /api/auth/login 으로 토큰을 받아 Authorization: Bearer 로 보낸다
+                ============================================
+                """, DEV_PASSWORD, spot.getId(), host.getId(), member.getId(), outsider.getId());
     }
 }

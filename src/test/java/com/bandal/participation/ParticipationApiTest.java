@@ -1,6 +1,7 @@
 package com.bandal.participation;
 
 import com.bandal.TestcontainersConfiguration;
+import com.bandal.auth.JwtProvider;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
 import com.bandal.participation.dto.AddOrderItemRequest;
@@ -44,6 +45,9 @@ class ParticipationApiTest {
     ObjectMapper objectMapper;
 
     @Autowired
+    JwtProvider jwtProvider;
+
+    @Autowired
     GroupOrderRepository groupOrderRepository;
 
     @Autowired
@@ -67,6 +71,11 @@ class ParticipationApiTest {
     User member;
     GroupOrder groupOrder;
     Participation hostParticipation;
+
+    // 로그인한 척하는 헤더
+    String bearer(Long userId) {
+        return "Bearer " + jwtProvider.createAccessToken(userId);
+    }
 
     @BeforeEach
     void setUp() {
@@ -95,7 +104,7 @@ class ParticipationApiTest {
         @DisplayName("같은 학교 사람이 참여하면 201이다")
         void joins() throws Exception {
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
-                            .header("X-User-Id", member.getId()))
+                            .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.id").isNumber())
                     .andExpect(jsonPath("$.groupOrderId").value(groupOrder.getId()))
@@ -108,11 +117,11 @@ class ParticipationApiTest {
         @DisplayName("같은 방에 두 번 참여하면 409다")
         void rejectsDuplicate() throws Exception {
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
-                            .header("X-User-Id", member.getId()))
+                            .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isCreated());
 
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
-                            .header("X-User-Id", member.getId()))
+                            .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isConflict());
 
             assertThat(participationRepository.countByGroupOrderId(groupOrder.getId())).isEqualTo(2);
@@ -128,7 +137,7 @@ class ParticipationApiTest {
 
             // 정원 3명이 이미 찼다
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
-                            .header("X-User-Id", fourth.getId()))
+                            .header("Authorization", bearer(fourth.getId())))
                     .andExpect(status().isConflict());
         }
 
@@ -140,7 +149,7 @@ class ParticipationApiTest {
                     new User(otherUniversity, "park@minguk.ac.kr", "hashed-password", "외부인"));
 
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
-                            .header("X-User-Id", outsider.getId()))
+                            .header("Authorization", bearer(outsider.getId())))
                     .andExpect(status().isConflict());
         }
 
@@ -152,7 +161,7 @@ class ParticipationApiTest {
             participationRepository.save(new Participation(late, host, Instant.now()));
 
             mockMvc.perform(post("/api/group-orders/" + late.getId() + "/participations")
-                            .header("X-User-Id", member.getId()))
+                            .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isConflict());
         }
 
@@ -166,7 +175,7 @@ class ParticipationApiTest {
             User third = userRepository.save(new User(university, "park@hankuk.ac.kr", "hashed-password", "꿔바로우"));
 
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
-                            .header("X-User-Id", third.getId()))
+                            .header("Authorization", bearer(third.getId())))
                     .andExpect(status().isConflict());
         }
 
@@ -174,7 +183,7 @@ class ParticipationApiTest {
         @DisplayName("없는 방에 참여하려 하면 404다")
         void rejectsUnknownGroupOrder() throws Exception {
             mockMvc.perform(post("/api/group-orders/999999/participations")
-                            .header("X-User-Id", member.getId()))
+                            .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isNotFound());
         }
     }
@@ -199,7 +208,7 @@ class ParticipationApiTest {
         @DisplayName("메뉴를 담으면 201이고 줄 금액이 같이 나온다")
         void addsItem() throws Exception {
             mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("X-User-Id", member.getId())
+                            .header("Authorization", bearer(member.getId()))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validRequest())))
                     .andExpect(status().isCreated())
@@ -216,7 +225,7 @@ class ParticipationApiTest {
         @DisplayName("남의 참여에 메뉴를 담으려 하면 409다")
         void rejectsOtherUsersParticipation() throws Exception {
             mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("X-User-Id", host.getId())
+                            .header("Authorization", bearer(host.getId()))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validRequest())))
                     .andExpect(status().isConflict());
@@ -230,7 +239,7 @@ class ParticipationApiTest {
             AddOrderItemRequest request = new AddOrderItemRequest("   ", null, 12_000L, 1);
 
             mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("X-User-Id", member.getId())
+                            .header("Authorization", bearer(member.getId()))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isBadRequest())
@@ -243,7 +252,7 @@ class ParticipationApiTest {
             AddOrderItemRequest request = new AddOrderItemRequest("마라탕", null, 0L, 1);
 
             mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("X-User-Id", member.getId())
+                            .header("Authorization", bearer(member.getId()))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isBadRequest());
@@ -256,7 +265,7 @@ class ParticipationApiTest {
             groupOrderRepository.saveAndFlush(groupOrder);
 
             mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("X-User-Id", member.getId())
+                            .header("Authorization", bearer(member.getId()))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validRequest())))
                     .andExpect(status().isConflict());
@@ -266,7 +275,7 @@ class ParticipationApiTest {
         @DisplayName("없는 참여에 담으려 하면 404다")
         void rejectsUnknownParticipation() throws Exception {
             mockMvc.perform(post("/api/participations/999999/order-items")
-                            .header("X-User-Id", member.getId())
+                            .header("Authorization", bearer(member.getId()))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(validRequest())))
                     .andExpect(status().isNotFound());
@@ -279,7 +288,7 @@ class ParticipationApiTest {
                     memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1));
 
             mockMvc.perform(delete("/api/order-items/" + item.getId())
-                            .header("X-User-Id", member.getId()))
+                            .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isNoContent());
 
             assertThat(orderItemRepository.findById(item.getId())).isEmpty();
@@ -292,7 +301,7 @@ class ParticipationApiTest {
                     memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1));
 
             mockMvc.perform(delete("/api/order-items/" + item.getId())
-                            .header("X-User-Id", host.getId()))
+                            .header("Authorization", bearer(host.getId())))
                     .andExpect(status().isConflict());
 
             assertThat(orderItemRepository.findById(item.getId())).isPresent();
@@ -302,7 +311,7 @@ class ParticipationApiTest {
         @DisplayName("없는 메뉴를 빼려 하면 404다")
         void rejectsRemoveUnknownItem() throws Exception {
             mockMvc.perform(delete("/api/order-items/999999")
-                            .header("X-User-Id", member.getId()))
+                            .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isNotFound());
         }
     }

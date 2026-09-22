@@ -1,6 +1,7 @@
 package com.bandal.grouporder;
 
 import com.bandal.TestcontainersConfiguration;
+import com.bandal.auth.JwtProvider;
 import com.bandal.grouporder.dto.CreateGroupOrderRequest;
 import com.bandal.participation.OrderItemRepository;
 import com.bandal.participation.Participation;
@@ -44,6 +45,9 @@ class GroupOrderApiTest {
     ObjectMapper objectMapper;
 
     @Autowired
+    JwtProvider jwtProvider;
+
+    @Autowired
     GroupOrderRepository groupOrderRepository;
 
     @Autowired
@@ -82,6 +86,11 @@ class GroupOrderApiTest {
         member = userRepository.save(new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버"));
     }
 
+    // 로그인한 척하는 헤더. 이제 id를 직접 적을 수 없고 토큰을 만들어야 한다
+    String bearer(Long userId) {
+        return "Bearer " + jwtProvider.createAccessToken(userId);
+    }
+
     CreateGroupOrderRequest validRequest() {
         return new CreateGroupOrderRequest(
                 pickupSpot.getId(), "○○마라탕", 15_000L,
@@ -92,7 +101,7 @@ class GroupOrderApiTest {
     @DisplayName("방을 만들면 201과 만들어진 방이 돌아온다")
     void createsGroupOrder() throws Exception {
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest())))
                 .andExpect(status().isCreated())
@@ -109,7 +118,7 @@ class GroupOrderApiTest {
     @DisplayName("응답에 방장의 비밀번호나 이메일이 섞여 나가지 않는다")
     void doesNotLeakUserFields() throws Exception {
         String body = mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest())))
                 .andExpect(status().isCreated())
@@ -123,7 +132,7 @@ class GroupOrderApiTest {
     @DisplayName("방을 만들면 방장의 참여 행도 함께 생긴다")
     void createsHostParticipation() throws Exception {
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest())))
                 .andExpect(status().isCreated());
@@ -140,7 +149,7 @@ class GroupOrderApiTest {
                 pickupSpot.getId(), "  ", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4);
 
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
@@ -155,7 +164,7 @@ class GroupOrderApiTest {
                 pickupSpot.getId(), "○○마라탕", 15_000L, Instant.now().minusSeconds(60), 4);
 
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -168,21 +177,43 @@ class GroupOrderApiTest {
                 pickupSpot.getId(), "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 1);
 
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    @DisplayName("요청자 헤더가 없으면 400이고 어느 헤더인지 알려준다")
-    void rejectsMissingUserHeader() throws Exception {
+    @DisplayName("토큰 없이 방을 만들려 하면 401이다")
+    void rejectsMissingToken() throws Exception {
         mockMvc.perform(post("/api/group-orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest())))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("X-User-Id")));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+
+        assertThat(groupOrderRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("아무렇게나 지어낸 토큰이면 401이다")
+    void rejectsForgedToken() throws Exception {
+        mockMvc.perform(post("/api/group-orders")
+                        .header("Authorization", "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.forged")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequest())))
+                .andExpect(status().isUnauthorized());
+
+        assertThat(groupOrderRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("방 조회는 토큰 없이도 된다")
+    void allowsAnonymousRead() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+
+        mockMvc.perform(get("/api/group-orders/" + groupOrder.getId()))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -194,7 +225,7 @@ class GroupOrderApiTest {
                 """.formatted(pickupSpot.getId());
 
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest())
@@ -206,7 +237,7 @@ class GroupOrderApiTest {
     @DisplayName("JSON이 깨졌으면 400이고 우리 모양으로 답한다")
     void rejectsBrokenJson() throws Exception {
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"storeName\": "))
                 .andExpect(status().isBadRequest())
@@ -244,7 +275,7 @@ class GroupOrderApiTest {
     @DisplayName("없는 사용자가 방을 만들려 하면 404다")
     void rejectsUnknownHost() throws Exception {
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", 999_999)
+                        .header("Authorization", bearer(999_999L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest())))
                 .andExpect(status().isNotFound());
@@ -257,7 +288,7 @@ class GroupOrderApiTest {
                 999_999L, "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4);
 
         mockMvc.perform(post("/api/group-orders")
-                        .header("X-User-Id", host.getId())
+                        .header("Authorization", bearer(host.getId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isNotFound());
@@ -290,7 +321,7 @@ class GroupOrderApiTest {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
 
         mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
-                        .header("X-User-Id", host.getId()))
+                        .header("Authorization", bearer(host.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CLOSED"));
 
@@ -306,7 +337,7 @@ class GroupOrderApiTest {
         participationRepository.save(new Participation(groupOrder, host, Instant.now()));
 
         mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
-                        .header("X-User-Id", host.getId()))
+                        .header("Authorization", bearer(host.getId())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409));
 
@@ -320,7 +351,7 @@ class GroupOrderApiTest {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
 
         mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
-                        .header("X-User-Id", member.getId()))
+                        .header("Authorization", bearer(member.getId())))
                 .andExpect(status().isConflict());
     }
 
@@ -328,7 +359,7 @@ class GroupOrderApiTest {
     @DisplayName("없는 방을 마감하려 하면 404다")
     void rejectsCloseOfUnknownGroupOrder() throws Exception {
         mockMvc.perform(post("/api/group-orders/999999/close")
-                        .header("X-User-Id", host.getId()))
+                        .header("Authorization", bearer(host.getId())))
                 .andExpect(status().isNotFound());
     }
 

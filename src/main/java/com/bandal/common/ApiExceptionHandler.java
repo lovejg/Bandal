@@ -23,6 +23,12 @@ public class ApiExceptionHandler {
         return build(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
+    // 본인임을 증명하지 못했다
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthorized(UnauthorizedException e) {
+        return build(HttpStatus.UNAUTHORIZED, e.getMessage());
+    }
+
     // 값 자체가 틀렸다. 음수 가격, 빈 메뉴 이름 같은 것
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
