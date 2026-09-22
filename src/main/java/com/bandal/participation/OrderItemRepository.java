@@ -5,8 +5,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
+
+    Optional<OrderItem> findById(Long id);
+
+    void deleteById(Long id);
 
     // 한 참여자가 담은 메뉴들
     List<OrderItem> findByParticipationId(Long participationId);

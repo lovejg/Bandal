@@ -32,8 +32,17 @@ public class OrderItem {
     private int quantity;
 
     OrderItem(Participation participation, String menuName, String options, long unitPrice, int quantity) {
-        if(participation == null || menuName == null || menuName.isBlank() || unitPrice <= 0 || quantity < 1) {
-            throw new IllegalArgumentException("에러 발생");
+        if(participation == null) {
+            throw new IllegalArgumentException("참여 정보 없이 메뉴를 만들 수 없습니다");
+        }
+        if(menuName == null || menuName.isBlank()) {
+            throw new IllegalArgumentException("메뉴 이름을 적어주세요");
+        }
+        if(unitPrice <= 0) {
+            throw new IllegalArgumentException("가격은 0원보다 커야 합니다");
+        }
+        if(quantity < 1) {
+            throw new IllegalArgumentException("개수는 1개 이상이어야 합니다");
         }
 
         this.participation = participation;

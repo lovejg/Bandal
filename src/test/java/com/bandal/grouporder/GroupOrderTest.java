@@ -12,6 +12,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // DB 없이 GroupOrder의 전이 규칙만 확인한다.
@@ -24,18 +25,95 @@ class GroupOrderTest {
     static final Instant DEADLINE = Instant.parse("2026-09-17T10:30:00Z");
 
     GroupOrder groupOrder;
+    University university;
+    PickupSpot pickupSpot;
+    User host;
 
     @BeforeEach
     void setUp() {
-        University university = new University("한국대학교", "hankuk.ac.kr");
-        PickupSpot pickupSpot = new PickupSpot(university, "제1기숙사 로비", null);
-        User host = new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파");
+        university = new University("한국대학교", "hankuk.ac.kr");
+        pickupSpot = new PickupSpot(university, "제1기숙사 로비", null);
+        host = new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파");
         // 저장하지 않은 엔티티라 id가 null이다. 방장 확인을 테스트하려고 id만 직접 넣는다.
         // 실제로는 엔티티의 id(DB에서 읽음)와 요청자 id(요청에서 읽음)가 서로 다른 Long 객체라서,
         // HOST_ID를 그대로 넣지 않고 값만 같은 새 Long을 넣는다.
         ReflectionTestUtils.setField(host, "id", Long.valueOf(HOST_ID.longValue()));
+        // 대학 비교도 id로 하므로 id가 둘 다 null이면 서로 다른 대학이 같아 보인다
+        ReflectionTestUtils.setField(university, "id", 10L);
 
         groupOrder = new GroupOrder(host, pickupSpot, "○○마라탕", MIN_ORDER_AMOUNT, DEADLINE, 4);
+    }
+
+    @Nested
+    @DisplayName("참여 가능 검사")
+    class CheckJoinable {
+
+        static final Instant BEFORE_DEADLINE = DEADLINE.minusSeconds(60);
+
+        User member;
+
+        @BeforeEach
+        void addMember() {
+            member = new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버");
+        }
+
+        @Test
+        @DisplayName("같은 대학 사람이 마감 전에 빈자리에 들어올 수 있다")
+        void allowsJoin() {
+            assertThatCode(() -> groupOrder.checkJoinable(member, 1, BEFORE_DEADLINE))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("마지막 한 자리도 들어올 수 있다")
+        void allowsLastSeat() {
+            // 정원 4명에 현재 3명
+            assertThatCode(() -> groupOrder.checkJoinable(member, 3, BEFORE_DEADLINE))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("정원이 다 찼으면 들어올 수 없다")
+        void rejectsWhenFull() {
+            assertThatThrownBy(() -> groupOrder.checkJoinable(member, 4, BEFORE_DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("마감 시각 정각에는 이미 늦었다")
+        void rejectsAtDeadline() {
+            assertThatThrownBy(() -> groupOrder.checkJoinable(member, 1, DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("마감된 방에는 들어올 수 없다")
+        void rejectsWhenClosed() {
+            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+
+            assertThatThrownBy(() -> groupOrder.checkJoinable(member, 2, BEFORE_DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("취소된 방에는 들어올 수 없다")
+        void rejectsWhenCanceled() {
+            groupOrder.cancelByHost(HOST_ID, null);
+
+            assertThatThrownBy(() -> groupOrder.checkJoinable(member, 1, BEFORE_DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("다른 대학 사람은 들어올 수 없다")
+        void rejectsOtherUniversity() {
+            University otherUniversity = new University("민국대학교", "minguk.ac.kr");
+            ReflectionTestUtils.setField(otherUniversity, "id", 11L);
+            User outsider = new User(otherUniversity, "park@minguk.ac.kr", "hashed-password", "외부인");
+
+            assertThatThrownBy(() -> groupOrder.checkJoinable(outsider, 1, BEFORE_DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+        }
     }
 
     @Nested

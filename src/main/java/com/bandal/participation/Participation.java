@@ -44,16 +44,25 @@ public class Participation {
     }
 
     public OrderItem addItem(Long requesterId, String menuName, String options, long unitPrice, int quantity) {
-        if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING || !Objects.equals(requesterId, this.user.getId())) {
-            throw new IllegalStateException("에러 발생");
+        if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING) {
+            throw new IllegalStateException("모집중인 방에만 메뉴를 담을 수 있습니다");
+        }
+        if(!Objects.equals(requesterId, this.user.getId())) {
+            throw new IllegalStateException("자기 메뉴만 담을 수 있습니다");
         }
         return new OrderItem(this, menuName, options, unitPrice, quantity);
     }
 
     public void removeItem(Long requesterId, OrderItem item) {
-        if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING || !Objects.equals(requesterId, this.user.getId())
-        || !Objects.equals(item.getParticipation().getId(), this.id)) {
-            throw new IllegalStateException("에러 발생");
+        if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING) {
+            throw new IllegalStateException("모집중인 방에서만 메뉴를 뺄 수 있습니다");
+        }
+        if(!Objects.equals(requesterId, this.user.getId())) {
+            throw new IllegalStateException("자기 메뉴만 뺄 수 있습니다");
+        }
+        // 지연로딩 프록시일 수 있어서 객체가 아니라 id로 비교한다
+        if(!Objects.equals(item.getParticipation().getId(), this.id)) {
+            throw new IllegalStateException("다른 사람의 메뉴는 뺄 수 없습니다");
         }
     }
 }

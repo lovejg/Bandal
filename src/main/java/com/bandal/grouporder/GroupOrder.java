@@ -67,13 +67,37 @@ public class GroupOrder {
         this.status = GroupOrderStatus.RECRUITING;
     }
 
-    // 방장이 직접 마감. 조건에 안 맞으면 에러 발생
+    // 이 사람이 지금 이 방에 들어와도 되는지
+    public void checkJoinable(User user, long participantCount, Instant now) {
+        if(this.status != GroupOrderStatus.RECRUITING) {
+            throw new IllegalStateException("모집이 끝난 방입니다");
+        }
+        else if(!now.isBefore(deadlineAt)) {
+            throw new IllegalStateException("마감 시각이 지났습니다");
+        }
+        else if(participantCount >= capacity) {
+            throw new IllegalStateException("정원이 다 찼습니다");
+        }
+        else if(!Objects.equals(user.getUniversity().getId(), this.pickupSpot.getUniversity().getId())) {
+            throw new IllegalStateException("다른 학교의 수령 거점입니다");
+        }
+    }
+
+    // 방장이 직접 마감. 조건에 안 맞으면 사유를 담아 거절한다
     public void closeByHost(Long requesterId, long participantCount, long menuTotalAmount) {
-        if (status != GroupOrderStatus.RECRUITING // 모집중이 아닌 경우
-            || !Objects.equals(requesterId, host.getId()) // 요청자가 방장이 아닌 경우
-            || participantCount < 2 // 방장 포함 인원이 2명 미만인 경우
-            || menuTotalAmount < minOrderAmount) { // 최소 주문 금액을 채우지 못한 경우
-            throw new IllegalStateException("에러 발생");
+        if (status != GroupOrderStatus.RECRUITING) {
+            throw new IllegalStateException("모집중인 방만 마감할 수 있습니다");
+        }
+        if (!Objects.equals(requesterId, host.getId())) {
+            throw new IllegalStateException("방장만 마감할 수 있습니다");
+        }
+        if (participantCount < 2) {
+            throw new IllegalStateException("방장을 포함해 2명 이상이어야 마감할 수 있습니다");
+        }
+        if (menuTotalAmount < minOrderAmount) {
+            // 얼마나 모자란지까지 알려준다. 조건을 쪼갠 덕에 계산할 값이 손에 있다
+            throw new IllegalStateException(
+                    "최소주문금액에 " + (minOrderAmount - menuTotalAmount) + "원 모자랍니다");
         }
 
         status = GroupOrderStatus.CLOSED; // 마감
@@ -81,9 +105,11 @@ public class GroupOrder {
 
     // 마감 시각이 돼서 마감. 조건에 안 맞으면 취소
     public void closeAtDeadline(long participantCount, long menuTotalAmount, Instant now) {
-        if (status != GroupOrderStatus.RECRUITING // 모집중이 아닌 경우
-            || now.isBefore(deadlineAt)) { // 아직 마감 기한 전인 경우
-            throw new IllegalStateException("에러 발생");
+        if (status != GroupOrderStatus.RECRUITING) {
+            throw new IllegalStateException("모집중인 방만 마감 처리할 수 있습니다");
+        }
+        if (now.isBefore(deadlineAt)) {
+            throw new IllegalStateException("아직 마감 시각 전입니다");
         }
 
         if (participantCount < 2) { // 방장 포함 인원이 2명 미만인 경우
@@ -103,10 +129,18 @@ public class GroupOrder {
 
     // 방장이 방을 취소. reason은 모집중이면 없어도 되고(null), 마감 뒤면 꼭 있어야 한다
     public void cancelByHost(Long requesterId, String reason) {
-        if ((status != GroupOrderStatus.RECRUITING && status != GroupOrderStatus.CLOSED) // 모집중이나 마감이 아닌 경우
-            || !Objects.equals(requesterId, host.getId()) // 요청자가 방장이 아닌 경우
-            || (status == GroupOrderStatus.CLOSED && (reason == null || reason.isBlank()))) { // 마감 후 취소인데 사유가 없는 경우
-            throw new IllegalStateException("에러 발생");
+        if (status == GroupOrderStatus.CANCELED) {
+            throw new IllegalStateException("이미 취소된 방입니다");
+        }
+        if (status != GroupOrderStatus.RECRUITING && status != GroupOrderStatus.CLOSED) {
+            throw new IllegalStateException("이미 주문이 시작된 방은 취소할 수 없습니다");
+        }
+        if (!Objects.equals(requesterId, host.getId())) {
+            throw new IllegalStateException("방장만 방을 취소할 수 있습니다");
+        }
+        // 마감 뒤 취소는 참여자들에게 피해가 커서 사유를 받는다 (ADR-021)
+        if (status == GroupOrderStatus.CLOSED && (reason == null || reason.isBlank())) {
+            throw new IllegalStateException("마감 뒤에 취소할 때는 사유를 적어야 합니다");
         }
 
         if(status == GroupOrderStatus.RECRUITING) {
