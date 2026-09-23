@@ -78,6 +78,9 @@
   뺀다. (ADR-014)
 - **인증 메일 발송**: 로컬 개발에서는 Mailpit 컨테이너로 받아서 웹 UI로 확인한다.
   실제 발송은 배포 시점(Phase 2)에 정한다.
+- **미인증 사용자는 조회만**: 가입 직후에는 방 목록과 상세를 볼 수 있지만 방을 만들거나
+  참여할 수 없다. 인증 여부는 매 요청 DB에서 읽어 권한으로 바꿔 단다. 토큰에 담으면
+  인증을 마쳐도 토큰이 만료될 때까지 막힌다. (ADR-027)
 
 ### 아직 갈리는 것
 
@@ -89,7 +92,7 @@
 | --- | --- | --- |
 | University | 대학 (학교 단위) | id, name, emailDomain (unique, ADR-014) |
 | User | 사용자 | id, universityId, email(unique), password(해시), nickname(unique), emailVerifiedAt(null이면 미인증), trustScore(int, 50에서 시작) (ADR-015, 016) |
-| EmailVerificationToken | 가입 인증 토큰 | id, userId, token, expiresAt, usedAt |
+| (이메일 인증 토큰) | 테이블이 아니라 Redis에 둔다. `verify:{토큰} -> 사용자 id`, TTL 30분, 쓰면 삭제 (ADR-027) |
 | PickupSpot | 수령 거점 | id, universityId, name, description (좌표 없음, ADR-013) |
 | GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만), cancelType(취소된 방만, 이름으로 저장) (ADR-017, 021) |
 | Participation | 방 참여 (방장 포함) | id, groupOrderId, userId, joinedAt. (groupOrderId, userId) unique. 이탈하면 행 삭제 (ADR-019) |
@@ -100,7 +103,6 @@
 
 - University 1 - N User, University 1 - N PickupSpot
 - User 1 - N GroupOrder (방장으로서)
-- User 1 - N EmailVerificationToken (재전송하면 여러 개가 쌓인다)
 - GroupOrder 1 - N Participation, Participation 1 - N OrderItem
 - PickupSpot 1 - N GroupOrder
 - GroupOrder 1 - N Settlement
@@ -116,7 +118,6 @@ erDiagram
   participation ||--o{ order_item : "담은 메뉴"
   group_order ||--o{ settlement : "정산표 (예정)"
   users ||--o{ settlement : "낼 사람 (예정)"
-  users ||--o{ email_verification_token : "가입 인증 (예정)"
 ```
 
 User가 University를 직접 들고 있으므로 "이 방에 참여할 자격이 있는가"는
@@ -197,7 +198,8 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
    테스트로 바로 확정할 수 있다.
 2. Spring Security + 학교 이메일 회원가입 + JWT. 리프레시 토큰과 로그아웃
    블랙리스트는 Redis.
-3. 이메일 인증 — 토큰 발급, 만료, 재전송 제한. 로컬에서는 Mailpit으로 확인.
+3. 이메일 인증 — 토큰 발급(Redis, TTL 30분), 재전송 제한(1시간 5회), 미인증 사용자
+   쓰기 차단. 로컬에서는 Mailpit으로 확인. (ADR-027, 028)
 
 - 계좌번호/금액 복사와 송금 딥링크용 정산 정보 응답
 - Testcontainers 기반 통합 테스트

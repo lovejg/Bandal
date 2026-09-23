@@ -44,4 +44,14 @@ public class User {
         this.nickname = nickname;
         this.trustScore = 50;
     }
+
+    // 메일 속 링크를 눌렀다. 이 시각부터 이 주소의 주인임이 확인된 것으로 본다
+    public void verifyEmail(Instant now) {
+        if(this.emailVerifiedAt != null) return;
+        this.emailVerifiedAt = now;
+    }
+
+    public boolean isEmailVerified() {
+        return this.emailVerifiedAt != null;
+    }
 }

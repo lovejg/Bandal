@@ -21,6 +21,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
@@ -84,8 +85,11 @@ class LoginApiTest {
 
         University hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpot = pickupSpotRepository.save(new PickupSpot(hankuk, "제1기숙사 로비", null));
-        member = userRepository.save(new User(
-                hankuk, "lee@hankuk.ac.kr", passwordEncoder.encode(PASSWORD), "마라탕러버"));
+        // 이 테스트가 보려는 건 로그인이다. 메일 인증을 마친 상태로 만들어 둔다.
+        // 안 그러면 쓰기 요청이 403이 된다 (ADR-027). 인증 자체는 EmailVerificationApiTest에서 본다
+        User user = new User(hankuk, "lee@hankuk.ac.kr", passwordEncoder.encode(PASSWORD), "마라탕러버");
+        ReflectionTestUtils.setField(user, "emailVerifiedAt", Instant.now());
+        member = userRepository.save(user);
     }
 
     String login(String email, String password) throws Exception {

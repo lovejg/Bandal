@@ -23,6 +23,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
@@ -82,8 +84,16 @@ class GroupOrderApiTest {
 
         university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpot = pickupSpotRepository.save(new PickupSpot(university, "제1기숙사 로비", null));
-        host = userRepository.save(new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파"));
-        member = userRepository.save(new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버"));
+        host = verifiedUser(university, "kim@hankuk.ac.kr", "배고파");
+        member = verifiedUser(university, "lee@hankuk.ac.kr", "마라탕러버");
+    }
+
+    // 메일 인증을 마친 사용자. 미인증이면 쓰기가 전부 403이라 방 로직을 볼 수 없다 (ADR-027).
+    // 인증 자체는 EmailVerificationApiTest에서 본다
+    User verifiedUser(University university, String email, String nickname) {
+        User user = new User(university, email, "hashed-password", nickname);
+        ReflectionTestUtils.setField(user, "emailVerifiedAt", Instant.now());
+        return userRepository.save(user);
     }
 
     // 로그인한 척하는 헤더. 이제 id를 직접 적을 수 없고 토큰을 만들어야 한다
@@ -272,13 +282,16 @@ class GroupOrderApiTest {
     }
 
     @Test
-    @DisplayName("없는 사용자가 방을 만들려 하면 404다")
+    @DisplayName("없는 사용자의 토큰이면 401이다")
     void rejectsUnknownHost() throws Exception {
+        // 탈퇴한 계정의 토큰이 아직 안 만료된 상황. 컨트롤러까지 가지 못하고 필터에서 걸린다.
+        // "이메일 인증이 필요합니다"(403)는 인증할 계정조차 없는 사람에게 할 말이 아니다 (ADR-027)
         mockMvc.perform(post("/api/group-orders")
                         .header("Authorization", bearer(999_999L))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest())))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("로그인이 필요합니다"));
     }
 
     @Test

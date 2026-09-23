@@ -37,21 +37,30 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // 규칙은 위에서부터 차례로 맞춰본다. 먼저 걸리는 규칙이 이긴다.
+                // 그래서 좁은 규칙이 넓은 규칙보다 위에 있어야 한다
                 .authorizeHttpRequests(auth -> auth
+                        // 아래 permitAll보다 위에 있어야 한다. 순서가 바뀌면 누구나 남의 메일로
+                        // 인증 메일을 계속 보낼 수 있다
+                        .requestMatchers(HttpMethod.POST, "/api/auth/verify/resend").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
+                        // 가입, 로그인, 토큰 갱신, 인증 링크는 계정이 없거나 미인증이어도 불러야 한다
                         .requestMatchers("/api/auth/**").permitAll()
-                        // 조회는 비로그인도 가능하다
+                        // 조회는 비로그인도 가능하다. 미인증 사용자도 앱 구경은 할 수 있다 (ADR-027)
                         .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
-                        .anyRequest().authenticated())
+                        // 쓰기는 메일 인증을 마친 사람만. hasRole("VERIFIED")는 ROLE_VERIFIED를 찾는다
+                        .anyRequest().hasRole("VERIFIED"))
                 // 우리 필터를 스프링의 로그인 처리 필터 앞에 끼운다
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(handler -> handler
                         // 토큰이 없거나 못 믿을 때
                         .authenticationEntryPoint((request, response, e) ->
                                 write(response, HttpStatus.UNAUTHORIZED, "로그인이 필요합니다"))
-                        // 로그인은 했지만 권한이 모자랄 때(이메일 미인증 등)
+                        // 로그인은 했지만 권한이 모자랄 때. 지금 403이 나는 경우는 미인증 하나뿐이다.
+                        // 권한이 늘어나면 이 메시지를 나눠야 한다
                         .accessDeniedHandler((request, response, e) ->
-                                write(response, HttpStatus.FORBIDDEN, "권한이 없습니다")));
+                                write(response, HttpStatus.FORBIDDEN, "이메일 인증이 필요합니다")));
 
         return http.build();
     }

@@ -14,6 +14,8 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+
 // 로컬에서 손으로 호출해보려면 대학, 거점, 사용자가 먼저 있어야 한다.
 // 아직 가입 API가 없어서 앱이 뜰 때 심어준다. dev 프로필에서만 돈다.
 @Component
@@ -44,9 +46,9 @@ public class DevDataSeeder implements ApplicationRunner {
 
         // 로그인해서 토큰을 받아야 하므로 진짜 해시로 넣는다. 셋 다 비밀번호가 같다
         String password = passwordEncoder.encode(DEV_PASSWORD);
-        User host = userRepository.save(new User(hankuk, "kim@hankuk.ac.kr", password, "배고파"));
-        User member = userRepository.save(new User(hankuk, "lee@hankuk.ac.kr", password, "마라탕러버"));
-        User outsider = userRepository.save(new User(minguk, "park@minguk.ac.kr", password, "외부인"));
+        User host = userRepository.save(verified(new User(hankuk, "kim@hankuk.ac.kr", password, "배고파")));
+        User member = userRepository.save(verified(new User(hankuk, "lee@hankuk.ac.kr", password, "마라탕러버")));
+        User outsider = userRepository.save(verified(new User(minguk, "park@minguk.ac.kr", password, "외부인")));
 
         log.info("""
 
@@ -58,5 +60,11 @@ public class DevDataSeeder implements ApplicationRunner {
                 POST /api/auth/login 으로 토큰을 받아 Authorization: Bearer 로 보낸다
                 ============================================
                 """, DEV_PASSWORD, spot.getId(), host.getId(), member.getId(), outsider.getId());
+    }
+
+    // 개발용 계정은 메일 인증을 마친 상태로 둔다. 안 그러면 뭘 하려 해도 403이다 (ADR-027)
+    private User verified(User user) {
+        user.verifyEmail(Instant.now());
+        return user;
     }
 }

@@ -408,3 +408,172 @@ return new TokenResponse(jwtProvider.createAccessToken(userId),
 않아 유효한 리프레시 토큰이 계속 쌓이고 있었다. 토큰 회전을 도입해 어느 시점에도 유효한
 리프레시 토큰이 기기당 하나만 존재하도록 고쳤다. 상태를 축적하는 기능은 단건 테스트가 아니라
 시나리오 테스트가 필요하다는 걸 배운 사례다."
+
+
+---
+
+## 2026-09-23. 메일 서버를 껐더니 가입이 통째로 사라졌다
+
+**상황** Phase 1, 이메일 인증(B단계). 가입하면 인증 토큰을 발급하고 메일을 보낸다.
+처음에는 발송을 `AuthService.signUp()` 안에 그대로 두었다. 이 메서드에는
+`@Transactional`이 붙어 있다.
+
+```java
+@Transactional
+public SignUpResponse signUp(SignUpRequest request) {
+    ...
+    userRepository.save(user);
+    emailVerificationService.send(user.getId(), user.getEmail());   // 트랜잭션 안
+    return new SignUpResponse(SIGN_UP_MESSAGE);
+}
+```
+
+테스트는 전부 통과했다. 테스트에서는 `JavaMailSender`를 가짜로 바꿔 끼워서 발송이 절대
+실패하지 않았기 때문이다.
+
+**증상** Mailpit 컨테이너를 내리고 가입을 시도했다.
+
+```
+$ docker compose stop mailpit
+$ curl -i -X POST localhost:8080/api/auth/signup -d '{"email":"shin@hankuk.ac.kr",...}'
+
+HTTP/1.1 500
+{"status":500,"message":"서버에서 문제가 생겼습니다"}
+```
+
+```
+ERROR ... com.bandal.common.ApiExceptionHandler : 처리하지 못한 예외
+
+org.springframework.mail.MailSendException: Mail server connection failed.
+Failed messages: org.eclipse.angus.mail.util.MailConnectException:
+Couldn't connect to host, port: localhost, 1025; timeout -1;
+```
+
+DB를 보니 계정이 아예 없었다.
+
+```
+bandal=# select count(*) from users;
+3        -- 가입 시도 전과 같다
+```
+
+**원인** 되돌릴 수 있는 일(DB 저장)과 되돌릴 수 없는 일(메일 발송)을 한 트랜잭션에
+묶었다. 발송이 예외를 던지자 트랜잭션이 롤백되면서 방금 만든 계정까지 같이 사라졌다.
+메일을 못 보낸 것은 사실이지만, 그게 계정을 만들지 말아야 할 이유는 아니다. 재전송
+기능까지 만들어 놓고 정작 재전송할 계정이 없어지는 상황이었다.
+
+반대 방향도 같은 뿌리다. 발송이 성공하고 그 뒤에 커밋이 실패하면 롤백은 DB만 되돌린다.
+**이미 나간 메일은 되돌릴 수 없다.** 존재하지 않는 계정의 인증 링크가 남의 메일함에
+도착해 있게 된다.
+
+**시도하지 않은 것** 발송을 `try/catch`로 감싸는 방법이 먼저 떠올랐다. 예외는 막히지만
+메일이 여전히 커밋 전에 나간다. 위의 반대 방향 문제가 그대로 남아서 버렸다.
+
+`signUp()`을 트랜잭션 있는 메서드와 없는 메서드로 쪼개는 방법도 생각했다. 같은 빈 안에서
+부르면 프록시를 거치지 않아 `@Transactional`이 아예 안 먹는다(self-invocation). 피하려면
+빈을 하나 더 만들어야 한다.
+
+**해결** 서비스는 사건만 발행하고, 발송은 커밋된 뒤에 실행되는 리스너가 맡는다.
+
+```java
+// AuthService
+userRepository.save(user);
+eventPublisher.publishEvent(new SignUpEvents.UserRegistered(user.getId(), user.getEmail()));
+```
+
+```java
+// SignUpMailListener
+@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+public void onUserRegistered(SignUpEvents.UserRegistered event) {
+    try {
+        emailVerificationService.send(event.userId(), event.email());
+    } catch (Exception e) {
+        // 여기서 던지면 커밋을 끝낸 호출자에게 올라가 500이 나간다.
+        // 계정은 이미 만들어졌으니 가입은 성공으로 두고 로그만 남긴다
+        log.error("인증 메일을 보내지 못했다. userId={}", event.userId(), e);
+    }
+}
+```
+
+`AFTER_COMMIT`은 커밋에 성공했을 때만 실행되고 롤백되면 아예 실행되지 않는다. 그래서
+"없는 계정의 인증 메일"이 나갈 수 없다. 반대로 발송이 실패해도 커밋은 이미 끝났으니
+계정은 남는다.
+
+같은 조건으로 다시 해봤다.
+
+```
+### 1. 메일 서버를 내린 채로 가입한다
+HTTP/1.1 202
+{"message":"가입 확인 메일을 보냈습니다. 메일함을 확인해주세요"}
+
+### 2. 계정은 만들어졌나
+4|shin@hankuk.ac.kr|      -- 만들어졌고, 인증 시각은 비어 있다
+```
+
+메일 서버를 다시 올리고 재전송을 누르니 메일이 도착했고, 링크를 눌러 인증까지 이어졌다.
+
+**배운 것** 트랜잭션은 DB만 되돌린다. 메일, 결제, 외부 API 호출처럼 밖으로 나가는 일은
+트랜잭션이 책임질 수 없으므로 커밋 경계 밖으로 빼야 한다. 그리고 이 문제는 **가짜 객체로
+바꿔 끼운 테스트가 끝까지 초록불이었다.** 실패하지 않는 가짜를 쓰면 실패했을 때의 동작은
+검증되지 않는다. 지금은 "메일 서버가 죽어 있어도 가입은 성공한다" 테스트를 따로 두었다.
+
+**한 줄 요약** "가입 트랜잭션 안에서 인증 메일을 보내다가, 메일 서버 장애 시 가입 자체가
+롤백되는 문제를 발견했다. 되돌릴 수 없는 외부 호출을 커밋 경계 안에 둔 것이 원인이었다.
+`@TransactionalEventListener(AFTER_COMMIT)`로 발송을 커밋 이후로 옮기고, 발송 실패는
+로그로 남기되 가입은 성공 처리하도록 바꿨다. 가짜 객체가 항상 성공하는 탓에 테스트가
+이 문제를 잡지 못했다는 것도 같이 배웠다."
+
+---
+
+## 2026-09-23. `Long.parseLong(null)`이 400으로 나가고 있었다
+
+**상황** Phase 1, 이메일 인증. Redis에서 인증 토큰을 꺼내면서 지우는 코드다.
+
+```java
+public Long consume(String token) {
+    if (token != null) {
+        return Long.parseLong(redisTemplate.opsForValue().getAndDelete(TOKEN_PREFIX + token));
+    }
+    return null;
+}
+```
+
+**증상** 테스트가 전부 통과했다. "같은 링크를 두 번 누르면 400이다"도, "지어낸 토큰,
+이미 쓴 토큰, 만료된 토큰은 응답이 모두 같다"도 초록불이었다.
+
+응답 본문을 확인하는 단언을 한 줄 넣자 정체가 드러났다.
+
+```
+Expecting actual:
+  "{"status":400,"message":"Cannot parse null string"}"
+to contain:
+  "만료되었거나 이미 사용된 링크입니다"
+```
+
+**원인** `getAndDelete`는 키가 없으면 `null`을 돌려준다. 만료됐거나, 이미 썼거나,
+지어낸 토큰이면 전부 이 경우다. 그 `null`이 `Long.parseLong`으로 들어가
+`NumberFormatException`이 났다.
+
+그런데 **`NumberFormatException`은 `IllegalArgumentException`의 자식**이다.
+`ApiExceptionHandler`의 `handleIllegalArgument`가 이걸 덥석 잡아서 400을 만들어 줬다.
+상태 코드가 우연히 맞아떨어진 것이다. 세 경우가 똑같이 터지니 "응답이 모두 같다"는
+조건까지 만족했다.
+
+**해결** `RefreshTokenStore.findUserId`와 같은 모양으로 맞췄다.
+
+```java
+public Long consume(String token) {
+    if (token == null) return null;
+    String userId = redisTemplate.opsForValue().getAndDelete(TOKEN_PREFIX + token);
+    return userId == null ? null : Long.valueOf(userId);
+}
+```
+
+**배운 것** 상태 코드만 보는 테스트는 "우연히 맞은 정답"을 잡지 못한다. 실패 응답은
+메시지까지 확인해야 한다. 그리고 예외를 상속 관계로 잡는 핸들러는 의도하지 않은 예외까지
+같이 삼킨다. 자바 표준 예외(`NumberFormatException`, `IllegalArgumentException`)를
+API 응답 규칙에 직접 연결해 둔 대가다.
+
+**한 줄 요약** "만료된 인증 토큰의 응답 메시지가 'Cannot parse null string'으로 나가고
+있었는데, `NumberFormatException`이 `IllegalArgumentException`을 상속해 전역 예외
+핸들러가 400으로 잡아준 탓에 테스트가 통과하고 있었다. 실패 응답은 상태 코드뿐 아니라
+메시지까지 검증해야 한다는 걸 배웠다."

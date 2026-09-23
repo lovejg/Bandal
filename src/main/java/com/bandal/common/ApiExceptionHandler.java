@@ -42,6 +42,12 @@ public class ApiExceptionHandler {
         return build(HttpStatus.CONFLICT, e.getMessage());
     }
 
+    // 같은 걸 너무 자주 불렀다. 인증 메일 재전송 같은 것 (ADR-027)
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyRequests(TooManyRequestsException e) {
+        return build(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
+    }
+
     // @Valid가 걸러낸 요청. 어느 필드가 왜 틀렸는지 모아서 알려준다
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {

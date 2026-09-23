@@ -23,6 +23,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.springframework.test.util.ReflectionTestUtils;
+
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
@@ -88,12 +90,19 @@ class ParticipationApiTest {
 
         university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpot = pickupSpotRepository.save(new PickupSpot(university, "제1기숙사 로비", null));
-        host = userRepository.save(new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파"));
-        member = userRepository.save(new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버"));
+        host = verifiedUser(university, "kim@hankuk.ac.kr", "배고파");
+        member = verifiedUser(university, "lee@hankuk.ac.kr", "마라탕러버");
 
         groupOrder = groupOrderRepository.save(new GroupOrder(
                 host, pickupSpot, "○○마라탕", 15_000, Instant.now().plus(2, ChronoUnit.HOURS), 3));
         hostParticipation = participationRepository.save(new Participation(groupOrder, host, Instant.now()));
+    }
+
+    // 메일 인증을 마친 사용자. 미인증이면 쓰기가 전부 403이라 참여 로직을 볼 수 없다 (ADR-027)
+    User verifiedUser(University university, String email, String nickname) {
+        User user = new User(university, email, "hashed-password", nickname);
+        ReflectionTestUtils.setField(user, "emailVerifiedAt", Instant.now());
+        return userRepository.save(user);
     }
 
     @Nested
@@ -130,8 +139,8 @@ class ParticipationApiTest {
         @Test
         @DisplayName("정원이 다 찼으면 409다")
         void rejectsWhenFull() throws Exception {
-            User third = userRepository.save(new User(university, "park@hankuk.ac.kr", "hashed-password", "꿔바로우"));
-            User fourth = userRepository.save(new User(university, "choi@hankuk.ac.kr", "hashed-password", "탕수육"));
+            User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
+            User fourth = verifiedUser(university, "choi@hankuk.ac.kr", "탕수육");
             participationRepository.save(new Participation(groupOrder, member, Instant.now()));
             participationRepository.save(new Participation(groupOrder, third, Instant.now()));
 
@@ -145,8 +154,7 @@ class ParticipationApiTest {
         @DisplayName("다른 학교 사람이 참여하면 409다")
         void rejectsOtherUniversity() throws Exception {
             University otherUniversity = universityRepository.save(new University("민국대학교", "minguk.ac.kr"));
-            User outsider = userRepository.save(
-                    new User(otherUniversity, "park@minguk.ac.kr", "hashed-password", "외부인"));
+            User outsider = verifiedUser(otherUniversity, "park@minguk.ac.kr", "외부인");
 
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
                             .header("Authorization", bearer(outsider.getId())))
@@ -172,7 +180,7 @@ class ParticipationApiTest {
             groupOrder.closeByHost(host.getId(), 2, 20_000);
             groupOrderRepository.saveAndFlush(groupOrder);
 
-            User third = userRepository.save(new User(university, "park@hankuk.ac.kr", "hashed-password", "꿔바로우"));
+            User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
 
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
                             .header("Authorization", bearer(third.getId())))

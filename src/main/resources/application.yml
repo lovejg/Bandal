@@ -26,6 +26,11 @@ spring:
       host: localhost
       port: 6380
 
+  mail:
+    # Mailpit. 밖으로 나가지 않고 http://localhost:8025 에 쌓인다
+    host: localhost
+    port: 1025
+
 # 토큰 설정 (ADR-024, 026)
 jwt:
   # HS256이라 32바이트 이상이어야 한다. 개발용이고, 배포할 때는 환경변수로 옮긴다.
@@ -35,6 +40,18 @@ jwt:
   access-token-minutes: 15
   # 리프레시 토큰은 길게. 이건 Redis에 저장해서 로그아웃 때 지운다
   refresh-token-days: 14
+
+# 이메일 인증 설정 (ADR-027)
+app:
+  # 메일에 들어갈 링크의 앞부분. 프론트가 생기면 이 줄만 프론트 주소로 바꾼다
+  verify-link-base: http://localhost:8080/api/auth/verify
+  # 메일은 사람이 여는 매체라 액세스 토큰(15분)보다 길게 준다
+  verification-token-minutes: 30
+  # 재전송 제한. 창 안에서 이 횟수를 넘으면 429
+  resend-limit: 5
+  resend-window-minutes: 60
+  # 메일 보내는 사람 주소. 배포할 때 실제 도메인으로 바꾼다
+  mail-from: no-reply@bandal.local
 
 logging:
   level:
