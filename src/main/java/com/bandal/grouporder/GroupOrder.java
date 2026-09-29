@@ -58,6 +58,7 @@ public class GroupOrder {
 
     public GroupOrder(User host, PickupSpot pickupSpot, String storeName,
                       long minOrderAmount, Instant deadlineAt, int capacity) {
+        if(!host.hasAccount()) throw new IllegalStateException("방장의 계좌 정보가 없습니다");
         this.host = host;
         this.pickupSpot = pickupSpot;
         this.storeName = storeName;
@@ -127,49 +128,7 @@ public class GroupOrder {
         status = GroupOrderStatus.CLOSED; // 마감
     }
 
-    // 방장이 배달앱 장바구니에서 배달비를 확인하고 입력한다. 이때 정산이 시작된다 (ADR-029)
-    // 아직 결제는 안 한 상태다. 참여자들의 송금이 다 모여야 결제한다
-    //
-    // markedPaidCount는 "보냈어요"를 누른 참여자 수다. 엔티티는 DB를 볼 수 없어서 서비스가 세어 준다
-    // TODO: 아래를 채운다.
-    //  - 마감(CLOSED) 상태면 정산을 시작한다
-    //  - 이미 정산중(SETTLING)이면 배달비 재입력이다. 단 markedPaidCount가 0일 때만 허용한다.
-    //    한 명이라도 보냈다고 표시했으면 그 금액을 믿고 보낸 사람이 있으므로 바꿀 수 없다 (ADR-030)
-    //  - 그 밖의 상태면 거절
-    //  - 방장만 할 수 있다
-    //  - 배달비는 음수일 수 없다. 0은 "배달비 무료"라는 뜻이 있는 값이라 허용한다 (ADR-001)
-    //  - totalPaidAmount는 선택 입력이라 null일 수 있다
-    //  - deliveryFee, totalPaidAmount를 채우고 status를 SETTLING으로
-    public void startSettlement(Long requesterId, long deliveryFee, Long totalPaidAmount, long markedPaidCount) {
-    }
-
-    // 전원 입금이 확인되어 방장이 실제로 결제했다
-    // unconfirmedCount는 방장이 아직 확인하지 않은 정산 행의 수다
-    // TODO: 아래를 채운다.
-    //  - 정산중(SETTLING)만 주문완료로 갈 수 있다
-    //  - 방장만 할 수 있다. 참여자가 누를 수 있으면 이체도 안 하고 주문을 시킬 수 있다 (ADR-032)
-    //  - 미확인이 하나라도 남아 있으면 거절. 몇 명 남았는지 메시지에 담아주면 좋다
-    //  - status를 ORDERED로
-    public void markOrdered(Long requesterId, long unconfirmedCount) {
-    }
-
-    // 음식이 도착했다
-    // TODO: 주문완료(ORDERED)만 배달완료로 갈 수 있다. 방장만. status를 DELIVERED로
-    public void markDelivered(Long requesterId) {
-    }
-
-    // 정산 정보(방장 계좌 포함)를 보여줘도 되는 상태인가.
-    // 모집중인 방에서도 보이면 아무나 참여만 해서 계좌를 긁어갈 수 있다 (ADR-031)
-    public boolean isSettlementStarted() {
-        return status == GroupOrderStatus.SETTLING
-                || status == GroupOrderStatus.ORDERED
-                || status == GroupOrderStatus.DELIVERED;
-    }
-
     // 방장이 방을 취소. reason은 모집중이면 없어도 되고(null), 마감 뒤면 꼭 있어야 한다
-    // TODO: 정산중(SETTLING)에서도 취소할 수 있게 넓힌다 (ADR-021 2026-09-26 수정).
-    //  - 정산중 취소는 사유가 필수다. 이미 방장 손에 돈이 가 있다
-    //  - cancelType은 HOST_AFTER_SETTLING. 마감 뒤 취소와 뭉치면 나중에 감점을 다르게 줄 수 없다
     public void cancelByHost(Long requesterId, String reason) {
         if (status == GroupOrderStatus.CANCELED) {
             throw new IllegalStateException("이미 취소된 방입니다");

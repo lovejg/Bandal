@@ -68,6 +68,10 @@
   입력하고 방장이 검수한다.
 - **범위**: 대학 단위. `University` 아래에 `PickupSpot`(기숙사 로비, 건물 앞)이 달린다.
   방은 거점에 속하므로 자연히 학교 안에서만 매칭된다.
+- **거점 목록은 사용자가 채운다**: 운영자가 학교마다 건물을 조사해 심는 건 불가능하다.
+  메일 인증을 마친 사용자가 자기 학교 거점을 만들고, 그 목록이 학교 단위로 공유되며
+  자라난다. 자유 문자열로 두지 않는 이유는 목록에서 거점으로 묶고 거르기 위해서다.
+  중복과 장난 입력은 감수하고, 병합 도구는 나중에. (ADR-033)
 - **실시간성**: 초기에는 폴링. WebSocket은 필요해진 게 확인되면 그때 넣는다.
 - **인증**: 로컬 회원가입만. 학교 이메일 + 비밀번호로 가입하고 인증 메일을 통과해야
   활성화된다. OAuth는 쓰지 않는다. Spring Security + JWT, 리프레시 토큰과 로그아웃
@@ -95,7 +99,7 @@
 | University | 대학 (학교 단위) | id, name, emailDomain (unique, ADR-014) |
 | User | 사용자 | id, universityId, email(unique), password(해시), nickname(unique), emailVerifiedAt(null이면 미인증), trustScore(int, 50에서 시작), bankName/accountNumber/accountHolder(방장이 되려면 필요, 노출은 마스킹) (ADR-015, 016, 031) |
 | (이메일 인증 토큰) | 테이블이 아니라 Redis에 둔다. `verify:{토큰} -> 사용자 id`, TTL 30분, 쓰면 삭제 (ADR-027) |
-| PickupSpot | 수령 거점 | id, universityId, name, description (좌표 없음, ADR-013) |
+| PickupSpot | 수령 거점 | id, universityId, name, description (좌표 없음, ADR-013). 사용자가 자기 학교에 만들고 학교 단위로 공유된다 (ADR-033) |
 | GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만), cancelType(취소된 방만, 이름으로 저장) (ADR-017, 021) |
 | Participation | 방 참여 (방장 포함) | id, groupOrderId, userId, joinedAt. (groupOrderId, userId) unique. 이탈하면 행 삭제 (ADR-019) |
 | OrderItem | 담은 메뉴 한 줄 | id, participationId, menuName, options(자유 문자열, nullable), unitPrice(옵션 포함 단가), quantity. 빼면 행 삭제 (ADR-022) |

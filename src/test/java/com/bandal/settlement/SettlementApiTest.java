@@ -390,7 +390,7 @@ class SettlementApiTest {
             mockMvc.perform(get("/api/group-orders/" + groupOrder.getId() + "/settlement")
                             .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.hostAccount.accountHolder").value("김○○"));
+                    .andExpect(jsonPath("$.hostAccount.accountHolder").value("김*수"));
         }
 
         @Test

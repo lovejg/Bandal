@@ -6,7 +6,11 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/group-orders")
@@ -15,36 +19,12 @@ public class GroupOrderController {
 
     private final GroupOrderService groupOrderService;
 
-    // 요청자 id는 토큰에서 나온다. 클라이언트가 정할 수 없다 (ADR-024)
+    // 요청자 id는 토큰에서 나온다. 본문으로 받으면 남을 방장으로 만들 수 있다 (ADR-024)
+    // @Valid가 형식을 먼저 거른다. 여기서 막히면 서비스까지 가지도 않는다
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public GroupOrderResponse create(@AuthenticationPrincipal Long userId,
                                      @Valid @RequestBody CreateGroupOrderRequest request) {
         return groupOrderService.create(userId, request);
-    }
-
-    @GetMapping("/{groupOrderId}")
-    public GroupOrderResponse find(@PathVariable Long groupOrderId) {
-        return groupOrderService.find(groupOrderId);
-    }
-
-    // 상태 전이라서 자원이 아니라 동사다
-    @PostMapping("/{groupOrderId}/close")
-    public GroupOrderResponse close(@PathVariable Long groupOrderId,
-                                    @AuthenticationPrincipal Long userId) {
-        return groupOrderService.close(groupOrderId, userId);
-    }
-
-    // 전원 입금 확인 후 방장이 실제로 결제했다 (ADR-029)
-    @PostMapping("/{groupOrderId}/order")
-    public GroupOrderResponse order(@PathVariable Long groupOrderId,
-                                    @AuthenticationPrincipal Long userId) {
-        return groupOrderService.order(groupOrderId, userId);
-    }
-
-    @PostMapping("/{groupOrderId}/deliver")
-    public GroupOrderResponse deliver(@PathVariable Long groupOrderId,
-                                      @AuthenticationPrincipal Long userId) {
-        return groupOrderService.deliver(groupOrderId, userId);
     }
 }
