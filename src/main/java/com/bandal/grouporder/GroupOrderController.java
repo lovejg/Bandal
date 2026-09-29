@@ -34,4 +34,17 @@ public class GroupOrderController {
                                     @AuthenticationPrincipal Long userId) {
         return groupOrderService.close(groupOrderId, userId);
     }
+
+    // 전원 입금 확인 후 방장이 실제로 결제했다 (ADR-029)
+    @PostMapping("/{groupOrderId}/order")
+    public GroupOrderResponse order(@PathVariable Long groupOrderId,
+                                    @AuthenticationPrincipal Long userId) {
+        return groupOrderService.order(groupOrderId, userId);
+    }
+
+    @PostMapping("/{groupOrderId}/deliver")
+    public GroupOrderResponse deliver(@PathVariable Long groupOrderId,
+                                      @AuthenticationPrincipal Long userId) {
+        return groupOrderService.deliver(groupOrderId, userId);
+    }
 }

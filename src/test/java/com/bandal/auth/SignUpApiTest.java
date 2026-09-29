@@ -1,5 +1,6 @@
 package com.bandal.auth;
 
+import com.bandal.settlement.SettlementRepository;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.dto.SignUpRequest;
 import com.bandal.grouporder.GroupOrderRepository;
@@ -61,6 +62,9 @@ class SignUpApiTest {
     UserRepository userRepository;
 
     @Autowired
+    SettlementRepository settlementRepository;
+
+    @Autowired
     OrderItemRepository orderItemRepository;
 
     @Autowired
@@ -80,6 +84,8 @@ class SignUpApiTest {
 
     @BeforeEach
     void setUp() {
+        // 정산 행이 group_order를 참조하므로 방보다 먼저 지운다
+        settlementRepository.deleteAll();
         orderItemRepository.deleteAll();
         participationRepository.deleteAll();
         groupOrderRepository.deleteAll();

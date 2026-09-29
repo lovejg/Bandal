@@ -1,5 +1,6 @@
 package com.bandal.grouporder;
 
+import com.bandal.settlement.SettlementRepository;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.JwtProvider;
 import com.bandal.grouporder.dto.CreateGroupOrderRequest;
@@ -56,6 +57,9 @@ class GroupOrderApiTest {
     ParticipationRepository participationRepository;
 
     @Autowired
+    SettlementRepository settlementRepository;
+
+    @Autowired
     OrderItemRepository orderItemRepository;
 
     @Autowired
@@ -75,6 +79,8 @@ class GroupOrderApiTest {
     @BeforeEach
     void setUp() {
         // 테스트끼리 데이터가 섞이지 않게 비우고 시작한다. 자식 테이블부터 지운다
+        // 정산 행이 group_order를 참조하므로 방보다 먼저 지운다
+        settlementRepository.deleteAll();
         orderItemRepository.deleteAll();
         participationRepository.deleteAll();
         groupOrderRepository.deleteAll();
@@ -93,6 +99,10 @@ class GroupOrderApiTest {
     User verifiedUser(University university, String email, String nickname) {
         User user = new User(university, email, "hashed-password", nickname);
         ReflectionTestUtils.setField(user, "emailVerifiedAt", Instant.now());
+        // 계좌가 없으면 방을 만들 수 없다 (ADR-031). 계좌 자체는 SettlementApiTest에서 본다
+        ReflectionTestUtils.setField(user, "bankName", "한국은행");
+        ReflectionTestUtils.setField(user, "accountNumber", "110-123-456789");
+        ReflectionTestUtils.setField(user, "accountHolder", "김민수");
         return userRepository.save(user);
     }
 

@@ -8,6 +8,7 @@ import com.bandal.participation.Participation;
 import com.bandal.participation.ParticipationRepository;
 import com.bandal.pickupspot.PickupSpot;
 import com.bandal.pickupspot.PickupSpotRepository;
+import com.bandal.settlement.SettlementRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,12 +29,16 @@ public class GroupOrderService {
     private final OrderItemRepository orderItemRepository;
     private final UserRepository userRepository;
     private final PickupSpotRepository pickupSpotRepository;
+    private final SettlementRepository settlementRepository;
 
     // 방 만들기. 방장도 참여 행을 하나 갖는다 (ADR-019)
     @Transactional
     public GroupOrderResponse create(Long hostId, CreateGroupOrderRequest request) {
         User host = userRepository.findById(hostId)
             .orElseThrow(() -> new NotFoundException("없는 사용자입니다"));
+        // TODO: 계좌가 등록돼 있지 않으면 방을 만들 수 없다 (ADR-031).
+        //  방장은 돈을 받는 사람이라 계좌 없이 방을 여는 건 성립하지 않는다.
+        //  host.hasAccount()를 쓰고, 메시지는 무엇을 해야 하는지 알려주는 문장으로
         PickupSpot pickupSpot = pickupSpotRepository.findById(request.pickupSpotId())
             .orElseThrow(() -> new NotFoundException("없는 수령 거점입니다"));
         GroupOrder groupOrder = new GroupOrder(host, pickupSpot, request.storeName(),
@@ -62,6 +67,30 @@ public class GroupOrderService {
         long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
         groupOrder.closeByHost(requesterId, participantCount, menuTotalAmount);
         return GroupOrderResponse.of(groupOrder, participantCount, menuTotalAmount);
+    }
+
+    // 전원 입금이 확인됐으면 방장이 결제하고 주문완료로 넘긴다 (ADR-029)
+    @Transactional
+    public GroupOrderResponse order(Long groupOrderId, Long requesterId) {
+        GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        // 미확인이 몇 건 남았는지는 DB가 안다. 엔티티는 그 숫자로 판단한다
+        long unconfirmedCount = settlementRepository.countByGroupOrderIdAndConfirmedPaidAtIsNull(groupOrderId);
+        groupOrder.markOrdered(requesterId, unconfirmedCount);
+        return GroupOrderResponse.of(groupOrder,
+            participationRepository.countByGroupOrderId(groupOrderId),
+            orderItemRepository.sumAmountByGroupOrderId(groupOrderId));
+    }
+
+    // 음식이 도착했다
+    @Transactional
+    public GroupOrderResponse deliver(Long groupOrderId, Long requesterId) {
+        GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        groupOrder.markDelivered(requesterId);
+        return GroupOrderResponse.of(groupOrder,
+            participationRepository.countByGroupOrderId(groupOrderId),
+            orderItemRepository.sumAmountByGroupOrderId(groupOrderId));
     }
 
     // 수정 후 공통함수 만들기

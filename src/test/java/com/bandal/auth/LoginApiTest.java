@@ -1,5 +1,6 @@
 package com.bandal.auth;
 
+import com.bandal.settlement.SettlementRepository;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.dto.LoginRequest;
 import com.bandal.auth.dto.RefreshRequest;
@@ -63,6 +64,9 @@ class LoginApiTest {
     UserRepository userRepository;
 
     @Autowired
+    SettlementRepository settlementRepository;
+
+    @Autowired
     OrderItemRepository orderItemRepository;
 
     @Autowired
@@ -76,6 +80,8 @@ class LoginApiTest {
 
     @BeforeEach
     void setUp() {
+        // 정산 행이 group_order를 참조하므로 방보다 먼저 지운다
+        settlementRepository.deleteAll();
         orderItemRepository.deleteAll();
         participationRepository.deleteAll();
         groupOrderRepository.deleteAll();
@@ -89,6 +95,10 @@ class LoginApiTest {
         // 안 그러면 쓰기 요청이 403이 된다 (ADR-027). 인증 자체는 EmailVerificationApiTest에서 본다
         User user = new User(hankuk, "lee@hankuk.ac.kr", passwordEncoder.encode(PASSWORD), "마라탕러버");
         ReflectionTestUtils.setField(user, "emailVerifiedAt", Instant.now());
+        // 방을 만들려면 계좌도 있어야 한다 (ADR-031)
+        ReflectionTestUtils.setField(user, "bankName", "한국은행");
+        ReflectionTestUtils.setField(user, "accountNumber", "110-123-456789");
+        ReflectionTestUtils.setField(user, "accountHolder", "김민수");
         member = userRepository.save(user);
     }
 

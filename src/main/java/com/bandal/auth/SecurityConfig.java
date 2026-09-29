@@ -46,6 +46,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
                         // 가입, 로그인, 토큰 갱신, 인증 링크는 계정이 없거나 미인증이어도 불러야 한다
                         .requestMatchers("/api/auth/**").permitAll()
+                        // 조회지만 방장 계좌번호가 들어 있다. 아래 GET permitAll보다 위에 있어야 한다 (ADR-031)
+                        .requestMatchers(HttpMethod.GET, "/api/group-orders/*/settlement").authenticated()
                         // 조회는 비로그인도 가능하다. 미인증 사용자도 앱 구경은 할 수 있다 (ADR-027)
                         .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()

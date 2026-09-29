@@ -25,4 +25,13 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
         WHERE oi.participation.groupOrder.id = :groupOrderId
         """)
     long sumAmountByGroupOrderId(@Param("groupOrderId") Long groupOrderId);
+
+    // 한 참여자가 담은 메뉴 금액 합계. 정산표를 만들 때 사람마다 부른다
+    // 참여자 수만큼 쿼리가 나가지만 그 수는 capacity로 묶여 있어서 몇 개다.
+    // 한 번에 가져오려면 GROUP BY와 별도 반환 타입이 필요한데 지금은 과하다
+    @Query("""
+        SELECT COALESCE(SUM(oi.unitPrice * oi.quantity), 0) from OrderItem oi
+        WHERE oi.participation.id = :participationId
+        """)
+    long sumAmountByParticipationId(@Param("participationId") Long participationId);
 }

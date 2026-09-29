@@ -6,6 +6,8 @@ public enum CancelType {
     HOST_WHILE_RECRUITING,
     // 방장이 마감 뒤에 취소했다. 참여자들은 주문을 기다리고 있었다
     HOST_AFTER_CLOSED,
+    // 방장이 정산중에 취소했다. 이미 방장 손에 돈이 가 있어서 피해가 가장 크다 (ADR-029)
+    HOST_AFTER_SETTLING,
     // 마감 시각에 인원이나 금액이 모자라 자동 취소됐다. 방장 잘못이 아니다
     DEADLINE_UNMET
 }

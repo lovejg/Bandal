@@ -1,5 +1,6 @@
 package com.bandal.auth;
 
+import com.bandal.settlement.SettlementRepository;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.dto.LoginRequest;
 import com.bandal.auth.dto.SignUpRequest;
@@ -78,6 +79,9 @@ class EmailVerificationApiTest {
     UserRepository userRepository;
 
     @Autowired
+    SettlementRepository settlementRepository;
+
+    @Autowired
     OrderItemRepository orderItemRepository;
 
     @Autowired
@@ -95,6 +99,8 @@ class EmailVerificationApiTest {
 
     @BeforeEach
     void setUp() {
+        // 정산 행이 group_order를 참조하므로 방보다 먼저 지운다
+        settlementRepository.deleteAll();
         orderItemRepository.deleteAll();
         participationRepository.deleteAll();
         groupOrderRepository.deleteAll();
@@ -111,7 +117,23 @@ class EmailVerificationApiTest {
 
         User verified = new User(hankuk, "kim@hankuk.ac.kr", "hashed-password", "배고파");
         ReflectionTestUtils.setField(verified, "emailVerifiedAt", Instant.now());
+        giveAccount(verified);
         host = userRepository.save(verified);
+    }
+
+    // 방을 만들려면 계좌가 있어야 한다 (ADR-031). 이 테스트가 보려는 건 메일 인증이라
+    // 등록 과정을 거치지 않고 값을 바로 넣는다
+    void giveAccount(User user) {
+        ReflectionTestUtils.setField(user, "bankName", "한국은행");
+        ReflectionTestUtils.setField(user, "accountNumber", "110-123-456789");
+        ReflectionTestUtils.setField(user, "accountHolder", "김민수");
+    }
+
+    // 가입 API로 만들어진 사용자에게 계좌를 붙여준다
+    void giveAccount(String email) {
+        User user = userRepository.findByEmail(email).orElseThrow();
+        giveAccount(user);
+        userRepository.save(user);
     }
 
     // 가입하고, 메일로 나간 인증 토큰을 돌려준다
@@ -126,6 +148,8 @@ class EmailVerificationApiTest {
                         .content(objectMapper.writeValueAsString(
                                 new SignUpRequest(email, PASSWORD, nickname))))
                 .andExpect(status().isAccepted());
+        // 인증을 마친 뒤 방을 만들어보는 테스트가 있어서 계좌까지 붙여둔다
+        giveAccount(email);
     }
 
     SimpleMailMessage lastMail() {

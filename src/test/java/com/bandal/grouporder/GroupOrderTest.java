@@ -332,4 +332,246 @@ class GroupOrderTest {
             assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.DEADLINE_UNMET);
         }
     }
+
+    // 여기부터 정산 (ADR-029)
+    // 마감 -> 정산중 -> 주문완료 -> 배달완료
+
+    // 방을 마감 상태로 만든다. 3명, 20,000원이면 조건을 넘는다
+    void close() {
+        groupOrder.closeByHost(HOST_ID, 3, 20_000);
+    }
+
+    // 정산중까지 보낸다. 아직 아무도 송금하지 않은 상태
+    void startSettlement() {
+        close();
+        groupOrder.startSettlement(HOST_ID, 3_500, 19_500L, 0);
+    }
+
+    @Nested
+    @DisplayName("배달비 입력")
+    class StartSettlement {
+
+        @Test
+        @DisplayName("마감된 방에 배달비를 입력하면 정산중이 된다")
+        void startsSettlement() {
+            close();
+
+            groupOrder.startSettlement(HOST_ID, 3_500, 19_500L, 0);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+            assertThat(groupOrder.getDeliveryFee()).isEqualTo(3_500);
+            assertThat(groupOrder.getTotalPaidAmount()).isEqualTo(19_500);
+        }
+
+        @Test
+        @DisplayName("결제 금액은 선택 입력이라 없어도 된다")
+        void allowsNullTotalPaidAmount() {
+            close();
+
+            groupOrder.startSettlement(HOST_ID, 3_500, null, 0);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+            assertThat(groupOrder.getTotalPaidAmount()).isNull();
+        }
+
+        @Test
+        @DisplayName("배달비 0원은 무료라는 뜻이라 허용한다")
+        void allowsFreeDelivery() {
+            close();
+
+            assertThatCode(() -> groupOrder.startSettlement(HOST_ID, 0, null, 0))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("배달비가 음수면 값 자체가 틀렸다")
+        void rejectsNegativeFee() {
+            close();
+
+            assertThatThrownBy(() -> groupOrder.startSettlement(HOST_ID, -1, null, 0))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("모집중인 방에는 배달비를 입력할 수 없다")
+        void rejectsWhileRecruiting() {
+            assertThatThrownBy(() -> groupOrder.startSettlement(HOST_ID, 3_500, null, 0))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.RECRUITING);
+        }
+
+        @Test
+        @DisplayName("방장이 아니면 배달비를 입력할 수 없다")
+        void rejectsNonHost() {
+            close();
+
+            assertThatThrownBy(() -> groupOrder.startSettlement(OTHER_ID, 3_500, null, 0))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("아직 아무도 송금하지 않았으면 배달비를 다시 입력할 수 있다")
+        void allowsRetypeBeforeAnyonePaid() {
+            startSettlement();
+
+            groupOrder.startSettlement(HOST_ID, 4_000, null, 0);
+
+            assertThat(groupOrder.getDeliveryFee()).isEqualTo(4_000);
+        }
+
+        @Test
+        @DisplayName("한 명이라도 보냈다고 표시했으면 배달비를 바꿀 수 없다")
+        void rejectsRetypeAfterSomeonePaid() {
+            startSettlement();
+
+            // 그 금액을 믿고 보낸 사람이 있다 (ADR-030)
+            assertThatThrownBy(() -> groupOrder.startSettlement(HOST_ID, 4_000, null, 1))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getDeliveryFee()).isEqualTo(3_500);
+        }
+
+        @Test
+        @DisplayName("주문완료 뒤에는 배달비를 바꿀 수 없다")
+        void rejectsAfterOrdered() {
+            startSettlement();
+            groupOrder.markOrdered(HOST_ID, 0);
+
+            assertThatThrownBy(() -> groupOrder.startSettlement(HOST_ID, 4_000, null, 0))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("주문완료 전이")
+    class MarkOrdered {
+
+        @Test
+        @DisplayName("전원 입금이 확인되면 주문완료로 넘어간다")
+        void marksOrdered() {
+            startSettlement();
+
+            groupOrder.markOrdered(HOST_ID, 0);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+        }
+
+        @Test
+        @DisplayName("확인 안 된 사람이 남아 있으면 주문할 수 없다")
+        void rejectsWhenSomeoneUnconfirmed() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.markOrdered(HOST_ID, 1))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("배달비를 입력하지 않은 마감 상태에서는 주문할 수 없다")
+        void rejectsFromClosed() {
+            close();
+
+            assertThatThrownBy(() -> groupOrder.markOrdered(HOST_ID, 0))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("방장만 주문완료로 넘길 수 있다")
+        void rejectsNonHost() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.markOrdered(OTHER_ID, 0))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("이미 주문완료된 방을 다시 주문완료로 만들 수 없다")
+        void rejectsTwice() {
+            startSettlement();
+            groupOrder.markOrdered(HOST_ID, 0);
+
+            assertThatThrownBy(() -> groupOrder.markOrdered(HOST_ID, 0))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("배달완료 전이")
+    class MarkDelivered {
+
+        @Test
+        @DisplayName("주문완료된 방을 배달완료로 넘긴다")
+        void marksDelivered() {
+            startSettlement();
+            groupOrder.markOrdered(HOST_ID, 0);
+
+            groupOrder.markDelivered(HOST_ID);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.DELIVERED);
+        }
+
+        @Test
+        @DisplayName("정산중에서 배달완료로 건너뛸 수 없다")
+        void rejectsFromSettling() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.markDelivered(HOST_ID))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("방장만 배달완료로 넘길 수 있다")
+        void rejectsNonHost() {
+            startSettlement();
+            groupOrder.markOrdered(HOST_ID, 0);
+
+            assertThatThrownBy(() -> groupOrder.markDelivered(OTHER_ID))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("정산중 취소")
+    class CancelWhileSettling {
+
+        static final String REASON = "가게가 문을 닫았습니다";
+
+        @Test
+        @DisplayName("사유를 적으면 정산중에도 취소할 수 있다")
+        void cancels() {
+            startSettlement();
+
+            groupOrder.cancelByHost(HOST_ID, REASON);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+            // 마감 뒤 취소와 구분해야 나중에 감점을 다르게 줄 수 있다 (ADR-021 수정)
+            assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.HOST_AFTER_SETTLING);
+            assertThat(groupOrder.getCancelReason()).isEqualTo(REASON);
+        }
+
+        @Test
+        @DisplayName("정산중 취소는 사유가 없으면 거절한다")
+        void requiresReason() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, null))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("주문완료 뒤에는 취소할 수 없다. 이미 돈이 나갔다")
+        void rejectsAfterOrdered() {
+            startSettlement();
+            groupOrder.markOrdered(HOST_ID, 0);
+
+            assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, REASON))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+        }
+    }
 }
