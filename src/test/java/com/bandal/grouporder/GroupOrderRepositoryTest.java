@@ -54,6 +54,8 @@ class GroupOrderRepositoryTest {
         University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpot = pickupSpotRepository.save(new PickupSpot(university, "제1기숙사 로비", null));
         host = userRepository.save(new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파"));
+        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        host.registerAccount("한국은행", "110-123-456789", "김민수");
     }
 
     @Test
@@ -141,12 +143,13 @@ class GroupOrderRepositoryTest {
     }
 
     @Test
-    @DisplayName("방장 없이 방을 저장하면 DB가 거부한다")
+    @DisplayName("방장 없이는 방을 만들 수조차 없다")
     void hostIsRequired() {
-        GroupOrder groupOrder = new GroupOrder(null, pickupSpot, "○○마라탕", 15_000, DEADLINE, 4);
-
-        assertThatThrownBy(() -> groupOrderRepository.saveAndFlush(groupOrder))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        // 예전에는 DB의 NOT NULL 제약이 막았다. 이제는 생성자가 먼저 막는다.
+        // 생성자가 방장의 계좌를 봐야 해서 방장이 없으면 거기서 걸린다.
+        // DB 제약은 그대로 남아 두 번째 방어선이 된다
+        assertThatThrownBy(() -> new GroupOrder(null, pickupSpot, "○○마라탕", 15_000, DEADLINE, 4))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

@@ -34,6 +34,8 @@ class SettlementTest {
         PickupSpot pickupSpot = new PickupSpot(university, "제1기숙사 로비", null);
 
         host = new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파");
+        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        host.registerAccount("한국은행", "110-123-456789", "김민수");
         member = new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버");
         // 저장하지 않은 엔티티라 id가 null이다. 값은 같지만 다른 Long 객체를 넣어서
         // 실제 상황(DB에서 읽은 id와 요청에서 온 id)과 같게 만든다

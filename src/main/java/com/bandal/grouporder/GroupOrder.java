@@ -58,6 +58,7 @@ public class GroupOrder {
 
     public GroupOrder(User host, PickupSpot pickupSpot, String storeName,
                       long minOrderAmount, Instant deadlineAt, int capacity) {
+        if(host == null) throw new IllegalArgumentException("방장 정보가 없습니다");
         if(!host.hasAccount()) throw new IllegalStateException("방장의 계좌 정보가 없습니다");
         this.host = host;
         this.pickupSpot = pickupSpot;

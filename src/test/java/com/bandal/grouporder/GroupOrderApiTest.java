@@ -228,12 +228,13 @@ class GroupOrderApiTest {
     }
 
     @Test
-    @DisplayName("방 조회는 토큰 없이도 된다")
-    void allowsAnonymousRead() throws Exception {
+    @DisplayName("방 조회에는 로그인이 필요하다")
+    void requiresLoginToRead() throws Exception {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
 
+        // 목록만 막고 단건을 열어두면 id를 1, 2, 3 ... 으로 훑어서 우회된다 (ADR-034)
         mockMvc.perform(get("/api/group-orders/" + groupOrder.getId()))
-                .andExpect(status().isOk());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -268,7 +269,8 @@ class GroupOrderApiTest {
     @Test
     @DisplayName("방 id 자리에 숫자가 아닌 게 오면 400이다")
     void rejectsNonNumericId() throws Exception {
-        mockMvc.perform(get("/api/group-orders/abc"))
+        mockMvc.perform(get("/api/group-orders/abc")
+                        .header("Authorization", bearer(member.getId())))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
@@ -276,9 +278,18 @@ class GroupOrderApiTest {
     @Test
     @DisplayName("없는 주소를 부르면 404이고 우리 모양으로 답한다")
     void returnsNotFoundForUnknownPath() throws Exception {
-        mockMvc.perform(get("/api/nope"))
+        mockMvc.perform(get("/api/nope")
+                        .header("Authorization", bearer(member.getId())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    @DisplayName("비로그인으로 없는 주소를 부르면 401이다. 주소가 있는지조차 알려주지 않는다")
+    void hidesUnknownPathFromAnonymous() throws Exception {
+        mockMvc.perform(get("/api/nope"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
     }
 
     @Test
@@ -286,7 +297,8 @@ class GroupOrderApiTest {
     void rejectsWrongMethod() throws Exception {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
 
-        mockMvc.perform(get("/api/group-orders/" + groupOrder.getId() + "/close"))
+        mockMvc.perform(get("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(member.getId())))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.status").value(405));
     }
@@ -322,7 +334,8 @@ class GroupOrderApiTest {
     void findsGroupOrder() throws Exception {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
 
-        mockMvc.perform(get("/api/group-orders/" + groupOrder.getId()))
+        mockMvc.perform(get("/api/group-orders/" + groupOrder.getId())
+                        .header("Authorization", bearer(member.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(groupOrder.getId()))
                 .andExpect(jsonPath("$.participantCount").value(2))
@@ -333,7 +346,8 @@ class GroupOrderApiTest {
     @Test
     @DisplayName("없는 방을 조회하면 404다")
     void returnsNotFoundForUnknownGroupOrder() throws Exception {
-        mockMvc.perform(get("/api/group-orders/999999"))
+        mockMvc.perform(get("/api/group-orders/999999")
+                        .header("Authorization", bearer(member.getId())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
     }

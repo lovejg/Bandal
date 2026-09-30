@@ -35,6 +35,8 @@ class OrderItemTest {
         University university = new University("한국대학교", "hankuk.ac.kr");
         PickupSpot pickupSpot = new PickupSpot(university, "제1기숙사 로비", null);
         User host = new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파");
+        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        host.registerAccount("한국은행", "110-123-456789", "김민수");
         User member = new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버");
         User other = new User(university, "park@hankuk.ac.kr", "hashed-password", "꿔바로우");
 

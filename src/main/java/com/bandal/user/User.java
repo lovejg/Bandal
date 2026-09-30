@@ -62,7 +62,7 @@ public class User {
 
     // 송금받을 계좌를 등록한다. 다시 부르면 덮어쓴다(계좌를 바꿀 수 있어야 한다)
     public void registerAccount(String bankName, String accountNumber, String accountHolder) {
-        if(this.bankName == null || this.accountNumber == null || this.accountHolder == null) return;
+        if(bankName == null || accountNumber == null || accountHolder == null) return;
         this.bankName = bankName;
         this.accountNumber = accountNumber.replaceAll("[^0-9]", ""); // - 및 공백 제거
         this.accountHolder = accountHolder;

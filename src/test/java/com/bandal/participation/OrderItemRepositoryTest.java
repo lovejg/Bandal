@@ -19,6 +19,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -64,6 +65,8 @@ class OrderItemRepositoryTest {
         University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         PickupSpot pickupSpot = pickupSpotRepository.save(new PickupSpot(university, "제1기숙사 로비", null));
         User host = userRepository.save(new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파"));
+        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        host.registerAccount("한국은행", "110-123-456789", "김민수");
         User member = userRepository.save(new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버"));
         hostId = host.getId();
         memberId = member.getId();
@@ -162,5 +165,35 @@ class OrderItemRepositoryTest {
         assertThat(orderItemRepository.findById(keep.getId())).isPresent();
         assertThat(participationRepository.findById(memberParticipation.getId())).isPresent();
         assertThat(orderItemRepository.sumAmountByGroupOrderId(groupOrder.getId())).isEqualTo(9_000);
+    }
+
+    @Test
+    @DisplayName("여러 방의 메뉴 합계를 한 번에 방별로 더한다")
+    void sumsManyGroupOrdersAtOnce() {
+        orderItemRepository.save(hostParticipation.addItem(hostId, "꿔바로우", "소", 12_000, 1));
+        orderItemRepository.save(memberParticipation.addItem(memberId, "마라탕", "2단계", 9_000, 2));
+        orderItemRepository.save(otherRoomParticipation.addItem(hostId, "치킨", "양념", 20_000, 1));
+        entityManager.flush();
+
+        List<GroupOrderStat> stats = orderItemRepository.sumAmountByGroupOrderIds(
+                List.of(groupOrder.getId(), emptyGroupOrder.getId()));
+
+        // groupOrder: 12,000 * 1 + 9,000 * 2 / emptyGroupOrder: 20,000 * 1
+        assertThat(stats).containsExactlyInAnyOrder(
+                new GroupOrderStat(groupOrder.getId(), 30_000),
+                new GroupOrderStat(emptyGroupOrder.getId(), 20_000));
+    }
+
+    @Test
+    @DisplayName("메뉴가 없는 방은 결과에 줄이 아예 없다")
+    void roomWithoutItemsIsMissing() {
+        orderItemRepository.save(memberParticipation.addItem(memberId, "마라탕", null, 9_000, 1));
+        entityManager.flush();
+
+        List<GroupOrderStat> stats = orderItemRepository.sumAmountByGroupOrderIds(
+                List.of(groupOrder.getId(), emptyGroupOrder.getId()));
+
+        // 0으로 나오는 게 아니라 빠진다. 서비스가 0으로 채워야 한다
+        assertThat(stats).containsExactly(new GroupOrderStat(groupOrder.getId(), 9_000));
     }
 }

@@ -34,4 +34,13 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
         WHERE oi.participation.id = :participationId
         """)
     long sumAmountByParticipationId(@Param("participationId") Long participationId);
+
+    // 방 목록 조회에서 사용. 한 번에 조건에 맞는 방의 메뉴 총 금액 합계를 모두 가져옴으로써 N+1 문제를 방지
+    @Query("""
+        SELECT new com.bandal.participation.GroupOrderStat(oi.participation.groupOrder.id, SUM(oi.unitPrice * oi.quantity))
+        FROM OrderItem oi
+        WHERE oi.participation.groupOrder.id IN :groupOrderIds
+        GROUP BY oi.participation.groupOrder.id
+            """)
+    List<GroupOrderStat> sumAmountByGroupOrderIds(@Param("groupOrderIds") List<Long> groupOrderIds);
 }

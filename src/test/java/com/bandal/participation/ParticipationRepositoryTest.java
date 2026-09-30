@@ -20,6 +20,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -60,6 +61,8 @@ class ParticipationRepositoryTest {
         University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         PickupSpot pickupSpot = pickupSpotRepository.save(new PickupSpot(university, "제1기숙사 로비", null));
         host = userRepository.save(new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파"));
+        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        host.registerAccount("한국은행", "110-123-456789", "김민수");
         member = userRepository.save(new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버"));
         groupOrder = groupOrderRepository.save(new GroupOrder(host, pickupSpot, "○○마라탕", 15_000, DEADLINE, 4));
         otherGroupOrder = groupOrderRepository.save(new GroupOrder(host, pickupSpot, "△△치킨", 20_000, DEADLINE, 3));
@@ -159,5 +162,33 @@ class ParticipationRepositoryTest {
 
         assertThat(participationRepository.countByGroupOrderId(groupOrder.getId())).isEqualTo(2);
         assertThat(participationRepository.countByGroupOrderId(otherGroupOrder.getId())).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("여러 방의 인원수를 한 번에 방별로 센다")
+    void countsManyGroupOrdersAtOnce() {
+        participationRepository.save(new Participation(groupOrder, host, JOINED_AT));
+        participationRepository.save(new Participation(groupOrder, member, JOINED_AT));
+        participationRepository.save(new Participation(otherGroupOrder, host, JOINED_AT));
+        entityManager.flush();
+
+        List<GroupOrderStat> stats = participationRepository.countByGroupOrderIds(
+                List.of(groupOrder.getId(), otherGroupOrder.getId()));
+
+        assertThat(stats).containsExactlyInAnyOrder(
+                new GroupOrderStat(groupOrder.getId(), 2),
+                new GroupOrderStat(otherGroupOrder.getId(), 1));
+    }
+
+    @Test
+    @DisplayName("넘기지 않은 방은 세지 않는다")
+    void countsOnlyRequestedGroupOrders() {
+        participationRepository.save(new Participation(groupOrder, host, JOINED_AT));
+        participationRepository.save(new Participation(otherGroupOrder, host, JOINED_AT));
+        entityManager.flush();
+
+        List<GroupOrderStat> stats = participationRepository.countByGroupOrderIds(List.of(groupOrder.getId()));
+
+        assertThat(stats).containsExactly(new GroupOrderStat(groupOrder.getId(), 1));
     }
 }

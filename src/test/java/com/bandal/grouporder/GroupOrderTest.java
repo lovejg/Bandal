@@ -34,6 +34,8 @@ class GroupOrderTest {
         university = new University("한국대학교", "hankuk.ac.kr");
         pickupSpot = new PickupSpot(university, "제1기숙사 로비", null);
         host = new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파");
+        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        host.registerAccount("한국은행", "110-123-456789", "김민수");
         // 저장하지 않은 엔티티라 id가 null이다. 방장 확인을 테스트하려고 id만 직접 넣는다.
         // 실제로는 엔티티의 id(DB에서 읽음)와 요청자 id(요청에서 읽음)가 서로 다른 Long 객체라서,
         // HOST_ID를 그대로 넣지 않고 값만 같은 새 Long을 넣는다.

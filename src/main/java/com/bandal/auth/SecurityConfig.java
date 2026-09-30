@@ -38,19 +38,21 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // 규칙은 위에서부터 차례로 맞춰본다. 먼저 걸리는 규칙이 이긴다.
-                // 그래서 좁은 규칙이 넓은 규칙보다 위에 있어야 한다
+                // 그래서 좁은 규칙이 넓은 규칙보다 위에 있어야 한다.
+                //
+                // 기본은 전부 닫혀 있고 열 것만 연다 (ADR-034).
+                // 반대로 "열어두고 닫을 것만 예외"로 하면, 새 엔드포인트를 만들 때 예외를
+                // 빠뜨리는 순간 구멍이 난다. 이쪽은 빠뜨리면 막힌다. 안전한 쪽으로 실패한다
                 .authorizeHttpRequests(auth -> auth
-                        // 아래 permitAll보다 위에 있어야 한다. 순서가 바뀌면 누구나 남의 메일로
-                        // 인증 메일을 계속 보낼 수 있다
+                        // 아래 /api/auth/** permitAll보다 위에 있어야 한다. 순서가 바뀌면
+                        // 누구나 남의 메일로 인증 메일을 계속 보낼 수 있다
                         .requestMatchers(HttpMethod.POST, "/api/auth/verify/resend").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
                         // 가입, 로그인, 토큰 갱신, 인증 링크는 계정이 없거나 미인증이어도 불러야 한다
                         .requestMatchers("/api/auth/**").permitAll()
-                        // 조회지만 방장 계좌번호가 들어 있다. 아래 GET permitAll보다 위에 있어야 한다 (ADR-031)
-                        .requestMatchers(HttpMethod.GET, "/api/group-orders/*/settlement").authenticated()
-                        // 조회는 비로그인도 가능하다. 미인증 사용자도 앱 구경은 할 수 있다 (ADR-027)
-                        .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+                        // 조회는 로그인만 하면 된다. 메일 미인증도 구경은 할 수 있다 (ADR-027, 034)
+                        .requestMatchers(HttpMethod.GET, "/api/**").authenticated()
                         // 쓰기는 메일 인증을 마친 사람만. hasRole("VERIFIED")는 ROLE_VERIFIED를 찾는다
                         .anyRequest().hasRole("VERIFIED"))
                 // 우리 필터를 스프링의 로그인 처리 필터 앞에 끼운다

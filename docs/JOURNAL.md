@@ -577,3 +577,93 @@ API 응답 규칙에 직접 연결해 둔 대가다.
 있었는데, `NumberFormatException`이 `IllegalArgumentException`을 상속해 전역 예외
 핸들러가 400으로 잡아준 탓에 테스트가 통과하고 있었다. 실패 응답은 상태 코드뿐 아니라
 메시지까지 검증해야 한다는 걸 배웠다."
+
+---
+
+## 2026-09-29. `this.` 하나 때문에 테스트 80개가 엉뚱한 곳을 가리켰다
+
+**상황** Phase 1, 컨트롤러·서비스를 다시 짜는 중(방 만들기). "계좌가 없으면 방을 만들 수
+없다"(ADR-031)를 `GroupOrder` 생성자에 넣고, `User.registerAccount`에 null 방어를 넣었다.
+같은 날 같은 종류의 실수가 두 번 나왔다.
+
+**첫 번째 — 생성자에서 필드를 검사했다**
+
+```java
+public GroupOrder(User host, PickupSpot pickupSpot, ...) {
+    if(!this.host.hasAccount()) throw new IllegalStateException("방장의 계좌 정보가 없습니다");
+    this.host = host;
+```
+
+```
+java.lang.NullPointerException:
+  Cannot invoke "com.bandal.user.User.hasAccount()" because "this.host" is null
+```
+
+`this.host`는 바로 다음 줄에서 대입된다. 검사하는 시점에는 아직 `null`이다. 인자 `host`를
+봐야 했다. 바로 터져서 원인을 찾기는 쉬웠다.
+
+**두 번째 — 등록 메서드에서 필드를 검사했다**
+
+```java
+public void registerAccount(String bankName, String accountNumber, String accountHolder) {
+    if(this.bankName == null || this.accountNumber == null || this.accountHolder == null) return;
+    this.bankName = bankName;
+    ...
+```
+
+**증상** 전체 테스트를 돌리니 224개 중 134개가 실패했다. 그중 80개가 같은 메시지였다.
+
+```
+GroupOrderTest               27 / 27  java.lang.IllegalStateException: 방장의 계좌 정보가 없습니다
+OrderItemTest                16 / 16  java.lang.IllegalStateException: 방장의 계좌 정보가 없습니다
+SettlementTest               12 / 12  java.lang.IllegalStateException: 방장의 계좌 정보가 없습니다
+GroupOrderRepositoryTest      8 /  9  java.lang.IllegalStateException: 방장의 계좌 정보가 없습니다
+ParticipationRepositoryTest   9 /  9  java.lang.IllegalStateException: 방장의 계좌 정보가 없습니다
+OrderItemRepositoryTest       7 /  7  java.lang.IllegalStateException: 방장의 계좌 정보가 없습니다
+```
+
+메시지는 전부 `GroupOrder` 생성자를 가리켰다.
+
+**시도한 것** 테스트 준비물에서 방장이 계좌 없이 만들어지고 있었다. 생성자에 새 규칙이
+들어왔으니 당연한 실패라고 보고, 여섯 파일에 방장을 만든 직후
+`host.registerAccount("한국은행", "110-123-456789", "김민수")`를 한 줄씩 넣었다.
+
+다시 돌렸다. **결과가 한 글자도 바뀌지 않았다.** 여전히 134개, 같은 메시지.
+
+**원인** 등록 메서드가 조용히 아무것도 안 하고 있었다. 처음 계좌를 등록하는 사용자는
+필드가 전부 `null`이라 첫 줄에서 바로 `return`한다. 예외도 없고 로그도 없다.
+
+```
+host.registerAccount(...)   → this.bankName == null → return  (조용히 끝남)
+host.hasAccount()           → false
+new GroupOrder(host, ...)   → "방장의 계좌 정보가 없습니다"   ← 여기서 터짐
+```
+
+**에러가 난 곳과 원인이 있는 곳이 달랐다.** 80개 테스트가 전부 멀쩡한 생성자를
+가리켰고, 진짜 원인은 `User`에 있었다. 조치를 했는데 결과가 그대로라는 게 유일한 단서였다.
+
+**해결** 두 곳 모두 인자를 검사하도록 바꿨다. 등록 메서드는 인자에 `null`이 있을 때만
+`return`한다(조용히 끝나는 건 그대로다). 생성자 맨 앞에는 `host == null` 검사를 추가해 NPE 대신
+`IllegalArgumentException`으로 거절한다. 134개에서 55개로 줄었고, 남은 55개는 아직 다시
+만들지 않은 엔드포인트다.
+
+그러면서 "방장 없이 방을 저장하면 DB가 거부한다"는 테스트의 의미가 바뀌었다. 예전에는
+DB의 NOT NULL 제약이 막았는데, 이제 생성자가 먼저 막는다. 테스트를 "방장 없이는 방을
+만들 수조차 없다"로 고쳤다. DB 제약은 두 번째 방어선으로 남는다.
+
+**배운 것**
+- **들어온 값을 검사할 때는 인자를, 이미 가진 값을 검사할 때는 필드를 본다.** 생성자와
+  등록 메서드는 앞쪽이고, 상태 전이 메서드는 뒤쪽이다.
+- **조용한 실패는 원인을 멀리 숨긴다.** 첫 번째는 NPE로 그 자리에서 터져서 한 번에 찾았다.
+  두 번째는 아무 일도 없이 끝나서 증상이 다른 클래스에서 나타났다. 정산의 `markPaid`가
+  남의 요청을 조용히 통과시켰던 것(2026-09-26)과 같은 계열이다.
+- **고쳤는데 아무것도 안 바뀌면, 고친 코드가 실행되지 않고 있는 것이다.** 결과가 그대로라는
+  사실 자체가 가장 강한 단서였다.
+- 엔티티 생성자에 불변식을 하나 넣으면, 그 엔티티를 만드는 **모든 테스트 준비물**이
+  영향받는다. 서비스에 두었다면 서비스를 거치는 테스트만 영향받았을 것이다. 불변식을
+  엔티티에 두는 대가다.
+
+**한 줄 요약** "생성자와 등록 메서드에서 인자 대신 `this.` 필드를 검사하는 실수를 같은 날
+두 번 했다. 두 번째는 조용히 `return`해서, 80개 테스트가 멀쩡한 `GroupOrder` 생성자를
+가리키는 동안 진짜 원인은 `User`에 숨어 있었다. 준비물을 고쳤는데 결과가 한 글자도 안
+바뀐 게 단서였다."
