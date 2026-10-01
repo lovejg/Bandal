@@ -330,6 +330,23 @@ class GroupOrderApiTest {
     }
 
     @Test
+    @DisplayName("다른 학교 거점을 고르면 400이고 방이 생기지 않는다")
+    void rejectsOtherUniversityPickupSpot() throws Exception {
+        // 거점은 있다. 내 학교 것이 아닐 뿐이다. 거점이 있는지만 보면 통과해 버린다 (ADR-036)
+        University minguk = universityRepository.save(new University("민국대학교", "minguk.ac.kr"));
+        PickupSpot mingukSpot = pickupSpotRepository.save(new PickupSpot(minguk, "민국대 정문", null));
+        CreateGroupOrderRequest request = new CreateGroupOrderRequest(
+                mingukSpot.getId(), "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4);
+
+        mockMvc.perform(post("/api/group-orders")
+                        .header("Authorization", bearer(host.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+        assertThat(groupOrderRepository.count()).isZero();
+    }
+
+    @Test
     @DisplayName("방을 조회하면 현재 인원과 메뉴 합계가 같이 나온다")
     void findsGroupOrder() throws Exception {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();

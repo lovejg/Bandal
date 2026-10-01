@@ -47,6 +47,37 @@ class GroupOrderTest {
     }
 
     @Nested
+    @DisplayName("방 만들기")
+    class Create {
+
+        @Test
+        @DisplayName("방장과 같은 학교 거점이면 만들 수 있다")
+        void allowsOwnUniversitySpot() {
+            assertThatCode(() -> new GroupOrder(host, pickupSpot, "○○마라탕", MIN_ORDER_AMOUNT, DEADLINE, 4))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("다른 학교 거점으로는 만들 수 없다")
+        void rejectsOtherUniversitySpot() {
+            // 한국대 방장이 민국대 거점 id를 보낸 상황. 막지 않으면 이 방은 민국대 목록에 뜬다 (ADR-036)
+            University otherUniversity = new University("민국대학교", "minguk.ac.kr");
+            ReflectionTestUtils.setField(otherUniversity, "id", 11L);
+            PickupSpot otherSpot = new PickupSpot(otherUniversity, "민국대 정문", null);
+
+            assertThatThrownBy(() -> new GroupOrder(host, otherSpot, "○○마라탕", MIN_ORDER_AMOUNT, DEADLINE, 4))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        @DisplayName("거점이 없으면 만들 수 없다")
+        void rejectsNullSpot() {
+            assertThatThrownBy(() -> new GroupOrder(host, null, "○○마라탕", MIN_ORDER_AMOUNT, DEADLINE, 4))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
     @DisplayName("참여 가능 검사")
     class CheckJoinable {
 

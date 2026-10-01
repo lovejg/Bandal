@@ -667,3 +667,64 @@ DB의 NOT NULL 제약이 막았는데, 이제 생성자가 먼저 막는다. 테
 두 번 했다. 두 번째는 조용히 `return`해서, 80개 테스트가 멀쩡한 `GroupOrder` 생성자를
 가리키는 동안 진짜 원인은 `User`에 숨어 있었다. 준비물을 고쳤는데 결과가 한 글자도 안
 바뀐 게 단서였다."
+
+**덧붙임 (2026-10-01)** 이틀 뒤 같은 생성자에서 같은 실수가 또 나왔다. "방장 학교 == 거점 학교"
+검사(ADR-036)를 넣으면서 인자 `pickupSpot` 대신 `this.pickupSpot`을 비교했다.
+
+```
+java.lang.NullPointerException:
+  Cannot invoke "com.bandal.pickupspot.PickupSpot.getUniversity()" because "this.pickupSpot" is null
+```
+
+처음에는 설명(description)이 null일 때 나는 NPE가 먼저 터져서 이 에러가 가려져 있었다. 그걸
+고치고 다시 돌리자 드러났다. 생성자 안에서 `this.`는 "아직 비어 있는 칸"이라는 걸 습관으로
+만들어야 한다.
+
+---
+
+## 2026-10-01. Postgres가 한글 거점 이름을 가나다 거꾸로 정렬했다
+
+**상황** Phase 1, 거점 목록(ADR-036). 리포지토리에 메서드 이름 쿼리
+`findByUniversityIdOrderByNameAsc`를 만들고, 일부러 순서를 섞어 넣은 뒤 가나다순으로
+나오는지 확인하는 테스트를 썼다.
+
+**증상**
+
+```
+Expecting actual:
+  ["중앙도서관 앞", "제1기숙사 로비", "공대 7호관 앞"]
+to contain exactly (and in same order):
+  ["공대 7호관 앞", "제1기숙사 로비", "중앙도서관 앞"]
+```
+
+넣은 순서(중앙, 공대, 민국대, 제1)도 아니고, 정확히 **가나다의 반대**였다. `Asc`를 썼는데.
+
+**확인한 것** 테스트와 같은 `postgres:17` 이미지를 따로 띄워서 SQL로 직접 정렬해봤다.
+
+```
+DB 기본 정렬 규칙(collation): en_US.utf8, provider = libc
+
+ORDER BY x                        → 중앙도서관 앞 / 제1기숙사 로비 / 공대 7호관 앞
+ORDER BY x COLLATE "C"            → 공대 7호관 앞 / 제1기숙사 로비 / 중앙도서관 앞
+ORDER BY x COLLATE "ko-KR-x-icu"  → 공대 7호관 앞 / 제1기숙사 로비 / 중앙도서관 앞
+```
+
+쿼리도 JPA도 문제가 아니었다. **DB의 문자열 정렬 규칙**이 한글을 이렇게 줄 세우고 있었다.
+`ORDER BY`의 결과는 SQL만 보고 정해지지 않는다. 그 DB가 어떤 collation으로 만들어졌는지에
+달려 있다. 공식 이미지는 기본값이 `en_US.utf8`이고, 이 규칙은 한글을 위한 것이 아니다.
+
+**해결** DB에 정렬을 맡기지 않기로 했다. 거점 목록은 페이징이 없어서(ADR-036) 한 학교 거점을
+전부 받은 뒤 서비스에서 `Collator.getInstance(Locale.KOREAN)`으로 정렬한다. 리포지토리 메서드는
+`OrderByNameAsc`를 뺀 `findByUniversityId`로 바꿨다. DB 설정을 바꾸는 방법, COLLATE를 붙이는
+방법은 ADR-036 버린 대안에 남겼다.
+
+**배운 것**
+- `ORDER BY` 결과는 SQL만으로 정해지지 않는다. DB가 어떤 정렬 규칙(collation)으로 만들어졌는지에
+  달려 있다. 같은 쿼리도 환경이 다르면 다른 순서가 나올 수 있다.
+- 일부러 순서를 섞어 넣고 정렬을 확인하는 테스트가 아니었으면 몰랐다. 데이터를 가나다순으로
+  넣었으면 DB가 넣은 순서대로 돌려줘서 우연히 통과했을 수도 있다.
+- 자바 정렬이 가능했던 건 페이징이 없어서다. 페이지를 나누는 목록이었다면 DB에서 정렬해야 한다.
+
+**한 줄 요약** "`OrderByNameAsc`로 거점을 가나다순 정렬했는데 정확히 반대로 나왔다. 같은
+Postgres 이미지를 띄워 SQL로 비교해보니 기본 정렬 규칙 en_US.utf8이 한글을 그렇게 세우고
+있었다. 페이징이 없는 목록이라 DB 대신 자바에서 한국어 Collator로 정렬했다."

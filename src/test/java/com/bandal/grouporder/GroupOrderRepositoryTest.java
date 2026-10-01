@@ -153,12 +153,12 @@ class GroupOrderRepositoryTest {
     }
 
     @Test
-    @DisplayName("거점 없이 방을 저장하면 DB가 거부한다")
+    @DisplayName("거점 없이는 방을 만들 수조차 없다")
     void pickupSpotIsRequired() {
-        GroupOrder groupOrder = new GroupOrder(host, null, "○○마라탕", 15_000, DEADLINE, 4);
-
-        assertThatThrownBy(() -> groupOrderRepository.saveAndFlush(groupOrder))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        // 방장과 같은 이유로 바뀌었다. 생성자가 거점의 학교를 방장의 학교와 비교해야 해서(ADR-036)
+        // 거점이 없으면 거기서 걸린다. DB 제약은 두 번째 방어선으로 남는다
+        assertThatThrownBy(() -> new GroupOrder(host, null, "○○마라탕", 15_000, DEADLINE, 4))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

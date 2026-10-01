@@ -60,6 +60,10 @@ public class GroupOrder {
                       long minOrderAmount, Instant deadlineAt, int capacity) {
         if(host == null) throw new IllegalArgumentException("방장 정보가 없습니다");
         if(!host.hasAccount()) throw new IllegalStateException("방장의 계좌 정보가 없습니다");
+        if(pickupSpot == null) throw new IllegalArgumentException("수령지 정보가 없습니다");
+        if(!Objects.equals(host.getUniversity().getId(), pickupSpot.getUniversity().getId())) {
+            throw new IllegalArgumentException("대학교가 다릅니다");
+        }
         this.host = host;
         this.pickupSpot = pickupSpot;
         this.storeName = storeName;
