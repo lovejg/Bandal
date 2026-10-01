@@ -196,4 +196,52 @@ class OrderItemRepositoryTest {
         // 0으로 나오는 게 아니라 빠진다. 서비스가 0으로 채워야 한다
         assertThat(stats).containsExactly(new GroupOrderStat(groupOrder.getId(), 9_000));
     }
+
+    @Test
+    @DisplayName("한 참여자의 메뉴를 한 번에 지우고, 지운 개수를 돌려준다")
+    void deletesAllItemsOfOneParticipation() {
+        orderItemRepository.save(memberParticipation.addItem(memberId, "마라탕", "2단계", 9_000, 1));
+        orderItemRepository.save(memberParticipation.addItem(memberId, "공기밥", null, 1_000, 1));
+        entityManager.flush();
+
+        int deleted = orderItemRepository.deleteByParticipationId(memberParticipation.getId());
+
+        assertThat(deleted).isEqualTo(2);
+        assertThat(orderItemRepository.findByParticipationId(memberParticipation.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("같은 방의 다른 참여자 메뉴와 다른 방의 메뉴는 지우지 않는다")
+    void deletesOnlyThatParticipation() {
+        orderItemRepository.save(memberParticipation.addItem(memberId, "마라탕", null, 9_000, 1));
+        orderItemRepository.save(hostParticipation.addItem(hostId, "꿔바로우", "소", 12_000, 1));
+        orderItemRepository.save(otherRoomParticipation.addItem(hostId, "치킨", "양념", 20_000, 1));
+        entityManager.flush();
+
+        orderItemRepository.deleteByParticipationId(memberParticipation.getId());
+
+        assertThat(orderItemRepository.findByParticipationId(hostParticipation.getId())).hasSize(1);
+        assertThat(orderItemRepository.findByParticipationId(otherRoomParticipation.getId())).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("메뉴가 없는 참여자면 아무것도 지우지 않고 0을 돌려준다")
+    void deletesNothingWhenNoItems() {
+        // 메뉴 없이 나가는 사람도 같은 길을 지난다. 에러 없이 지나가야 한다
+        assertThat(orderItemRepository.deleteByParticipationId(memberParticipation.getId())).isZero();
+    }
+
+    @Test
+    @DisplayName("메뉴를 먼저 지우면 참여 행도 지울 수 있다")
+    void participationCanBeDeletedAfterItems() {
+        // 순서가 반대면 외래 키에 걸린다 (JOURNAL 2026-10-01)
+        orderItemRepository.save(memberParticipation.addItem(memberId, "마라탕", null, 9_000, 1));
+        entityManager.flush();
+
+        orderItemRepository.deleteByParticipationId(memberParticipation.getId());
+        participationRepository.delete(memberParticipation);
+        entityManager.flush();
+
+        assertThat(participationRepository.findById(memberParticipation.getId())).isEmpty();
+    }
 }

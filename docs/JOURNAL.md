@@ -728,3 +728,83 @@ ORDER BY x COLLATE "ko-KR-x-icu"  → 공대 7호관 앞 / 제1기숙사 로비 
 **한 줄 요약** "`OrderByNameAsc`로 거점을 가나다순 정렬했는데 정확히 반대로 나왔다. 같은
 Postgres 이미지를 띄워 SQL로 비교해보니 기본 정렬 규칙 en_US.utf8이 한글을 그렇게 세우고
 있었다. 페이징이 없는 목록이라 DB 대신 자바에서 한국어 Collator로 정렬했다."
+
+---
+
+## 2026-10-01. 메뉴를 담아둔 채로 방을 나가니 500이 났다
+
+**상황** Phase 1, 방 나가기(ADR-037). 담아둔 메뉴도 같이 지워야 한다는 건 알고 있었다. 방법을
+고르기 전에 **일부러 참여 행만 지우는 순진한 버전**을 먼저 짜고 테스트를 돌렸다.
+
+```java
+participation.checkLeavable(userId, Instant.now());
+participationRepository.delete(participation);
+```
+
+**증상** 메뉴가 없는 참여자는 잘 나갔다. 메뉴를 담아둔 참여자만 500이 났다.
+
+```
+Status expected:<204> but was:<500>
+
+ERROR: update or delete on table "participation" violates foreign key constraint
+       "fkobc8amtcss9cb2e8jm1qt0njm" on table "order_item"
+  Detail: Key (id)=(68) is still referenced from table "order_item".
+[delete from participation where id=?]
+```
+
+**원인** `order_item.participation_id`는 `participation.id`를 가리키는 외래 키다. DB는 아직 누가
+가리키고 있는 행을 지우게 두지 않는다. 지우면 메뉴가 "없는 참여"를 가리키게 되니까.
+JPA는 `delete from participation`만 보냈고, 메뉴에 대해서는 아무것도 하지 않았다. 참여가
+단방향이라(ADR-019) `Participation`은 자기 메뉴가 있다는 것조차 모른다.
+
+이 예외(`DataIntegrityViolationException`)는 핸들러가 따로 처리하지 않아서 마지막 `Exception`
+핸들러로 떨어져 500이 됐다. 사용자 잘못이 아니라 우리 코드의 빈틈이니 500 자체는 맞는 신호다.
+
+**해결** 세 방법(JPA cascade, 서비스에서 일괄 삭제, DB의 ON DELETE CASCADE)을 비교해서 서비스에서
+지우기로 했다(ADR-037). `OrderItemRepository`에 `@Modifying` + `@Query`로
+`DELETE FROM OrderItem oi WHERE oi.participation.id = :participationId`를 두고, 서비스가 참여 행보다
+먼저 부른다. 메뉴가 몇 개든 DELETE 한 번이고, 지우는 일이 코드에 보이고, 단방향 구조를 안 건드린다.
+
+**고치다가 하나 더: 벌크 DELETE와 영속성 컨텍스트** 리포지토리 테스트에서 "메뉴를 먼저 지우면 참여
+행도 지울 수 있다"가 실패했다. 순서를 지켰는데도.
+
+```
+TransientPropertyValueException: Persistent instance of 'OrderItem' references an unsaved
+transient instance of 'Participation' (persist the transient instance before flushing)
+[OrderItem.participation -> Participation]
+```
+
+테스트는 같은 트랜잭션 안에서 메뉴를 `save`한 다음 지웠다. `@Query` DELETE는 영속성 컨텍스트를
+거치지 않고 DB로 바로 간다. DB에서 메뉴는 사라졌지만 **컨텍스트에는 메뉴 객체가 그대로 살아 있었다.**
+그 상태로 참여 행을 지우자, 컨텍스트에 남은 메뉴 객체가 "지워진 참여"를 가리키게 됐고, flush 때
+Hibernate가 이걸 거부했다. 메시지의 `Persistent instance of 'OrderItem'`이 "컨텍스트가 아직 들고
+있는 메뉴"다.
+
+`@Modifying(flushAutomatically = true, clearAutomatically = true)`로 고쳤다. DELETE 전에 쌓인
+변경을 먼저 보내고, DELETE 뒤에 컨텍스트를 비운다.
+
+실제 나가기 요청에서는 이 문제가 안 났을 것이다. 그 트랜잭션은 메뉴를 불러오지 않으니까. 하지만
+나중에 누가 같은 트랜잭션에서 메뉴를 먼저 읽으면(예: "나가면 이만큼 빠집니다"를 보여주려고) 그때
+터진다. 테스트가 그 상황을 먼저 만들어 줬다.
+
+**덤으로 걸린 것: 마감 정각** 같은 실행에서 "마감 시각 정각에는 이미 늦었다"도 실패했다.
+
+```java
+now.isAfter(this.groupOrder.getDeadlineAt())   // 정각이면 false → 통과해 버린다
+```
+
+`isAfter`는 "엄밀히 뒤"라서 정각에는 거짓이다. `checkJoinable`은 `!now.isBefore(deadlineAt)`
+("앞이 아니면 늦었다")로 정각을 막고 있었다. 같은 경계를 두 메서드가 다르게 그었다.
+`!now.isBefore(...)`로 맞췄다.
+
+**배운 것**
+- 외래 키는 "가리키는 쪽이 남아 있으면 가리켜지는 쪽을 못 지운다". 메뉴 없는 참여자만 테스트했으면
+  못 봤을 버그다. 자식 행이 있는 경우를 따로 테스트해야 한다.
+- `@Query`로 쓴 DELETE·UPDATE는 영속성 컨텍스트를 건너뛴다. DB와 컨텍스트가 어긋날 수 있어서
+  `clearAutomatically`(와 그 전에 `flushAutomatically`)로 맞춘다.
+- 시각 경계는 한 번 정했으면 모든 메서드가 같은 식으로 써야 한다. `isAfter`와 `!isBefore`는 정각에서 갈린다.
+
+**한 줄 요약** "방 나가기를 참여 행만 지우는 순진한 버전으로 먼저 짰더니, 메뉴를 담은 사람만
+외래 키 에러로 500이 났다. 서비스가 메뉴를 `@Modifying` DELETE 한 번으로 먼저 지우게 고쳤는데,
+이번엔 그 벌크 DELETE가 영속성 컨텍스트를 건너뛰어서 남은 메뉴 객체가 flush 때 터졌다.
+`clearAutomatically`로 컨텍스트를 비워 맞췄다."

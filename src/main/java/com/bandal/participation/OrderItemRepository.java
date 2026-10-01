@@ -1,6 +1,7 @@
 package com.bandal.participation;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -43,4 +44,17 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
         GROUP BY oi.participation.groupOrder.id
             """)
     List<GroupOrderStat> sumAmountByGroupOrderIds(@Param("groupOrderIds") List<Long> groupOrderIds);
+
+    // 한 참여자의 메뉴를 전부 지운다
+    // 메뉴가 참여 행을 외래 키로 가리켜서, 메뉴가 남아 있으면 참여 행을 지울 수 없다
+    // @Modifying는 DELETE, UPDATE를 @Query로 쓸 때 꼭 붙인다
+    // 돌려주는 int는 지워진 행 수
+    // 이 DELETE는 영속성 컨텍스트를 거치지 않고 DB로 바로 간다.
+    // 그래서 보관함에 이미 올라와 있던 메뉴 객체는 "아직 살아 있다"고 착각한 채 남는다.
+    // 그 상태로 참여 행을 지우면, 남은 메뉴 객체가 지워진 참여를 가리켜서 flush 때 터진다
+    // flushAutomatically: DELETE 전에 쌓여 있던 변경을 먼저 DB에 보낸다. 아래 clear로 잃지 않게
+    // clearAutomatically: DELETE 뒤에 보관함을 비운다. 낡은 메뉴 객체가 남지 않는다
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("DELETE FROM OrderItem oi WHERE oi.participation.id = :participationId")
+    int deleteByParticipationId(@Param("participationId") Long participationId);
 }

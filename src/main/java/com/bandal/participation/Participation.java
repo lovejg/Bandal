@@ -43,6 +43,16 @@ public class Participation {
         this.joinedAt = joinedAt;
     }
 
+    public void checkLeavable(Long requesterId, Instant now) {
+        if(!Objects.equals(requesterId, this.user.getId())) throw new IllegalStateException("다른 사용자의 참여입니다");
+        if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING || !now.isBefore(this.groupOrder.getDeadlineAt())) {
+            throw new IllegalStateException("방이 마감됐습니다");
+        }
+        if(Objects.equals(requesterId, this.groupOrder.getHost().getId())) {
+            throw new IllegalStateException("방장은 나갈 수 없습니다. 방을 취소해주세요");
+        }
+    }
+
     public OrderItem addItem(Long requesterId, String menuName, String options, long unitPrice, int quantity) {
         if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING) {
             throw new IllegalStateException("모집중인 방에만 메뉴를 담을 수 있습니다");
