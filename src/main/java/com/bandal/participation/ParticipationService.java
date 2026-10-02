@@ -3,6 +3,8 @@ package com.bandal.participation;
 import com.bandal.common.NotFoundException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
+import com.bandal.participation.dto.OrderItemRequest;
+import com.bandal.participation.dto.ParticipationItemsResponse;
 import com.bandal.participation.dto.ParticipationResponse;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 // 방에 들어오고 나간다. 메뉴 담기도 나중에 여기로 온다
 @Service
@@ -51,5 +54,52 @@ public class ParticipationService {
 
         orderItemRepository.deleteByParticipationId(participationId);
         participationRepository.delete(participation);
+    }
+
+    // 메뉴 담기
+    @Transactional
+    public ParticipationItemsResponse addItem(Long participationId, Long userId, OrderItemRequest request) {
+        Participation participation = participationRepository.findById(participationId)
+            .orElseThrow(() -> new NotFoundException("없는 참여입니다"));
+
+        OrderItem item = participation.addItem(userId, request.menuName(),
+            request.options(), request.unitPrice(), request.quantity(), Instant.now());
+        orderItemRepository.save(item);
+
+        return ParticipationItemsResponse.of(participationId,
+            orderItemRepository.findByParticipationId(participationId),
+            orderItemRepository.sumAmountByGroupOrderId(participation.getGroupOrder().getId()));
+    }
+
+    // 메뉴 고치기. 주인(모집중) 또는 방장(마감)
+    @Transactional
+    public ParticipationItemsResponse updateItem(Long orderItemId, Long userId, OrderItemRequest request) {
+        OrderItem item = orderItemRepository.findById(orderItemId)
+            .orElseThrow(() -> new NotFoundException("없는 메뉴입니다"));
+
+        item.update(userId, request.menuName(), request.options(),
+            request.unitPrice(), request.quantity(), Instant.now());
+
+        Participation participation = item.getParticipation();
+
+        return ParticipationItemsResponse.of(participation.getId(),
+            orderItemRepository.findByParticipationId(participation.getId()),
+            orderItemRepository.sumAmountByGroupOrderId(participation.getGroupOrder().getId()));
+    }
+
+    // 메뉴 빼기
+    @Transactional
+    public ParticipationItemsResponse removeItem(Long orderItemId, Long userId) {
+        OrderItem item = orderItemRepository.findById(orderItemId)
+            .orElseThrow(() -> new NotFoundException("없는 메뉴입니다"));
+        Participation participation = item.getParticipation();
+        Long participationId = participation.getId();
+
+        participation.removeItem(userId, item, Instant.now());
+        orderItemRepository.delete(item);
+
+        return ParticipationItemsResponse.of(participationId,
+            orderItemRepository.findByParticipationId(participationId),
+            orderItemRepository.sumAmountByGroupOrderId(participation.getGroupOrder().getId()));
     }
 }

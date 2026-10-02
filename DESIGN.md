@@ -102,7 +102,7 @@
 | PickupSpot | 수령 거점 | id, universityId, name, description (좌표 없음, ADR-013). 사용자가 자기 학교에 만들고 학교 단위로 공유된다 (ADR-033) |
 | GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만), cancelType(취소된 방만, 이름으로 저장) (ADR-017, 021) |
 | Participation | 방 참여 (방장 포함) | id, groupOrderId, userId, joinedAt. (groupOrderId, userId) unique. 이탈하면 행 삭제 (ADR-019) |
-| OrderItem | 담은 메뉴 한 줄 | id, participationId, menuName, options(자유 문자열, nullable), unitPrice(옵션 포함 단가), quantity. 빼면 행 삭제 (ADR-022) |
+| OrderItem | 담은 메뉴 한 줄 | id, participationId, menuName, options(자유 문자열, nullable), unitPrice(옵션 포함 단가), quantity, editedByHost(마감 후 방장이 고쳤으면 true). 빼면 행 삭제 (ADR-022, 038) |
 | Settlement | 정산 내역 (참여자 1명당 1행) | id, groupOrderId, userId, menuTotalAmount, feeShare, totalAmount, markedPaidAt(참여자가 보냈다고 누른 시각), confirmedPaidAt(방장이 받았다고 누른 시각). 방장 행도 만들고 두 시각을 생성 시각으로 채운다 (ADR-030) |
 
 관계
@@ -135,7 +135,8 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
 
 지켜야 하는 불변식
 
-- `마감` 이후에는 Participation과 OrderItem을 변경할 수 없다.
+- `마감` 이후에는 Participation과 OrderItem을 변경할 수 없다. 예외로 `마감` 상태에서 방장은
+  메뉴를 고칠 수 있다(담기, 빼기는 안 된다). 검수에서 찾은 오타를 고치는 길이다. (ADR-038)
 - OrderItem의 `unitPrice`는 옵션 금액까지 포함한 한 개 값이다. 한 줄 금액은
   `unitPrice * quantity`이고, 방의 메뉴 합계는 그 방에 속한 모든 줄의 합이다. (ADR-022)
 - Participation 수는 capacity를 넘을 수 없다. (Phase 3 동시성 문제의 핵심)
@@ -296,6 +297,10 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
 - **메뉴명, 옵션, 가격을 사람이 직접 입력하는 한 오타와 금액 실수를 막을 수 없다.** 가게
   연동이 없는 MVP에서는 방장이 주문 직전에 배달앱 장바구니로 확인하는 것 말고 방법이 없다.
   나중에 가게 메뉴판을 우리가 저장하게 되면 옵션을 구조화된 테이블로 올릴 수 있다. (ADR-022)
+  검수에서 찾은 오타는 마감 후 방장이 고친다. (ADR-038)
+- **옵션 입력이 귀찮다.** 요즘 메뉴는 옵션이 많아서 다 적기 번거롭다. 가격은 배달앱 장바구니에
+  찍힌 값을 옮겨 적으면 되지만 옵션 글은 줄일 방법이 마땅치 않다. 다음 후보는 "이전에 담은
+  메뉴 불러오기"(같은 가게 이름으로 내가 담았던 줄을 한 번에 다시 담기). (ADR-038)
 - **한 사람이 같은 시간대에 여러 방에 참여할 수 있는가.**
 - **최소주문금액을 못 채운 채 마감 시각이 온 방을 자동 취소하는 게 맞는지.** 방장이
   "그냥 내가 더 담아서 진행할게"를 선택할 수 있어야 할 수도 있다.

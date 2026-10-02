@@ -123,7 +123,7 @@ class GroupOrderListApiTest {
                 new GroupOrder(host, spot, storeName, 15_000, deadlineAt, capacity));
         Participation hostParticipation =
                 participationRepository.save(new Participation(room, host, Instant.now()));
-        orderItemRepository.save(hostParticipation.addItem(host.getId(), "메뉴", null, hostMenu, 1));
+        orderItemRepository.save(hostParticipation.addItem(host.getId(), "메뉴", null, hostMenu, 1, deadlineAt.minusSeconds(60)));
         return room;
     }
 
@@ -219,7 +219,7 @@ class GroupOrderListApiTest {
         GroupOrder room = room(host, dorm, "○○마라탕", 8_000, inHours(2), 4);
         Participation member = participationRepository.save(
                 new Participation(room, user(hankuk, "마라탕러버", true), Instant.now()));
-        orderItemRepository.save(member.addItem(member.getUser().getId(), "마라탕 소", null, 9_000, 1));
+        orderItemRepository.save(member.addItem(member.getUser().getId(), "마라탕 소", null, 9_000, 1, Instant.now()));
 
         mockMvc.perform(get("/api/group-orders").header("Authorization", bearer(viewer)))
                 .andExpect(jsonPath("$.rooms[0].id").value(room.getId()))

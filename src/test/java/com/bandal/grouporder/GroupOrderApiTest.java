@@ -426,8 +426,8 @@ class GroupOrderApiTest {
         Participation memberParticipation =
                 participationRepository.save(new Participation(groupOrder, member, Instant.now()));
 
-        orderItemRepository.save(hostParticipation.addItem(host.getId(), "꿔바로우", "소", 11_000, 1));
-        orderItemRepository.save(memberParticipation.addItem(member.getId(), "마라탕", "2단계", 9_000, 1));
+        orderItemRepository.save(hostParticipation.addItem(host.getId(), "꿔바로우", "소", 11_000, 1, Instant.now()));
+        orderItemRepository.save(memberParticipation.addItem(member.getId(), "마라탕", "2단계", 9_000, 1, Instant.now()));
         return groupOrder;
     }
 }

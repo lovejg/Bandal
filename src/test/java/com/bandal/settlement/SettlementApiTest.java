@@ -125,9 +125,9 @@ class SettlementApiTest {
                 participationRepository.save(new Participation(groupOrder, host, Instant.now()));
         Participation memberParticipation =
                 participationRepository.save(new Participation(groupOrder, member, Instant.now()));
-        orderItemRepository.save(hostParticipation.addItem(host.getId(), "마라탕", null, HOST_MENU, 1));
+        orderItemRepository.save(hostParticipation.addItem(host.getId(), "마라탕", null, HOST_MENU, 1, Instant.now()));
         orderItemRepository.save(
-                memberParticipation.addItem(member.getId(), "마라탕 소", "중간맛", MEMBER_MENU, 1));
+                memberParticipation.addItem(member.getId(), "마라탕 소", "중간맛", MEMBER_MENU, 1, Instant.now()));
 
         groupOrder.closeByHost(host.getId(), 2, HOST_MENU + MEMBER_MENU);
         groupOrderRepository.saveAndFlush(groupOrder);

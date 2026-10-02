@@ -1,12 +1,17 @@
 package com.bandal.participation;
 
+import com.bandal.participation.dto.OrderItemRequest;
+import com.bandal.participation.dto.ParticipationItemsResponse;
 import com.bandal.participation.dto.ParticipationResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -32,5 +37,30 @@ public class ParticipationController {
     public void leave(@PathVariable Long participationId,
                       @AuthenticationPrincipal Long userId) {
         participationService.leave(participationId, userId);
+    }
+
+    // 메뉴 담기. "이 참여의 메뉴 목록에 한 줄을 추가한다" (ADR-038)
+    // @Valid가 DTO의 @NotBlank, @Max 같은 검사를 돌린다. 걸리면 서비스까지 안 가고 400
+    @PostMapping("/api/participations/{participationId}/order-items")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ParticipationItemsResponse addItem(@PathVariable Long participationId,
+                                              @AuthenticationPrincipal Long userId,
+                                              @Valid @RequestBody OrderItemRequest request) {
+        return participationService.addItem(participationId, userId, request);
+    }
+
+    // 메뉴 고치기. 폼 전체를 다시 받아 통째로 바꾸니 PUT
+    @PutMapping("/api/order-items/{orderItemId}")
+    public ParticipationItemsResponse updateItem(@PathVariable Long orderItemId,
+                                                 @AuthenticationPrincipal Long userId,
+                                                 @Valid @RequestBody OrderItemRequest request) {
+        return participationService.updateItem(orderItemId, userId, request);
+    }
+
+    // 메뉴 빼기. 화면에 남아 있으니 204가 아니라 다시 그릴 값을 200으로 준다
+    @DeleteMapping("/api/order-items/{orderItemId}")
+    public ParticipationItemsResponse removeItem(@PathVariable Long orderItemId,
+                                                 @AuthenticationPrincipal Long userId) {
+        return participationService.removeItem(orderItemId, userId);
     }
 }

@@ -53,17 +53,19 @@ public class Participation {
         }
     }
 
-    public OrderItem addItem(Long requesterId, String menuName, String options, long unitPrice, int quantity) {
+    // now: 나가기와 같은 이유로 시각을 밖에서 받는다. 상태가 모집중이어도 마감 시각이 지났을 수 있다
+    public OrderItem addItem(Long requesterId, String menuName, String options, long unitPrice, int quantity, Instant now) {
         if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING) {
             throw new IllegalStateException("모집중인 방에만 메뉴를 담을 수 있습니다");
         }
         if(!Objects.equals(requesterId, this.user.getId())) {
             throw new IllegalStateException("자기 메뉴만 담을 수 있습니다");
         }
+        if(!now.isBefore(this.groupOrder.getDeadlineAt())) throw new IllegalStateException("이미 마감되었습니다");
         return new OrderItem(this, menuName, options, unitPrice, quantity);
     }
 
-    public void removeItem(Long requesterId, OrderItem item) {
+    public void removeItem(Long requesterId, OrderItem item, Instant now) {
         if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING) {
             throw new IllegalStateException("모집중인 방에서만 메뉴를 뺄 수 있습니다");
         }
@@ -74,5 +76,6 @@ public class Participation {
         if(!Objects.equals(item.getParticipation().getId(), this.id)) {
             throw new IllegalStateException("다른 사람의 메뉴는 뺄 수 없습니다");
         }
+        if(!now.isBefore(this.groupOrder.getDeadlineAt())) throw new IllegalStateException("이미 마감되었습니다");
     }
 }

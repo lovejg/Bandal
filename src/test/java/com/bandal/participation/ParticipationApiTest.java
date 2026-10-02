@@ -5,7 +5,7 @@ import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.JwtProvider;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
-import com.bandal.participation.dto.AddOrderItemRequest;
+import com.bandal.participation.dto.OrderItemRequest;
 import com.bandal.pickupspot.PickupSpot;
 import com.bandal.pickupspot.PickupSpotRepository;
 import com.bandal.university.University;
@@ -33,6 +33,7 @@ import java.time.temporal.ChronoUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -308,8 +309,8 @@ class ParticipationApiTest {
         @DisplayName("담아둔 메뉴가 있어도 나갈 수 있고 메뉴도 같이 사라진다")
         void leavesWithItems() throws Exception {
             // 메뉴가 참여 행을 가리키고 있다. 참여 행만 지우면 DB가 거부한다 (ADR-037)
-            orderItemRepository.save(memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1));
-            orderItemRepository.save(memberParticipation.addItem(member.getId(), "꿔바로우", null, 15_000, 1));
+            orderItemRepository.save(memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1, Instant.now()));
+            orderItemRepository.save(memberParticipation.addItem(member.getId(), "꿔바로우", null, 15_000, 1, Instant.now()));
 
             leave(memberParticipation.getId(), member)
                     .andExpect(status().isNoContent());
@@ -322,8 +323,8 @@ class ParticipationApiTest {
         @DisplayName("내가 나가도 다른 사람의 메뉴는 남는다")
         void keepsOthersItems() throws Exception {
             // 메뉴를 지울 때 범위를 잘못 잡으면(예: 방 전체) 남의 장바구니까지 비운다
-            orderItemRepository.save(memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1));
-            orderItemRepository.save(hostParticipation.addItem(host.getId(), "탕수육", null, 18_000, 1));
+            orderItemRepository.save(memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1, Instant.now()));
+            orderItemRepository.save(hostParticipation.addItem(host.getId(), "탕수육", null, 18_000, 1, Instant.now()));
 
             leave(memberParticipation.getId(), member)
                     .andExpect(status().isNoContent());
@@ -392,9 +393,34 @@ class ParticipationApiTest {
         }
     }
 
+    // 메뉴 요청 본문
+    OrderItemRequest itemRequest(String menuName, String options, Long unitPrice, Integer quantity) {
+        return new OrderItemRequest(menuName, options, unitPrice, quantity);
+    }
+
+    // 테스트 준비용으로 메뉴 한 줄을 DB에 바로 넣는다
+    OrderItem saveItem(Participation participation, User owner, String menuName, long unitPrice) {
+        return orderItemRepository.save(
+                participation.addItem(owner.getId(), menuName, null, unitPrice, 1, Instant.now()));
+    }
+
+    // 방장이 손으로 마감한다. 방장 + member 2명, 메뉴 합계 조건은 테스트마다 맞춰 넣는다
+    void closeRoom() {
+        groupOrder.closeByHost(host.getId(), 2, 20_000);
+        groupOrderRepository.saveAndFlush(groupOrder);
+    }
+
+    // 마감 시각이 이미 지났는데 상태는 모집중으로 남은 방. 스케줄러가 없어서 실제로 생긴다
+    Participation lateRoomMember() {
+        GroupOrder late = groupOrderRepository.save(new GroupOrder(
+                host, pickupSpot, "△△치킨", 20_000, Instant.now().minusSeconds(60), 4));
+        participationRepository.save(new Participation(late, host, Instant.now()));
+        return participationRepository.save(new Participation(late, member, Instant.now()));
+    }
+
     @Nested
-    @DisplayName("메뉴")
-    class OrderItems {
+    @DisplayName("메뉴 담기")
+    class AddItem {
 
         Participation memberParticipation;
 
@@ -404,118 +430,387 @@ class ParticipationApiTest {
                     new Participation(groupOrder, member, Instant.now()));
         }
 
-        AddOrderItemRequest validRequest() {
-            return new AddOrderItemRequest("마라탕", "2단계, 꿔바로우 추가", 12_000L, 2);
+        ResultActions add(Long participationId, User user, OrderItemRequest request) throws Exception {
+            return mockMvc.perform(post("/api/participations/" + participationId + "/order-items")
+                    .header("Authorization", bearer(user.getId()))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(request)));
+        }
+
+        OrderItemRequest valid() {
+            return itemRequest("마라탕", "2단계, 꿔바로우 추가", 12_000L, 2);
         }
 
         @Test
-        @DisplayName("메뉴를 담으면 201이고 줄 금액이 같이 나온다")
+        @DisplayName("담으면 201이고 내 메뉴 목록과 내 합계, 방 합계가 같이 온다")
         void addsItem() throws Exception {
-            mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(validRequest())))
+            add(memberParticipation.getId(), member, valid())
                     .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.menuName").value("마라탕"))
-                    .andExpect(jsonPath("$.options").value("2단계, 꿔바로우 추가"))
-                    .andExpect(jsonPath("$.unitPrice").value(12_000))
-                    .andExpect(jsonPath("$.quantity").value(2))
-                    .andExpect(jsonPath("$.amount").value(24_000));
+                    .andExpect(jsonPath("$.participationId").value(memberParticipation.getId()))
+                    .andExpect(jsonPath("$.items.length()").value(1))
+                    .andExpect(jsonPath("$.items[0].id").isNumber())
+                    .andExpect(jsonPath("$.items[0].menuName").value("마라탕"))
+                    .andExpect(jsonPath("$.items[0].options").value("2단계, 꿔바로우 추가"))
+                    .andExpect(jsonPath("$.items[0].unitPrice").value(12_000))
+                    .andExpect(jsonPath("$.items[0].quantity").value(2))
+                    .andExpect(jsonPath("$.items[0].amount").value(24_000))
+                    .andExpect(jsonPath("$.items[0].editedByHost").value(false))
+                    .andExpect(jsonPath("$.participationTotal").value(24_000))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(24_000));
 
             assertThat(orderItemRepository.findByParticipationId(memberParticipation.getId())).hasSize(1);
         }
 
         @Test
-        @DisplayName("남의 참여에 메뉴를 담으려 하면 409다")
-        void rejectsOtherUsersParticipation() throws Exception {
+        @DisplayName("방 합계에는 다른 사람 메뉴도 들어가지만 목록에는 내 메뉴만 나온다")
+        void groupOrderTotalIncludesOthers() throws Exception {
+            // 합계 바를 다시 그리는 값이다. 그사이 다른 사람이 담은 것도 반영돼야 한다
+            saveItem(hostParticipation, host, "꿔바로우", 8_000);
+
+            add(memberParticipation.getId(), member, valid())
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.items.length()").value(1))
+                    .andExpect(jsonPath("$.participationTotal").value(24_000))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(32_000));
+        }
+
+        @Test
+        @DisplayName("한 줄씩 담으면 목록에 계속 쌓인다")
+        void accumulates() throws Exception {
+            add(memberParticipation.getId(), member, itemRequest("마라탕", "2단계", 9_000L, 1))
+                    .andExpect(status().isCreated());
+
+            add(memberParticipation.getId(), member, itemRequest("공기밥", null, 1_000L, 2))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.items.length()").value(2))
+                    .andExpect(jsonPath("$.participationTotal").value(11_000));
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 401이다")
+        void requiresLogin() throws Exception {
             mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("Authorization", bearer(host.getId()))
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(validRequest())))
+                            .content(objectMapper.writeValueAsString(valid())))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("남의 참여에 담으려 하면 409이고 아무것도 담기지 않는다")
+        void rejectsOtherUsersParticipation() throws Exception {
+            // 주소의 참여 id는 누구나 바꿔 칠 수 있다. 막지 않으면 남의 정산 금액이 늘어난다
+            add(memberParticipation.getId(), host, valid())
                     .andExpect(status().isConflict());
 
             assertThat(orderItemRepository.count()).isZero();
         }
 
         @Test
-        @DisplayName("메뉴 이름이 비면 400이다")
-        void rejectsBlankMenuName() throws Exception {
-            AddOrderItemRequest request = new AddOrderItemRequest("   ", null, 12_000L, 1);
-
-            mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(request)))
+        @DisplayName("메뉴 이름이 비거나 50자를 넘으면 400이다")
+        void rejectsBadMenuName() throws Exception {
+            add(memberParticipation.getId(), member, itemRequest("   ", null, 9_000L, 1))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.status").value(400));
+
+            add(memberParticipation.getId(), member, itemRequest("가".repeat(51), null, 9_000L, 1))
+                    .andExpect(status().isBadRequest());
+
+            assertThat(orderItemRepository.count()).isZero();
         }
 
         @Test
-        @DisplayName("가격이 0원이면 400이다")
-        void rejectsZeroPrice() throws Exception {
-            AddOrderItemRequest request = new AddOrderItemRequest("마라탕", null, 0L, 1);
-
-            mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(request)))
+        @DisplayName("옵션이 100자를 넘으면 400이다")
+        void rejectsLongOptions() throws Exception {
+            add(memberParticipation.getId(), member, itemRequest("마라탕", "가".repeat(101), 9_000L, 1))
                     .andExpect(status().isBadRequest());
         }
 
         @Test
-        @DisplayName("마감된 방에는 메뉴를 담을 수 없다")
-        void rejectsAfterClose() throws Exception {
-            groupOrder.closeByHost(host.getId(), 2, 20_000);
-            groupOrderRepository.saveAndFlush(groupOrder);
+        @DisplayName("가격이 0원이거나 100만 원을 넘으면 400이다")
+        void rejectsBadPrice() throws Exception {
+            add(memberParticipation.getId(), member, itemRequest("마라탕", null, 0L, 1))
+                    .andExpect(status().isBadRequest());
 
-            mockMvc.perform(post("/api/participations/" + memberParticipation.getId() + "/order-items")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(validRequest())))
+            // 오타로 0을 여러 개 친 경우. 받으면 합계 바가 가득 차 보인다
+            add(memberParticipation.getId(), member, itemRequest("마라탕", null, 1_000_001L, 1))
+                    .andExpect(status().isBadRequest());
+
+            assertThat(orderItemRepository.count()).isZero();
+        }
+
+        @Test
+        @DisplayName("개수가 0이거나 99개를 넘으면 400이다")
+        void rejectsBadQuantity() throws Exception {
+            add(memberParticipation.getId(), member, itemRequest("마라탕", null, 9_000L, 0))
+                    .andExpect(status().isBadRequest());
+
+            add(memberParticipation.getId(), member, itemRequest("마라탕", null, 9_000L, 100))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("마감된 방에는 담을 수 없다")
+        void rejectsClosedRoom() throws Exception {
+            saveItem(hostParticipation, host, "꿔바로우", 20_000);
+            closeRoom();
+
+            add(memberParticipation.getId(), member, valid())
                     .andExpect(status().isConflict());
+            assertThat(orderItemRepository.findByParticipationId(memberParticipation.getId())).isEmpty();
+        }
+
+        @Test
+        @DisplayName("마감 시각이 지났으면 아직 모집중으로 남아 있어도 담을 수 없다")
+        void rejectsAfterDeadline() throws Exception {
+            Participation lateMember = lateRoomMember();
+
+            add(lateMember.getId(), member, valid())
+                    .andExpect(status().isConflict());
+            assertThat(orderItemRepository.findByParticipationId(lateMember.getId())).isEmpty();
         }
 
         @Test
         @DisplayName("없는 참여에 담으려 하면 404다")
         void rejectsUnknownParticipation() throws Exception {
-            mockMvc.perform(post("/api/participations/999999/order-items")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(validRequest())))
+            add(999_999L, member, valid())
                     .andExpect(status().isNotFound());
+        }
+    }
+
+    @Nested
+    @DisplayName("메뉴 고치기")
+    class UpdateItem {
+
+        Participation memberParticipation;
+        OrderItem item;
+
+        @BeforeEach
+        void joinAndAdd() {
+            memberParticipation = participationRepository.save(
+                    new Participation(groupOrder, member, Instant.now()));
+            // 9,000원을 900원으로 잘못 친 상황
+            item = saveItem(memberParticipation, member, "마라탕", 900);
+        }
+
+        ResultActions update(Long orderItemId, User user, OrderItemRequest request) throws Exception {
+            return mockMvc.perform(put("/api/order-items/" + orderItemId)
+                    .header("Authorization", bearer(user.getId()))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(request)));
+        }
+
+        OrderItemRequest fixed() {
+            return itemRequest("마라탕", "2단계", 9_000L, 1);
+        }
+
+        // DB에 남은 값이 처음 그대로인지 본다
+        void assertUnchanged() {
+            OrderItem found = orderItemRepository.findById(item.getId()).orElseThrow();
+            assertThat(found.getUnitPrice()).isEqualTo(900);
+            assertThat(found.isEditedByHost()).isFalse();
         }
 
         @Test
-        @DisplayName("담은 메뉴를 빼면 204이고 행이 사라진다")
-        void removesItem() throws Exception {
-            OrderItem item = orderItemRepository.save(
-                    memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1));
+        @DisplayName("모집중에 주인이 고치면 200이고 값이 통째로 바뀐다")
+        void ownerUpdates() throws Exception {
+            update(item.getId(), member, fixed())
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.participationId").value(memberParticipation.getId()))
+                    .andExpect(jsonPath("$.items.length()").value(1))
+                    .andExpect(jsonPath("$.items[0].id").value(item.getId()))
+                    .andExpect(jsonPath("$.items[0].options").value("2단계"))
+                    .andExpect(jsonPath("$.items[0].unitPrice").value(9_000))
+                    .andExpect(jsonPath("$.items[0].editedByHost").value(false))
+                    .andExpect(jsonPath("$.participationTotal").value(9_000))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(9_000));
 
-            mockMvc.perform(delete("/api/order-items/" + item.getId())
-                            .header("Authorization", bearer(member.getId())))
-                    .andExpect(status().isNoContent());
+            OrderItem found = orderItemRepository.findById(item.getId()).orElseThrow();
+            assertThat(found.getUnitPrice()).isEqualTo(9_000);
+            assertThat(found.getOptions()).isEqualTo("2단계");
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 401이다")
+        void requiresLogin() throws Exception {
+            mockMvc.perform(put("/api/order-items/" + item.getId())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(fixed())))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("다른 참여자가 고치려 하면 409이고 값은 그대로다")
+        void rejectsOtherUser() throws Exception {
+            User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
+            participationRepository.save(new Participation(groupOrder, third, Instant.now()));
+
+            update(item.getId(), third, fixed())
+                    .andExpect(status().isConflict());
+            assertUnchanged();
+        }
+
+        @Test
+        @DisplayName("모집중에는 방장도 남의 메뉴를 고칠 수 없다")
+        void hostCannotUpdateWhileRecruiting() throws Exception {
+            update(item.getId(), host, fixed())
+                    .andExpect(status().isConflict());
+            assertUnchanged();
+        }
+
+        @Test
+        @DisplayName("마감 후 방장이 고치면 200이고 수정 표시가 남는다")
+        void hostUpdatesAfterClose() throws Exception {
+            saveItem(hostParticipation, host, "꿔바로우", 20_000);
+            closeRoom();
+
+            // 응답은 고친 메뉴의 주인(member) 기준이다. 방장 화면은 검수 목록을 다시 그린다
+            update(item.getId(), host, fixed())
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.participationId").value(memberParticipation.getId()))
+                    .andExpect(jsonPath("$.items[0].unitPrice").value(9_000))
+                    .andExpect(jsonPath("$.items[0].editedByHost").value(true))
+                    .andExpect(jsonPath("$.participationTotal").value(9_000))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(29_000));
+
+            assertThat(orderItemRepository.findById(item.getId()).orElseThrow().isEditedByHost()).isTrue();
+        }
+
+        @Test
+        @DisplayName("마감 후에는 주인도 고칠 수 없다")
+        void ownerCannotUpdateAfterClose() throws Exception {
+            saveItem(hostParticipation, host, "꿔바로우", 20_000);
+            closeRoom();
+
+            update(item.getId(), member, fixed())
+                    .andExpect(status().isConflict());
+            assertUnchanged();
+        }
+
+        @Test
+        @DisplayName("마감 시각이 지났으면 아직 모집중으로 남아 있어도 주인이 고칠 수 없다")
+        void rejectsAfterDeadline() throws Exception {
+            Participation lateMember = lateRoomMember();
+            // 마감 시각 전에 담아둔 메뉴라고 친다. 엔티티로 넣으면 시각 검사에 걸려서 DB에 바로 넣는다
+            OrderItem lateItem = orderItemRepository.save(new OrderItem(lateMember, "치킨", null, 900, 1));
+
+            update(lateItem.getId(), member, fixed())
+                    .andExpect(status().isConflict());
+            assertThat(orderItemRepository.findById(lateItem.getId()).orElseThrow().getUnitPrice()).isEqualTo(900);
+        }
+
+        @Test
+        @DisplayName("고칠 값이 잘못됐으면 400이고 값은 그대로다")
+        void rejectsInvalidValues() throws Exception {
+            update(item.getId(), member, itemRequest("마라탕", null, 0L, 1))
+                    .andExpect(status().isBadRequest());
+            update(item.getId(), member, itemRequest("마라탕", null, 9_000L, 100))
+                    .andExpect(status().isBadRequest());
+            assertUnchanged();
+        }
+
+        @Test
+        @DisplayName("없는 메뉴를 고치려 하면 404다")
+        void rejectsUnknownItem() throws Exception {
+            update(999_999L, member, fixed())
+                    .andExpect(status().isNotFound());
+        }
+    }
+
+    @Nested
+    @DisplayName("메뉴 빼기")
+    class RemoveItem {
+
+        Participation memberParticipation;
+        OrderItem item;
+
+        @BeforeEach
+        void joinAndAdd() {
+            memberParticipation = participationRepository.save(
+                    new Participation(groupOrder, member, Instant.now()));
+            item = saveItem(memberParticipation, member, "마라탕", 9_000);
+        }
+
+        ResultActions remove(Long orderItemId, User user) throws Exception {
+            return mockMvc.perform(delete("/api/order-items/" + orderItemId)
+                    .header("Authorization", bearer(user.getId())));
+        }
+
+        @Test
+        @DisplayName("빼면 200이고 행이 사라지며 남은 목록과 합계가 온다")
+        void removes() throws Exception {
+            // 나가기와 달리 화면에 남아 있으니 다시 그릴 값을 돌려준다
+            saveItem(memberParticipation, member, "공기밥", 1_000);
+            saveItem(hostParticipation, host, "꿔바로우", 8_000);
+
+            remove(item.getId(), member)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.participationId").value(memberParticipation.getId()))
+                    .andExpect(jsonPath("$.items.length()").value(1))
+                    .andExpect(jsonPath("$.items[0].menuName").value("공기밥"))
+                    .andExpect(jsonPath("$.participationTotal").value(1_000))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(9_000));
 
             assertThat(orderItemRepository.findById(item.getId())).isEmpty();
         }
 
         @Test
-        @DisplayName("남의 메뉴를 빼려 하면 409이고 메뉴는 남는다")
-        void rejectsRemoveByOtherUser() throws Exception {
-            OrderItem item = orderItemRepository.save(
-                    memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1));
+        @DisplayName("마지막 한 줄을 빼면 빈 목록과 0원이 온다")
+        void removesLastItem() throws Exception {
+            remove(item.getId(), member)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.items.length()").value(0))
+                    .andExpect(jsonPath("$.participationTotal").value(0))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(0));
 
-            mockMvc.perform(delete("/api/order-items/" + item.getId())
-                            .header("Authorization", bearer(host.getId())))
+            // 메뉴만 빠지고 참여는 남는다
+            assertThat(participationRepository.findById(memberParticipation.getId())).isPresent();
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 401이다")
+        void requiresLogin() throws Exception {
+            mockMvc.perform(delete("/api/order-items/" + item.getId()))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("남의 메뉴를 빼려 하면 409이고 메뉴는 남는다")
+        void rejectsOtherUser() throws Exception {
+            remove(item.getId(), host)
                     .andExpect(status().isConflict());
 
             assertThat(orderItemRepository.findById(item.getId())).isPresent();
         }
 
         @Test
+        @DisplayName("마감 후에는 방장도 뺄 수 없다")
+        void rejectsAfterClose() throws Exception {
+            saveItem(hostParticipation, host, "꿔바로우", 20_000);
+            closeRoom();
+
+            remove(item.getId(), member)
+                    .andExpect(status().isConflict());
+            remove(item.getId(), host)
+                    .andExpect(status().isConflict());
+
+            assertThat(orderItemRepository.findById(item.getId())).isPresent();
+        }
+
+        @Test
+        @DisplayName("마감 시각이 지났으면 아직 모집중으로 남아 있어도 뺄 수 없다")
+        void rejectsAfterDeadline() throws Exception {
+            Participation lateMember = lateRoomMember();
+            OrderItem lateItem = orderItemRepository.save(new OrderItem(lateMember, "치킨", null, 20_000, 1));
+
+            remove(lateItem.getId(), member)
+                    .andExpect(status().isConflict());
+            assertThat(orderItemRepository.findById(lateItem.getId())).isPresent();
+        }
+
+        @Test
         @DisplayName("없는 메뉴를 빼려 하면 404다")
-        void rejectsRemoveUnknownItem() throws Exception {
-            mockMvc.perform(delete("/api/order-items/999999")
-                            .header("Authorization", bearer(member.getId())))
+        void rejectsUnknownItem() throws Exception {
+            remove(999_999L, member)
                     .andExpect(status().isNotFound());
         }
     }

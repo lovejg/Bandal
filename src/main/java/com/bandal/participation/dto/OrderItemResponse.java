@@ -9,7 +9,8 @@ public record OrderItemResponse(
         String options,
         long unitPrice,
         int quantity,
-        long amount
+        long amount,
+        boolean editedByHost
 ) {
 
     public static OrderItemResponse of(OrderItem orderItem) {
@@ -20,7 +21,8 @@ public record OrderItemResponse(
                 orderItem.getOptions(),
                 orderItem.getUnitPrice(),
                 orderItem.getQuantity(),
-                orderItem.getAmount()
+                orderItem.getAmount(),
+                orderItem.isEditedByHost()
         );
     }
 }
