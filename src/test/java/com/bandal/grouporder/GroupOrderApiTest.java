@@ -361,6 +361,64 @@ class GroupOrderApiTest {
     }
 
     @Test
+    @DisplayName("참여한 사람이 방을 보면 자기 참여 id가 같이 나온다")
+    void showsMyParticipationId() throws Exception {
+        // 앱을 껐다 켜도, 다른 기기로 열어도 서버가 매번 알려준다 (ADR-039)
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+        Participation mine = participationRepository
+                .findByGroupOrderIdAndUserId(groupOrder.getId(), member.getId()).orElseThrow();
+
+        mockMvc.perform(get("/api/group-orders/" + groupOrder.getId())
+                        .header("Authorization", bearer(member.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.myParticipationId").value(mine.getId()));
+    }
+
+    @Test
+    @DisplayName("같은 방이라도 보는 사람마다 자기 참여 id가 나온다")
+    void myParticipationIdDependsOnViewer() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+        Participation hostParticipation = participationRepository
+                .findByGroupOrderIdAndUserId(groupOrder.getId(), host.getId()).orElseThrow();
+
+        mockMvc.perform(get("/api/group-orders/" + groupOrder.getId())
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(jsonPath("$.myParticipationId").value(hostParticipation.getId()));
+    }
+
+    @Test
+    @DisplayName("참여 안 한 사람이 방을 보면 참여 id는 비어 있다")
+    void myParticipationIdIsNullForOutsider() throws Exception {
+        // 프론트는 이걸 보고 "참여하기" 버튼을 띄운다
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+        User viewer = verifiedUser(university, "park@hankuk.ac.kr", "구경꾼");
+
+        mockMvc.perform(get("/api/group-orders/" + groupOrder.getId())
+                        .header("Authorization", bearer(viewer.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.myParticipationId").isEmpty());
+    }
+
+    @Test
+    @DisplayName("방을 만든 응답에도 방장의 참여 id가 나온다")
+    void createReturnsHostParticipationId() throws Exception {
+        // 방장은 만들자마자 자기 메뉴를 담는다. 방 상세를 다시 부르지 않아도 되게 한다
+        String body = mockMvc.perform(post("/api/group-orders")
+                        .header("Authorization", bearer(host.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequest())))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        GroupOrder saved = groupOrderRepository.findAll().getFirst();
+        Participation hostParticipation = participationRepository
+                .findByGroupOrderIdAndUserId(saved.getId(), host.getId()).orElseThrow();
+
+        assertThat(objectMapper.readTree(body).get("myParticipationId").asLong())
+                .isEqualTo(hostParticipation.getId());
+    }
+
+    @Test
     @DisplayName("없는 방을 조회하면 404다")
     void returnsNotFoundForUnknownGroupOrder() throws Exception {
         mockMvc.perform(get("/api/group-orders/999999")

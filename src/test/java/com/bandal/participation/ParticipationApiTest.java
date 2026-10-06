@@ -12,6 +12,9 @@ import com.bandal.university.University;
 import com.bandal.university.UniversityRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +34,9 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -72,6 +78,9 @@ class ParticipationApiTest {
 
     @Autowired
     UserRepository userRepository;
+
+    @Autowired
+    EntityManagerFactory entityManagerFactory;
 
     University university;
     PickupSpot pickupSpot;
@@ -812,6 +821,248 @@ class ParticipationApiTest {
         void rejectsUnknownItem() throws Exception {
             remove(999_999L, member)
                     .andExpect(status().isNotFound());
+        }
+    }
+    @Nested
+    @DisplayName("내 메뉴 조회")
+    class MyItems {
+
+        Participation memberParticipation;
+
+        @BeforeEach
+        void joinAndAdd() {
+            memberParticipation = participationRepository.save(
+                    new Participation(groupOrder, member, Instant.now()));
+            saveItem(memberParticipation, member, "마라탕", 9_000);
+            saveItem(memberParticipation, member, "공기밥", 1_000);
+            saveItem(hostParticipation, host, "꿔바로우", 8_000);
+        }
+
+        ResultActions myItems(Long participationId, User user) throws Exception {
+            return mockMvc.perform(get("/api/participations/" + participationId + "/order-items")
+                    .header("Authorization", bearer(user.getId())));
+        }
+
+        @Test
+        @DisplayName("주인이 보면 200이고 담기 응답과 같은 모양으로 온다")
+        void ownerSeesItems() throws Exception {
+            // 프론트가 "내 메뉴 칸"을 그리는 코드를 하나만 쓰게 한다 (ADR-039)
+            myItems(memberParticipation.getId(), member)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.participationId").value(memberParticipation.getId()))
+                    .andExpect(jsonPath("$.items.length()").value(2))
+                    .andExpect(jsonPath("$.items[*].menuName").value(containsInAnyOrder("마라탕", "공기밥")))
+                    .andExpect(jsonPath("$.participationTotal").value(10_000))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(18_000));
+        }
+
+        @Test
+        @DisplayName("메뉴를 아직 안 담았으면 빈 목록과 0원이 온다")
+        void emptyWhenNoItems() throws Exception {
+            User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
+            Participation thirdParticipation = participationRepository.save(
+                    new Participation(groupOrder, third, Instant.now()));
+
+            myItems(thirdParticipation.getId(), third)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.items.length()").value(0))
+                    .andExpect(jsonPath("$.participationTotal").value(0))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(18_000));
+        }
+
+        @Test
+        @DisplayName("방장은 남의 참여 메뉴도 볼 수 있다")
+        void hostSeesOthersItems() throws Exception {
+            myItems(memberParticipation.getId(), host)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.participationTotal").value(10_000));
+        }
+
+        @Test
+        @DisplayName("다른 참여자는 내 메뉴를 볼 수 없다")
+        void otherCannotSee() throws Exception {
+            User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
+            participationRepository.save(new Participation(groupOrder, third, Instant.now()));
+
+            myItems(memberParticipation.getId(), third)
+                    .andExpect(status().isConflict());
+        }
+
+        @Test
+        @DisplayName("마감 후에도 주인은 자기 메뉴를 볼 수 있다")
+        void ownerSeesAfterClose() throws Exception {
+            // 고치기는 막혀도 보기는 열려 있다. 정산 화면으로 넘어가기 전에 확인한다
+            saveItem(hostParticipation, host, "탕수육", 20_000);
+            closeRoom();
+
+            myItems(memberParticipation.getId(), member)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.items.length()").value(2));
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 401이다")
+        void requiresLogin() throws Exception {
+            mockMvc.perform(get("/api/participations/" + memberParticipation.getId() + "/order-items"))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("없는 참여면 404다")
+        void rejectsUnknownParticipation() throws Exception {
+            myItems(999_999L, member)
+                    .andExpect(status().isNotFound());
+        }
+    }
+
+    @Nested
+    @DisplayName("방장 검수 목록")
+    class ReviewList {
+
+        Participation memberParticipation;
+
+        @BeforeEach
+        void joinAndAdd() {
+            memberParticipation = participationRepository.save(
+                    new Participation(groupOrder, member, Instant.now()));
+            saveItem(hostParticipation, host, "꿔바로우", 12_000);
+            saveItem(memberParticipation, member, "마라탕", 9_000);
+            saveItem(memberParticipation, member, "공기밥", 1_000);
+        }
+
+        ResultActions review(Long groupOrderId, User user) throws Exception {
+            return mockMvc.perform(get("/api/group-orders/" + groupOrderId + "/order-items")
+                    .header("Authorization", bearer(user.getId())));
+        }
+
+        @Test
+        @DisplayName("방장이 보면 200이고 참여자마다 메뉴와 합계가 붙어서 온다")
+        void hostSeesAll() throws Exception {
+            review(groupOrder.getId(), host)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.groupOrderId").value(groupOrder.getId()))
+                    .andExpect(jsonPath("$.status").value("RECRUITING"))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(22_000))
+                    .andExpect(jsonPath("$.participants.length()").value(2))
+                    // 방장이 맨 앞, 그다음 들어온 순서
+                    .andExpect(jsonPath("$.participants[0].participationId").value(hostParticipation.getId()))
+                    .andExpect(jsonPath("$.participants[0].nickname").value("배고파"))
+                    .andExpect(jsonPath("$.participants[0].host").value(true))
+                    .andExpect(jsonPath("$.participants[0].items.length()").value(1))
+                    .andExpect(jsonPath("$.participants[0].participationTotal").value(12_000))
+                    .andExpect(jsonPath("$.participants[1].participationId").value(memberParticipation.getId()))
+                    .andExpect(jsonPath("$.participants[1].userId").value(member.getId()))
+                    .andExpect(jsonPath("$.participants[1].nickname").value("마라탕러버"))
+                    .andExpect(jsonPath("$.participants[1].host").value(false))
+                    .andExpect(jsonPath("$.participants[1].items[*].menuName")
+                            .value(containsInAnyOrder("마라탕", "공기밥")))
+                    .andExpect(jsonPath("$.participants[1].participationTotal").value(10_000));
+        }
+
+        @Test
+        @DisplayName("메뉴를 안 담은 참여자도 빈 목록과 0원으로 나온다")
+        void includesParticipantWithoutItems() throws Exception {
+            // 빠지면 방장은 그 사람이 있는 줄도 모르고 주문한다
+            User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
+            participationRepository.save(new Participation(groupOrder, third, Instant.now()));
+
+            review(groupOrder.getId(), host)
+                    .andExpect(jsonPath("$.participants.length()").value(3))
+                    .andExpect(jsonPath("$.participants[2].nickname").value("꿔바로우"))
+                    .andExpect(jsonPath("$.participants[2].items.length()").value(0))
+                    .andExpect(jsonPath("$.participants[2].participationTotal").value(0))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(22_000));
+        }
+
+        @Test
+        @DisplayName("마감 후에도 방장은 볼 수 있고 방장이 고친 메뉴는 표시가 붙는다")
+        void hostSeesAfterCloseWithEditMark() throws Exception {
+            // 검수는 마감 뒤 주문 직전에 한다
+            closeRoom();
+            OrderItem item = orderItemRepository.findByParticipationId(memberParticipation.getId()).stream()
+                    .filter(i -> i.getMenuName().equals("마라탕")).findFirst().orElseThrow();
+            mockMvc.perform(put("/api/order-items/" + item.getId())
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(itemRequest("마라탕", null, 9_500L, 1))))
+                    .andExpect(status().isOk());
+
+            review(groupOrder.getId(), host)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("CLOSED"))
+                    .andExpect(jsonPath("$.participants[1].items[?(@.menuName == '마라탕')].editedByHost")
+                            .value(contains(true)))
+                    .andExpect(jsonPath("$.groupOrderTotal").value(22_500));
+        }
+
+        @Test
+        @DisplayName("응답에 이메일이나 비밀번호 해시가 섞여 나가지 않는다")
+        void doesNotLeakUserFields() throws Exception {
+            // 사람마다 User를 다루니 엔티티를 그대로 담으면 전원 이메일이 나간다
+            String body = review(groupOrder.getId(), host)
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+
+            assertThat(body).doesNotContain("lee@hankuk.ac.kr");
+            assertThat(body).doesNotContain("hashed-password");
+        }
+
+        @Test
+        @DisplayName("방장이 아닌 참여자가 보려 하면 409다")
+        void rejectsNonHost() throws Exception {
+            review(groupOrder.getId(), member)
+                    .andExpect(status().isConflict());
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 401이다")
+        void requiresLogin() throws Exception {
+            mockMvc.perform(get("/api/group-orders/" + groupOrder.getId() + "/order-items"))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("없는 방이면 404다")
+        void rejectsUnknownGroupOrder() throws Exception {
+            review(999_999L, host)
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("참여자가 늘어도 쿼리 수는 그대로다")
+        void queryCountDoesNotGrowWithParticipants() throws Exception {
+            // N+1 확인. 사람마다 쿼리가 나가면 2명일 때보다 5명일 때 쿼리가 많다 (ADR-039)
+            long withTwo = countQueries(() -> review(groupOrder.getId(), host).andExpect(status().isOk()));
+
+            // 3명을 더 넣는다. 정원(3명)을 넘지만 쿼리 수만 보는 테스트라 참여 검사 없이 행을 바로 넣는다
+            for (int i = 0; i < 3; i++) {
+                User extra = verifiedUser(university, "extra" + i + "@hankuk.ac.kr", "추가" + i);
+                Participation p = participationRepository.save(new Participation(groupOrder, extra, Instant.now()));
+                saveItem(p, extra, "메뉴" + i, 5_000);
+                saveItem(p, extra, "사이드" + i, 1_000);
+            }
+            long withFive = countQueries(() -> review(groupOrder.getId(), host).andExpect(status().isOk()));
+
+            assertThat(withFive)
+                    .as("2명일 때 쿼리 %d번, 5명일 때 %d번", withTwo, withFive)
+                    .isEqualTo(withTwo);
+        }
+    }
+
+    interface Request {
+        void run() throws Exception;
+    }
+
+    // 요청 하나 동안 DB에 보낸 SQL 수를 센다. Hibernate 통계 기능을 이 테스트에서만 잠깐 켠다
+    long countQueries(Request request) throws Exception {
+        Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+        try {
+            request.run();
+            return statistics.getPrepareStatementCount();
+        } finally {
+            statistics.setStatisticsEnabled(false);
         }
     }
 }

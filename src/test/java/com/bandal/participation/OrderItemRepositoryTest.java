@@ -233,6 +233,28 @@ class OrderItemRepositoryTest {
     }
 
     @Test
+    @DisplayName("방의 메뉴를 참여자와 상관없이 한 번에 가져온다")
+    void findsAllItemsOfGroupOrder() {
+        // 검수 목록이 사람마다 메뉴를 묻지 않게 한다 (ADR-039)
+        orderItemRepository.save(hostParticipation.addItem(hostId, "꿔바로우", "소", 12_000, 1, JOINED_AT));
+        orderItemRepository.save(memberParticipation.addItem(memberId, "마라탕", "2단계", 9_000, 1, JOINED_AT));
+        orderItemRepository.save(memberParticipation.addItem(memberId, "공기밥", null, 1_000, 1, JOINED_AT));
+        orderItemRepository.save(otherRoomParticipation.addItem(hostId, "치킨", "양념", 20_000, 1, JOINED_AT));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<OrderItem> items = orderItemRepository.findByGroupOrderId(groupOrder.getId());
+
+        assertThat(items).extracting(OrderItem::getMenuName).containsExactly("꿔바로우", "마라탕", "공기밥");
+    }
+
+    @Test
+    @DisplayName("메뉴가 없는 방이면 빈 목록이다")
+    void findsNoItemsOfEmptyGroupOrder() {
+        assertThat(orderItemRepository.findByGroupOrderId(emptyGroupOrder.getId())).isEmpty();
+    }
+
+    @Test
     @DisplayName("메뉴를 먼저 지우면 참여 행도 지울 수 있다")
     void participationCanBeDeletedAfterItems() {
         // 순서가 반대면 외래 키에 걸린다 (JOURNAL 2026-10-01)

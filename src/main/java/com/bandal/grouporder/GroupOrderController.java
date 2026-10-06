@@ -41,9 +41,11 @@ public class GroupOrderController {
         return groupOrderService.findList(userId, page, size);
     }
 
-    // 단건. 로그인은 필터가 확인하고(ADR-034), 누가 보든 같은 내용이라 요청자 id는 받지 않는다
+    // 단건. 로그인은 필터가 확인한다(ADR-034)
+    // 보는 사람의 참여 id(myParticipationId)가 사람마다 달라서 요청자 id를 받는다 (ADR-039)
     @GetMapping("/{groupOrderId}")
-    public GroupOrderResponse find(@PathVariable Long groupOrderId) {
-        return groupOrderService.find(groupOrderId);
+    public GroupOrderResponse find(@PathVariable Long groupOrderId,
+                                   @AuthenticationPrincipal Long userId) {
+        return groupOrderService.find(groupOrderId, userId);
     }
 }

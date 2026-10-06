@@ -65,6 +65,13 @@ public class Participation {
         return new OrderItem(this, menuName, options, unitPrice, quantity);
     }
 
+    public void checkItemsViewable(Long requesterId) {
+        if(!Objects.equals(requesterId, this.user.getId())
+            && !Objects.equals(requesterId, this.groupOrder.getHost().getId())) {
+            throw new IllegalStateException("다른 사람의 메뉴는 볼 수 없습니다");
+        }
+    }
+
     public void removeItem(Long requesterId, OrderItem item, Instant now) {
         if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING) {
             throw new IllegalStateException("모집중인 방에서만 메뉴를 뺄 수 있습니다");

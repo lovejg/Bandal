@@ -3,9 +3,7 @@ package com.bandal.participation;
 import com.bandal.common.NotFoundException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
-import com.bandal.participation.dto.OrderItemRequest;
-import com.bandal.participation.dto.ParticipationItemsResponse;
-import com.bandal.participation.dto.ParticipationResponse;
+import com.bandal.participation.dto.*;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 // 방에 들어오고 나간다. 메뉴 담기도 나중에 여기로 온다
 @Service
@@ -101,5 +101,44 @@ public class ParticipationService {
         return ParticipationItemsResponse.of(participationId,
             orderItemRepository.findByParticipationId(participationId),
             orderItemRepository.sumAmountByGroupOrderId(participation.getGroupOrder().getId()));
+    }
+
+    // 내 메뉴 조회(나 자신과 방장만 가능)
+    @Transactional(readOnly = true)
+    public ParticipationItemsResponse findItems(Long participationId, Long userId) {
+        Participation participation = participationRepository.findById(participationId)
+            .orElseThrow(() -> new NotFoundException("없는 참여입니다"));
+
+        participation.checkItemsViewable(userId);
+
+        return ParticipationItemsResponse.of(participationId,
+            orderItemRepository.findByParticipationId(participationId),
+            orderItemRepository.sumAmountByGroupOrderId(participation.getGroupOrder().getId()));
+    }
+
+    // 방장의 전체 검수
+    @Transactional(readOnly = true)
+    public GroupOrderItemsResponse findReviewList(Long groupOrderId, Long userId) {
+        GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        if(!groupOrder.isHost(userId)) throw new IllegalStateException("방장만 볼 수 있습니다");
+
+        // 모든 참여 및 사용자 다 가져오기
+        List<Participation> participations = participationRepository.findRosterWithUser(groupOrderId);
+
+        // 메뉴도 다 가져오기(반복문 밖에서 한번에). 아직 참여별로 분류는 안 된 상태
+        List<OrderItem> items = orderItemRepository.findByGroupOrderId(groupOrderId);
+
+        // groupingBy 이용해서 참여별로 분류하기
+        Map<Long, List<OrderItem>> itemsByParticipation = items.stream()
+            .collect(Collectors.groupingBy(oi -> oi.getParticipation().getId()));
+
+        List<ParticipantItemsResponse> participants = participations.stream()
+            .map(p -> ParticipantItemsResponse.of(p,
+                itemsByParticipation.getOrDefault(p.getId(), List.of()),
+                groupOrder.isHost(p.getUser().getId())))
+            .toList();
+
+        return GroupOrderItemsResponse.of(groupOrder, participants);
     }
 }

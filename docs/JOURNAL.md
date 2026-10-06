@@ -861,3 +861,47 @@ JSON path "$.groupOrderTotal" expected:<32000> but was:<24000>
 **한 줄 요약** "메뉴 고치기 권한을 마감 시각으로 나눴더니, 방장이 시각 전에 손으로 마감한 방에서
 주인은 고쳐지고 방장은 막혔다. 마감 시각과 마감 상태가 따로 움직인다는 걸 보고, 상태로 먼저 나누고
 시각은 모집중일 때만 보게 고쳤다."
+
+---
+
+## 2026-10-06. 방장 검수 목록이 참여자 한 명당 쿼리를 두 번씩 더 날렸다 (N+1)
+
+**상황** Phase 1, 방장 검수 목록(ADR-039). 참여자마다 메뉴와 닉네임을 붙여 돌려준다. 순진한 버전으로 먼저 짰다.
+
+```java
+List<Participation> participations = participationRepository.findByGroupOrderIdOrderByJoinedAtAscIdAsc(groupOrderId);
+participations.stream()
+    .map(p -> ParticipantItemsResponse.of(p,
+        orderItemRepository.findByParticipationId(p.getId()),   // 사람마다 메뉴 조회
+        groupOrder.isHost(p.getUser().getId())))                // of() 안에서 닉네임을 읽는다
+```
+
+**증상** 테스트에서 Hibernate 통계(`getPrepareStatementCount`)로 요청 하나의 SQL 수를 셌다.
+참여자 2명일 때 7번, 5명일 때 13번. 사람이 늘수록 쿼리가 는다.
+
+```
+[2명일 때 쿼리 7번, 5명일 때 13번]
+```
+
+**원인** 3 + 2N으로 나뉜다.
+- 고정 3번: 인증 필터의 사용자 조회, 방 조회, 명단 조회.
+- 사람당 1번: 반복문 안의 `findByParticipationId`.
+- 사람당 1번: 명단의 user가 지연 로딩 프록시라서, 닉네임을 읽는 순간 user를 따로 가져온다.
+  필터가 방장 user를 이미 읽었지만 그건 다른 영속성 컨텍스트라 여기서는 다시 읽는다.
+- `isHost(...)`의 `getUser().getId()`와 `getHost().getId()`는 0번. 프록시는 자기 id를 알고 있다.
+
+**해결** 한 번에 하나씩 고치며 다시 셌다.
+1. 명단을 `JOIN FETCH p.user` 쿼리(`findRosterWithUser`)로 바꿨다. 2명 5번, 5명 8번(3 + N). 닉네임 쪽 N이 사라졌다.
+2. 반복문 밖에서 방의 메뉴 전부를 한 번에 받고(`findByGroupOrderId`), `groupingBy`로 참여 id별로 묶어
+   반복문에서는 Map에서 꺼냈다. 메뉴 없는 사람은 `getOrDefault(id, List.of())`. 2명 4번, 5명 4번.
+
+**배운 것**
+- 지연 로딩 프록시는 id만 꺼낼 때는 쿼리가 안 나가고, 다른 필드를 읽는 순간 나간다. 어느 줄이
+  쿼리를 부르는지는 코드만 봐서는 안 보이고, 세어 봐야 보인다.
+- "쿼리 수가 인원과 무관한가"는 2명과 5명의 쿼리 수가 같은지로 테스트할 수 있다. 숫자를 박지 않아서
+  필터 쿼리 같은 고정분이 바뀌어도 깨지지 않는다.
+- 반복문 안의 리포지토리 호출은 반복문 밖으로 꺼내 한 번에 받고, 메모리에서 나누면 된다.
+
+**한 줄 요약** "방장 검수 목록을 순진하게 짰더니 참여자 2명에 7번, 5명에 13번 쿼리가 나갔다.
+닉네임 지연 로딩과 사람마다 메뉴 조회가 각각 N번이었다. 명단을 JOIN FETCH로, 메뉴를 방 단위로 한 번에
+받아 groupingBy로 나눠서 인원과 상관없이 4번으로 고정했다."

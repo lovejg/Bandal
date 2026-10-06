@@ -73,6 +73,10 @@ public class GroupOrder {
         this.status = GroupOrderStatus.RECRUITING;
     }
 
+    public boolean isHost(Long userId) {
+        return Objects.equals(userId, this.host.getId());
+    }
+
     // 이 사람이 지금 이 방에 들어와도 되는지
     public void checkJoinable(User user, long participantCount, Instant now) {
         if(this.status != GroupOrderStatus.RECRUITING) {

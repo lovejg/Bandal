@@ -102,4 +102,43 @@ class ParticipationTest {
                     .isInstanceOf(IllegalStateException.class);
         }
     }
+
+    @Nested
+    @DisplayName("메뉴 보기 검사")
+    class CheckItemsViewable {
+
+        @Test
+        @DisplayName("주인은 자기 메뉴를 볼 수 있다")
+        void allowsOwner() {
+            assertThatCode(() -> memberParticipation.checkItemsViewable(MEMBER_ID))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("방장은 남의 메뉴를 볼 수 있다")
+        void allowsHost() {
+            // 검수해야 한다 (ADR-039)
+            assertThatCode(() -> memberParticipation.checkItemsViewable(HOST_ID))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("주인도 방장도 아니면 볼 수 없다")
+        void rejectsOtherUser() {
+            assertThatThrownBy(() -> memberParticipation.checkItemsViewable(OTHER_ID))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("상태는 보지 않는다. 마감, 취소된 방에서도 주인은 볼 수 있다")
+        void ignoresStatus() {
+            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+            assertThatCode(() -> memberParticipation.checkItemsViewable(MEMBER_ID))
+                    .doesNotThrowAnyException();
+
+            groupOrder.cancelByHost(HOST_ID, "가게가 문을 닫았습니다");
+            assertThatCode(() -> memberParticipation.checkItemsViewable(MEMBER_ID))
+                    .doesNotThrowAnyException();
+        }
+    }
 }

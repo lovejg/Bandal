@@ -191,4 +191,21 @@ class ParticipationRepositoryTest {
 
         assertThat(stats).containsExactly(new GroupOrderStat(groupOrder.getId(), 1));
     }
+
+    @Test
+    @DisplayName("검수 명단은 그 방 참여자만, 들어온 순서로, 사용자까지 채워서 가져온다")
+    void findsRosterWithUser() {
+        Participation first = participationRepository.save(new Participation(groupOrder, host, JOINED_AT));
+        Participation second = participationRepository.save(new Participation(groupOrder, member, JOINED_AT));
+        participationRepository.save(new Participation(otherGroupOrder, host, JOINED_AT));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Participation> roster = participationRepository.findRosterWithUser(groupOrder.getId());
+
+        // joinedAt이 같으면 id 순서. 방장이 먼저 저장됐다
+        assertThat(roster).extracting(Participation::getId).containsExactly(first.getId(), second.getId());
+        // JOIN FETCH라 사용자가 프록시가 아니라 이미 읽힌 상태다. 닉네임을 꺼내도 쿼리가 안 나간다
+        assertThat(roster).allSatisfy(p -> assertThat(Hibernate.isInitialized(p.getUser())).isTrue());
+    }
 }

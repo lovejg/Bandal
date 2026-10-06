@@ -17,6 +17,16 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     // 한 참여자가 담은 메뉴들
     List<OrderItem> findByParticipationId(Long participationId);
 
+    // 한 방의 메뉴 전부. 검수 목록이 사람마다 묻지 않고 한 번에 가져온다
+    // 누구 메뉴인지는 서비스가 oi.getParticipation().getId()로 나눈다. 프록시라도 id는 쿼리 없이 나온다
+    // 담은 순서대로 보이게 id로 정렬한다
+    @Query("""
+        SELECT oi FROM OrderItem oi
+        WHERE oi.participation.groupOrder.id = :groupOrderId
+        ORDER BY oi.id
+        """)
+    List<OrderItem> findByGroupOrderId(@Param("groupOrderId") Long groupOrderId);
+
     // 방 전체의 메뉴 금액 합계
     // 아무도 메뉴를 담지 않은 방의 경우, SUM을 했을 때 NULL을 뱉는다(더할 행이 없으니까).
     // 근데 해당 NULL이 자바로 넘어올 때 반환 타입이 기본형 long이라서 에러가 터지므로 COALESCE를 사용해야 된다.

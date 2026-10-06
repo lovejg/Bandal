@@ -49,16 +49,21 @@ public class GroupOrderService {
         groupOrderRepository.save(groupOrder);
         Participation participation = new Participation(groupOrder, host, Instant.now());
         participationRepository.save(participation);
-        return GroupOrderResponse.of(groupOrder, 1, 0);
+        return GroupOrderResponse.of(groupOrder, 1, 0, participation.getId());
     }
 
     // 방 상세 조회(단 건)
     @Transactional(readOnly = true)
-    public GroupOrderResponse find(Long groupOrderId) {
+    public GroupOrderResponse find(Long groupOrderId, Long userId) {
         GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+
+        Long myParticipationId = participationRepository.findByGroupOrderIdAndUserId(groupOrderId, userId)
+            .map(Participation::getId)
+            .orElse(null);
+
         return GroupOrderResponse.of(groupOrder, participationRepository.countByGroupOrderId(groupOrderId),
-            orderItemRepository.sumAmountByGroupOrderId(groupOrderId));
+            orderItemRepository.sumAmountByGroupOrderId(groupOrderId), myParticipationId);
     }
 
     // 방 목록 조회

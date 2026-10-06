@@ -78,6 +78,31 @@ class GroupOrderTest {
     }
 
     @Nested
+    @DisplayName("방장인가")
+    class IsHost {
+
+        @Test
+        @DisplayName("방장 id면 true다")
+        void trueForHost() {
+            // 값만 같은 새 Long으로 묻는다. ==로 비교했다면 여기서 false가 나온다
+            assertThat(groupOrder.isHost(Long.valueOf(HOST_ID.longValue()))).isTrue();
+        }
+
+        @Test
+        @DisplayName("다른 사람 id면 예외 없이 false다")
+        void falseForOthers() {
+            // 검수 목록에서 참여자마다 묻는다. 방장이 아닌 건 에러가 아니다 (ADR-039)
+            assertThat(groupOrder.isHost(OTHER_ID)).isFalse();
+        }
+
+        @Test
+        @DisplayName("id가 null이면 false다")
+        void falseForNull() {
+            assertThat(groupOrder.isHost(null)).isFalse();
+        }
+    }
+
+    @Nested
     @DisplayName("참여 가능 검사")
     class CheckJoinable {
 

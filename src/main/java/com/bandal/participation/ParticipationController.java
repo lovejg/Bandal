@@ -1,5 +1,6 @@
 package com.bandal.participation;
 
+import com.bandal.participation.dto.GroupOrderItemsResponse;
 import com.bandal.participation.dto.OrderItemRequest;
 import com.bandal.participation.dto.ParticipationItemsResponse;
 import com.bandal.participation.dto.ParticipationResponse;
@@ -8,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -47,6 +49,22 @@ public class ParticipationController {
                                               @AuthenticationPrincipal Long userId,
                                               @Valid @RequestBody OrderItemRequest request) {
         return participationService.addItem(participationId, userId, request);
+    }
+
+    // 내 메뉴 조회. 담기 응답과 같은 모양이라 프론트가 같은 코드로 그린다 (ADR-039)
+    // 주인과 방장만 볼 수 있다
+    @GetMapping("/api/participations/{participationId}/order-items")
+    public ParticipationItemsResponse findItems(@PathVariable Long participationId,
+                                                @AuthenticationPrincipal Long userId) {
+        return participationService.findItems(participationId, userId);
+    }
+
+    // 방장 검수 목록. 참여자마다 메뉴와 합계를 붙여서 돌려준다 (ADR-039)
+    // 주소는 방 아래지만 메뉴를 다루는 일이라 이 컨트롤러에 둔다. 방장만 볼 수 있다
+    @GetMapping("/api/group-orders/{groupOrderId}/order-items")
+    public GroupOrderItemsResponse findReviewList(@PathVariable Long groupOrderId,
+                                                  @AuthenticationPrincipal Long userId) {
+        return participationService.findReviewList(groupOrderId, userId);
     }
 
     // 메뉴 고치기. 폼 전체를 다시 받아 통째로 바꾸니 PUT
