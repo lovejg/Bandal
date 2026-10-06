@@ -141,7 +141,7 @@ class OrderItemTest {
         @Test
         @DisplayName("마감된 방에는 메뉴를 담을 수 없다")
         void rejectsWhenClosed() {
-            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+            groupOrder.closeByHost(HOST_ID, 2, 20_000, OPEN);
 
             assertThatThrownBy(() -> participation.addItem(MEMBER_ID, "마라탕", null, 9_000, 1, OPEN))
                     .isInstanceOf(IllegalStateException.class);
@@ -151,7 +151,7 @@ class OrderItemTest {
         @DisplayName("마감 후 방장이라도 새 메뉴를 담을 수는 없다")
         void hostCannotAddAfterClose() {
             // 방장에게 열린 건 고치기뿐이다. 담기까지 열면 주문 뒤에 정산표만 늘어난다
-            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+            groupOrder.closeByHost(HOST_ID, 2, 20_000, OPEN);
 
             assertThatThrownBy(() -> hostParticipation.addItem(HOST_ID, "공기밥", null, 1_000, 1, OPEN))
                     .isInstanceOf(IllegalStateException.class);
@@ -285,7 +285,7 @@ class OrderItemTest {
         @Test
         @DisplayName("마감 후 방장이 남의 메뉴를 고치면 바뀌고 수정 표시가 남는다")
         void hostUpdatesAfterClose() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, OPEN);
 
             // 마감 시각이 지난 뒤에도 된다. 검수는 주문 직전에 한다
             item.update(HOST_ID, "공기밥", null, 1_000, 1, LATE);
@@ -298,7 +298,7 @@ class OrderItemTest {
         @DisplayName("마감 시각 전에 방장이 손으로 마감했으면 그때부터 주인은 못 고치고 방장은 고친다")
         void manualCloseBeforeDeadline() {
             // 최소주문금액이 일찍 차서 19:10에 마감한 방. 마감 시각(19:30)은 아직 안 왔다
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, OPEN);
 
             assertThatThrownBy(() -> item.update(MEMBER_ID, "공기밥", null, 1_000, 1, OPEN))
                     .isInstanceOf(IllegalStateException.class);
@@ -313,7 +313,7 @@ class OrderItemTest {
         @DisplayName("마감 후 방장이 자기 메뉴를 고치면 수정 표시는 없다")
         void hostUpdatesOwnItemAfterClose() {
             // 표시는 "남이 내 메뉴를 고쳤다"를 알려주려는 것이다. 자기 메뉴면 알릴 사람이 없다
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, OPEN);
 
             hostItem.update(HOST_ID, "꿔바로우", "중", 15_000, 1, LATE);
 
@@ -324,7 +324,7 @@ class OrderItemTest {
         @Test
         @DisplayName("마감 후에는 주인도 자기 메뉴를 고칠 수 없다")
         void ownerCannotUpdateAfterClose() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, OPEN);
 
             assertThatThrownBy(() -> item.update(MEMBER_ID, "공기밥", null, 1_000, 1, LATE))
                     .isInstanceOf(IllegalStateException.class);
@@ -334,7 +334,7 @@ class OrderItemTest {
         @Test
         @DisplayName("마감 후에도 다른 참여자는 고칠 수 없다")
         void otherCannotUpdateAfterClose() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, OPEN);
 
             assertThatThrownBy(() -> item.update(OTHER_ID, "공기밥", null, 1_000, 1, LATE))
                     .isInstanceOf(IllegalStateException.class);
@@ -413,7 +413,7 @@ class OrderItemTest {
         @Test
         @DisplayName("마감된 방에서는 뺄 수 없다")
         void rejectsWhenClosed() {
-            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+            groupOrder.closeByHost(HOST_ID, 2, 20_000, OPEN);
 
             assertThatThrownBy(() -> participation.removeItem(MEMBER_ID, item, OPEN))
                     .isInstanceOf(IllegalStateException.class);
@@ -423,7 +423,7 @@ class OrderItemTest {
         @DisplayName("마감 후 방장도 남의 메뉴를 뺄 수는 없다")
         void hostCannotRemoveAfterClose() {
             // 방장에게 열린 건 고치기뿐이다 (ADR-038)
-            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+            groupOrder.closeByHost(HOST_ID, 2, 20_000, OPEN);
 
             assertThatThrownBy(() -> participation.removeItem(HOST_ID, item, LATE))
                     .isInstanceOf(IllegalStateException.class);

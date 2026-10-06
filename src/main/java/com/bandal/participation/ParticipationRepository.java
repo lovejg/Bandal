@@ -21,6 +21,7 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
     boolean existsByGroupOrderIdAndUserId(Long groupOrderId, Long userId);
 
     // 방 상세에서 "보는 사람의 참여 행"을 찾는다. (방, 사용자) 유니크라 많아야 하나다
+    // 그냥 쉽게 생각해서 해당 방에서 이 사람의 참여 행 찾아달라 쿼리
     Optional<Participation> findByGroupOrderIdAndUserId(Long groupOrderId, Long userId);
 
     // 검수 목록의 명단을 사용자까지 한 번에 가져온다(nickname으로 인한 N+1 문제 해결)

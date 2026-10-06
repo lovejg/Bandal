@@ -129,7 +129,7 @@ class SettlementApiTest {
         orderItemRepository.save(
                 memberParticipation.addItem(member.getId(), "마라탕 소", "중간맛", MEMBER_MENU, 1, Instant.now()));
 
-        groupOrder.closeByHost(host.getId(), 2, HOST_MENU + MEMBER_MENU);
+        groupOrder.closeByHost(host.getId(), 2, HOST_MENU + MEMBER_MENU, Instant.now());
         groupOrderRepository.saveAndFlush(groupOrder);
     }
 

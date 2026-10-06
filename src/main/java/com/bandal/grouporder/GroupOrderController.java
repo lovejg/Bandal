@@ -48,4 +48,13 @@ public class GroupOrderController {
                                    @AuthenticationPrincipal Long userId) {
         return groupOrderService.find(groupOrderId, userId);
     }
+
+    // 방장의 마감. 상태 전이라 자원 이름 대신 동사 주소를 쓴다 (ADR-023)
+    // 만드는 게 아니라 있는 방의 상태를 바꾸는 거라 201이 아니라 200이다
+    // 마감 시각이 지난 방은 조건 미달이면 취소로 끝나고, 그때도 200에 status CANCELED가 나간다 (ADR-040)
+    @PostMapping("/{groupOrderId}/close")
+    public GroupOrderResponse close(@PathVariable Long groupOrderId,
+                                    @AuthenticationPrincipal Long userId) {
+        return groupOrderService.close(groupOrderId, userId);
+    }
 }

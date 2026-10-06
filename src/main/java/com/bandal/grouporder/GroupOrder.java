@@ -94,18 +94,21 @@ public class GroupOrder {
     }
 
     // 방장이 직접 마감. 조건에 안 맞으면 사유를 담아 거절한다
-    public void closeByHost(Long requesterId, long participantCount, long menuTotalAmount) {
+    public void closeByHost(Long requesterId, long participantCount, long menuTotalAmount, Instant now) {
         if (status != GroupOrderStatus.RECRUITING) {
             throw new IllegalStateException("모집중인 방만 마감할 수 있습니다");
         }
         if (!Objects.equals(requesterId, host.getId())) {
             throw new IllegalStateException("방장만 마감할 수 있습니다");
         }
+        if(!now.isBefore(this.deadlineAt)) {
+            closeAtDeadline(participantCount, menuTotalAmount, now);
+            return;
+        }
         if (participantCount < 2) {
             throw new IllegalStateException("방장을 포함해 2명 이상이어야 마감할 수 있습니다");
         }
         if (menuTotalAmount < minOrderAmount) {
-            // 얼마나 모자란지까지 알려준다. 조건을 쪼갠 덕에 계산할 값이 손에 있다
             throw new IllegalStateException(
                     "최소주문금액에 " + (minOrderAmount - menuTotalAmount) + "원 모자랍니다");
         }

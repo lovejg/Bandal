@@ -86,7 +86,7 @@ class ParticipationTest {
         @Test
         @DisplayName("마감된 방에서는 나갈 수 없다")
         void rejectsClosedRoom() {
-            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+            groupOrder.closeByHost(HOST_ID, 2, 20_000, BEFORE_DEADLINE);
 
             assertThatThrownBy(() -> memberParticipation.checkLeavable(MEMBER_ID, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
@@ -132,7 +132,7 @@ class ParticipationTest {
         @Test
         @DisplayName("상태는 보지 않는다. 마감, 취소된 방에서도 주인은 볼 수 있다")
         void ignoresStatus() {
-            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+            groupOrder.closeByHost(HOST_ID, 2, 20_000, BEFORE_DEADLINE);
             assertThatCode(() -> memberParticipation.checkItemsViewable(MEMBER_ID))
                     .doesNotThrowAnyException();
 

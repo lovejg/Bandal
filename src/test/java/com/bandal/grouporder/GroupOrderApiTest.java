@@ -435,10 +435,87 @@ class GroupOrderApiTest {
         mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
                         .header("Authorization", bearer(host.getId())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("CLOSED"));
+                .andExpect(jsonPath("$.status").value("CLOSED"))
+                // 마감 직후 방장 화면은 방 상세와 같은 모양으로 그린다 (ADR-040)
+                .andExpect(jsonPath("$.participantCount").value(2))
+                .andExpect(jsonPath("$.menuTotalAmount").value(20_000));
 
         assertThat(groupOrderRepository.findById(groupOrder.getId()).orElseThrow().getStatus())
                 .isEqualTo(GroupOrderStatus.CLOSED);
+    }
+
+    @Test
+    @DisplayName("최소주문금액이 모자라면 409이고 방은 모집중으로 남는다")
+    void rejectsCloseWhenShortAmount() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+        ReflectionTestUtils.setField(groupOrder, "minOrderAmount", 25_000L);
+        groupOrderRepository.save(groupOrder);
+
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("최소주문금액에 5000원 모자랍니다"));
+
+        assertThat(groupOrderRepository.findById(groupOrder.getId()).orElseThrow().getStatus())
+                .isEqualTo(GroupOrderStatus.RECRUITING);
+    }
+
+    @Test
+    @DisplayName("마감 시각이 지난 방도 조건을 채웠으면 마감된다")
+    void closesAfterDeadline() throws Exception {
+        GroupOrder groupOrder = givenLateRoom(20_000);
+
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"))
+                .andExpect(jsonPath("$.cancelType").isEmpty());
+    }
+
+    @Test
+    @DisplayName("마감 시각이 지난 방이 금액을 못 채웠으면 200이고 자동 취소가 저장된다")
+    void cancelsAfterDeadlineWhenShortAmount() throws Exception {
+        // 채울 길이 없는 금액으로 거절하면 방이 영원히 모집중이다. 자동 마감 규칙대로 취소한다 (ADR-040)
+        GroupOrder groupOrder = givenLateRoom(12_000);
+
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELED"))
+                .andExpect(jsonPath("$.cancelType").value("DEADLINE_UNMET"))
+                .andExpect(jsonPath("$.cancelReason").isNotEmpty());
+
+        // 409로 알리려고 예외를 던졌다면 롤백돼서 여기가 모집중으로 남는다
+        GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
+        assertThat(saved.getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+        assertThat(saved.getCancelType()).isEqualTo(CancelType.DEADLINE_UNMET);
+    }
+
+    @Test
+    @DisplayName("마감 시각이 지났어도 방장이 아닌 사람은 409이고 방은 그대로다")
+    void rejectsCloseByNonHostAfterDeadline() throws Exception {
+        GroupOrder groupOrder = givenLateRoom(12_000);
+
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(member.getId())))
+                .andExpect(status().isConflict());
+
+        GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
+        assertThat(saved.getStatus()).isEqualTo(GroupOrderStatus.RECRUITING);
+        assertThat(saved.getCancelType()).isNull();
+    }
+
+    @Test
+    @DisplayName("이미 마감된 방을 다시 마감하면 409다")
+    void rejectsCloseTwice() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -486,6 +563,22 @@ class GroupOrderApiTest {
 
         orderItemRepository.save(hostParticipation.addItem(host.getId(), "꿔바로우", "소", 11_000, 1, Instant.now()));
         orderItemRepository.save(memberParticipation.addItem(member.getId(), "마라탕", "2단계", 9_000, 1, Instant.now()));
+        return groupOrder;
+    }
+
+    // 마감 시각이 30분 지났는데 스케줄러가 없어서 아직 모집중인 방. 방장과 참여자 한 명, 최소주문금액 15,000원
+    // 메뉴는 마감 전에 담았다. 담는 시각을 마감 1분 전으로 넘겨서 만든다
+    GroupOrder givenLateRoom(long memberMenuPrice) {
+        Instant deadline = Instant.now().minus(30, ChronoUnit.MINUTES);
+        Instant beforeDeadline = deadline.minus(1, ChronoUnit.MINUTES);
+        GroupOrder groupOrder = groupOrderRepository.save(
+                new GroupOrder(host, pickupSpot, "○○마라탕", 15_000L, deadline, 4));
+        participationRepository.save(new Participation(groupOrder, host, beforeDeadline));
+        Participation memberParticipation =
+                participationRepository.save(new Participation(groupOrder, member, beforeDeadline));
+
+        orderItemRepository.save(
+                memberParticipation.addItem(member.getId(), "마라탕", null, memberMenuPrice, 1, beforeDeadline));
         return groupOrder;
     }
 }

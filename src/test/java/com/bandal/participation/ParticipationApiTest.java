@@ -257,7 +257,7 @@ class ParticipationApiTest {
         @DisplayName("마감된 방에는 참여할 수 없다")
         void rejectsClosedRoom() throws Exception {
             participationRepository.save(new Participation(groupOrder, member, Instant.now()));
-            groupOrder.closeByHost(host.getId(), 2, 20_000);
+            groupOrder.closeByHost(host.getId(), 2, 20_000, Instant.now());
             groupOrderRepository.saveAndFlush(groupOrder);
 
             User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
@@ -372,7 +372,7 @@ class ParticipationApiTest {
         @Test
         @DisplayName("마감된 방에서는 나갈 수 없다")
         void rejectsClosedRoom() throws Exception {
-            groupOrder.closeByHost(host.getId(), 2, 20_000);
+            groupOrder.closeByHost(host.getId(), 2, 20_000, Instant.now());
             groupOrderRepository.saveAndFlush(groupOrder);
 
             leave(memberParticipation.getId(), member)
@@ -415,7 +415,7 @@ class ParticipationApiTest {
 
     // 방장이 손으로 마감한다. 방장 + member 2명, 메뉴 합계 조건은 테스트마다 맞춰 넣는다
     void closeRoom() {
-        groupOrder.closeByHost(host.getId(), 2, 20_000);
+        groupOrder.closeByHost(host.getId(), 2, 20_000, Instant.now());
         groupOrderRepository.saveAndFlush(groupOrder);
     }
 

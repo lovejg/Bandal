@@ -23,6 +23,9 @@ class GroupOrderTest {
     static final Long OTHER_ID = 1_001L;
     static final long MIN_ORDER_AMOUNT = 15_000;
     static final Instant DEADLINE = Instant.parse("2026-09-17T10:30:00Z");
+    static final Instant BEFORE_DEADLINE = DEADLINE.minusSeconds(60);
+    // 스케줄러가 없어서 마감 시각이 지나도 모집중으로 남은 방을 방장이 뒤늦게 연 시각 (ADR-040)
+    static final Instant AFTER_DEADLINE = DEADLINE.plusSeconds(60 * 30);
 
     GroupOrder groupOrder;
     University university;
@@ -106,8 +109,6 @@ class GroupOrderTest {
     @DisplayName("참여 가능 검사")
     class CheckJoinable {
 
-        static final Instant BEFORE_DEADLINE = DEADLINE.minusSeconds(60);
-
         User member;
 
         @BeforeEach
@@ -147,7 +148,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("마감된 방에는 들어올 수 없다")
         void rejectsWhenClosed() {
-            groupOrder.closeByHost(HOST_ID, 2, 20_000);
+            groupOrder.closeByHost(HOST_ID, 2, 20_000, BEFORE_DEADLINE);
 
             assertThatThrownBy(() -> groupOrder.checkJoinable(member, 2, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
@@ -181,7 +182,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("2명 이상이고 메뉴 합계가 최소주문금액 이상이면 마감된다")
         void closes() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CLOSED);
         }
@@ -189,7 +190,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("딱 2명, 딱 최소주문금액이어도 마감된다")
         void closesAtBoundary() {
-            groupOrder.closeByHost(HOST_ID, 2, MIN_ORDER_AMOUNT);
+            groupOrder.closeByHost(HOST_ID, 2, MIN_ORDER_AMOUNT, BEFORE_DEADLINE);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CLOSED);
         }
@@ -197,7 +198,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("방장이 아닌 사람은 마감할 수 없다")
         void rejectsNonHost() {
-            assertThatThrownBy(() -> groupOrder.closeByHost(OTHER_ID, 3, 20_000))
+            assertThatThrownBy(() -> groupOrder.closeByHost(OTHER_ID, 3, 20_000, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.RECRUITING);
@@ -206,7 +207,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("방장 혼자면 마감할 수 없고 모집중으로 남는다")
         void rejectsSinglePerson() {
-            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 1, 20_000))
+            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 1, 20_000, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.RECRUITING);
@@ -215,7 +216,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("최소주문금액에 1원이라도 모자라면 마감할 수 없고, 취소되지도 않는다")
         void rejectsShortAmount() {
-            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 3, MIN_ORDER_AMOUNT - 1))
+            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 3, MIN_ORDER_AMOUNT - 1, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.RECRUITING);
@@ -224,12 +225,101 @@ class GroupOrderTest {
         }
 
         @Test
+        @DisplayName("마감 1초 전에 모자라면 아직 수동 마감 규칙이라 거절만 된다")
+        void rejectsShortAmountOneSecondBeforeDeadline() {
+            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 3, MIN_ORDER_AMOUNT - 1, DEADLINE.minusSeconds(1)))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.RECRUITING);
+        }
+
+        @Test
         @DisplayName("이미 마감된 방은 다시 마감할 수 없다")
         void rejectsWhenNotRecruiting() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
 
-            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 3, 20_000))
+            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    // 스케줄러가 없어서 마감 시각이 지나도 모집중인 방. 버튼이 자동 마감 규칙을 대신 일으킨다 (ADR-040)
+    @Nested
+    @DisplayName("마감 시각이 지난 뒤 방장의 마감")
+    class CloseByHostAfterDeadline {
+
+        @Test
+        @DisplayName("조건을 채웠으면 마감되고 취소 기록은 없다")
+        void closesWhenMet() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, AFTER_DEADLINE);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CLOSED);
+            assertThat(groupOrder.getCancelType()).isNull();
+            assertThat(groupOrder.getCancelReason()).isNull();
+        }
+
+        @Test
+        @DisplayName("금액이 모자라면 거절하지 않고 자동 취소된다")
+        void cancelsWhenShortAmount() {
+            // 시각이 지나 참여도 담기도 막혀서 모자란 금액을 채울 길이 없다. 거절하면 방이 영원히 모집중이다
+            assertThatCode(() -> groupOrder.closeByHost(HOST_ID, 3, MIN_ORDER_AMOUNT - 1, AFTER_DEADLINE))
+                    .doesNotThrowAnyException();
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+            assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.DEADLINE_UNMET);
+            assertThat(groupOrder.getCancelReason()).isNotBlank();
+        }
+
+        @Test
+        @DisplayName("방장 혼자면 자동 취소된다")
+        void cancelsWhenSinglePerson() {
+            groupOrder.closeByHost(HOST_ID, 1, 20_000, AFTER_DEADLINE);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+            assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.DEADLINE_UNMET);
+        }
+
+        @Test
+        @DisplayName("정확히 마감 시각이면 이미 지난 것으로 본다")
+        void deadlineItselfCountsAsPassed() {
+            // 참여와 담기가 정각부터 막히니 마감도 정각부터 자동 마감 규칙이다
+            groupOrder.closeByHost(HOST_ID, 3, MIN_ORDER_AMOUNT - 1, DEADLINE);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+            assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.DEADLINE_UNMET);
+        }
+
+        @Test
+        @DisplayName("방장이 아닌 사람은 시각이 지났어도 마감도 취소도 못 시킨다")
+        void rejectsNonHost() {
+            // 시각을 방장 검사보다 먼저 보면, 참여자 한 명의 요청으로 방이 취소된다
+            assertThatThrownBy(() -> groupOrder.closeByHost(OTHER_ID, 3, MIN_ORDER_AMOUNT - 1, AFTER_DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.RECRUITING);
+            assertThat(groupOrder.getCancelType()).isNull();
+        }
+
+        @Test
+        @DisplayName("이미 마감된 방은 시각이 지났어도 다시 처리하지 않는다")
+        void rejectsWhenNotRecruiting() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
+
+            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 1, 0, AFTER_DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CLOSED);
+        }
+
+        @Test
+        @DisplayName("취소된 방은 시각이 지났어도 기록을 덮지 않는다")
+        void rejectsWhenCanceled() {
+            groupOrder.cancelByHost(HOST_ID, null);
+
+            assertThatThrownBy(() -> groupOrder.closeByHost(HOST_ID, 1, 0, AFTER_DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.HOST_WHILE_RECRUITING);
         }
     }
 
@@ -287,7 +377,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("이미 마감된 방은 처리할 수 없다")
         void rejectsWhenNotRecruiting() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
 
             assertThatThrownBy(() -> groupOrder.closeAtDeadline(3, 20_000, DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
@@ -323,7 +413,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("마감 뒤에는 사유를 적으면 취소할 수 있다")
         void cancelsAfterClosedWithReason() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
 
             groupOrder.cancelByHost(HOST_ID, REASON);
 
@@ -335,7 +425,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("마감 뒤에는 사유 없이 취소할 수 없고 마감으로 남는다")
         void rejectsAfterClosedWithoutReason() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
 
             assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, null))
                     .isInstanceOf(IllegalStateException.class);
@@ -347,7 +437,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("마감 뒤에 공백만 적은 사유는 사유가 없는 것으로 본다")
         void rejectsAfterClosedWithBlankReason() {
-            groupOrder.closeByHost(HOST_ID, 3, 20_000);
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
 
             assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, "   "))
                     .isInstanceOf(IllegalStateException.class);

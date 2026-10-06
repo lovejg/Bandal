@@ -102,4 +102,22 @@ public class GroupOrderService {
 
         return new GroupOrderListResponse(rooms, slice.hasNext());
     }
+
+    // 방장 마감
+    @Transactional
+    public GroupOrderResponse close(Long groupOrderId, Long userId) {
+        GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+
+        long participantcount = participationRepository.countByGroupOrderId(groupOrderId);
+        long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
+
+        groupOrder.closeByHost(userId, participantcount, menuTotalAmount, Instant.now());
+
+        Long myParticipationId = participationRepository.findByGroupOrderIdAndUserId(groupOrderId, userId)
+            .map(Participation::getId)
+            .orElse(null);
+
+        return GroupOrderResponse.of(groupOrder, participantcount, menuTotalAmount, myParticipationId);
+    }
 }

@@ -163,7 +163,7 @@ class GroupOrderListApiTest {
         GroupOrder closed = room(host, dorm, "마감된 방", 20_000, inHours(2), 4);
         User member = user(hankuk, "참여자", true);
         participationRepository.save(new Participation(closed, member, Instant.now()));
-        closed.closeByHost(host.getId(), 2, 20_000);
+        closed.closeByHost(host.getId(), 2, 20_000, Instant.now());
         groupOrderRepository.save(closed);
 
         room(user(hankuk, "다른방장", true), dorm, "모집중인 방", 8_000, inHours(2), 4);
