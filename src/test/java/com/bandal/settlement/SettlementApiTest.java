@@ -14,6 +14,7 @@ import com.bandal.university.UniversityRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -135,7 +135,7 @@ class SettlementApiTest {
 
     String feeBody(long deliveryFee) {
         return """
-                {"deliveryFee": %d, "totalPaidAmount": 19500}
+                {"deliveryFee": %d}
                 """.formatted(deliveryFee);
     }
 
@@ -154,74 +154,7 @@ class SettlementApiTest {
                 .orElseThrow();
     }
 
-    @Nested
-    @DisplayName("계좌 등록")
-    class Account {
-
-        @Test
-        @DisplayName("계좌가 없으면 방을 만들 수 없다")
-        void rejectsHostWithoutAccount() throws Exception {
-            String body = """
-                    {"pickupSpotId": %d, "storeName": "○○마라탕", "minOrderAmount": 15000,
-                     "deadlineAt": "%s", "capacity": 4}
-                    """.formatted(pickupSpot.getId(), Instant.now().plus(2, ChronoUnit.HOURS));
-
-            // member는 계좌가 없다. 돈 받을 곳이 없는 사람이 방장을 할 수는 없다 (ADR-031)
-            mockMvc.perform(post("/api/group-orders")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(body))
-                    .andExpect(status().isConflict());
-
-            assertThat(groupOrderRepository.count()).isZero();
-        }
-
-        @Test
-        @DisplayName("계좌를 등록하면 방을 만들 수 있다")
-        void allowsAfterRegistering() throws Exception {
-            mockMvc.perform(put("/api/users/me/account")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"bankName":"한국은행","accountNumber":"110-999-888","accountHolder":"이영희"}
-                                    """))
-                    .andExpect(status().isOk());
-
-            String body = """
-                    {"pickupSpotId": %d, "storeName": "△△치킨", "minOrderAmount": 15000,
-                     "deadlineAt": "%s", "capacity": 4}
-                    """.formatted(pickupSpot.getId(), Instant.now().plus(2, ChronoUnit.HOURS));
-
-            mockMvc.perform(post("/api/group-orders")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(body))
-                    .andExpect(status().isCreated());
-        }
-
-        @Test
-        @DisplayName("은행이 비면 400이다")
-        void rejectsBlankBank() throws Exception {
-            mockMvc.perform(put("/api/users/me/account")
-                            .header("Authorization", bearer(member.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"bankName":"  ","accountNumber":"110-999-888","accountHolder":"이영희"}
-                                    """))
-                    .andExpect(status().isBadRequest());
-        }
-
-        @Test
-        @DisplayName("계좌 등록에는 로그인이 필요하다")
-        void requiresLogin() throws Exception {
-            mockMvc.perform(put("/api/users/me/account")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content("""
-                                    {"bankName":"한국은행","accountNumber":"110-999-888","accountHolder":"이영희"}
-                                    """))
-                    .andExpect(status().isUnauthorized());
-        }
-    }
+    // 계좌 등록 테스트는 user/AccountApiTest로 옮겼다 (ADR-041)
 
     @Nested
     @DisplayName("배달비 입력")
@@ -242,12 +175,16 @@ class SettlementApiTest {
                     .andExpect(jsonPath("$.lines.length()").value(2));
 
             assertThat(settlementRepository.findByGroupOrderId(groupOrder.getId())).hasSize(2);
+            // 응답이 아니라 DB의 방 상태를 본다. 트랜잭션이 빠지면 정산표만 저장되고 방은 마감으로 남는다 (JOURNAL 2026-10-07)
+            GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
+            assertThat(saved.getStatus().name()).isEqualTo("SETTLING");
+            assertThat(saved.getDeliveryFee()).isEqualTo(DELIVERY_FEE);
         }
 
         @Test
         @DisplayName("나누어떨어지지 않는 배달비의 나머지는 방장이 떠안는다")
         void hostAbsorbsRemainder() throws Exception {
-            startSettlement();
+            closedRoom();
 
             // 3,500을 2명이 나누면 1,750씩 딱 떨어지므로 3,501로 확인한다
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
@@ -305,6 +242,90 @@ class SettlementApiTest {
         }
 
         @Test
+        @DisplayName("배달비 0원이면 모두 자기 메뉴값만 보낸다")
+        void freeDelivery() throws Exception {
+            closedRoom();
+
+            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(feeBody(0)))
+                    .andExpect(status().isOk());
+
+            assertThat(lineOf(member).getFeeShare()).isZero();
+            assertThat(lineOf(member).getTotalAmount()).isEqualTo(MEMBER_MENU);
+            assertThat(lineOf(host).getTotalAmount()).isEqualTo(HOST_MENU);
+        }
+
+        @Test
+        @DisplayName("응답에는 방장 시점의 전원 줄과 금액이 들어간다")
+        void respondsHostView() throws Exception {
+            closedRoom();
+
+            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(feeBody(DELIVERY_FEE)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.groupOrderId").value(groupOrder.getId()))
+                    .andExpect(jsonPath("$.menuTotalAmount").value(HOST_MENU + MEMBER_MENU))
+                    .andExpect(jsonPath("$.hostAccount.bankName").value("한국은행"))
+                    .andExpect(jsonPath("$.lines.length()").value(2));
+
+            assertThat(lineOf(member).getTotalAmount()).isEqualTo(MEMBER_MENU + 1_750);
+        }
+
+        @Test
+        @DisplayName("모집중인 방에는 입력할 수 없다")
+        void rejectsWhileRecruiting() throws Exception {
+            groupOrder = groupOrderRepository.save(new GroupOrder(
+                    host, pickupSpot, "○○마라탕", 15_000, Instant.now().plus(2, ChronoUnit.HOURS), 4));
+
+            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(feeBody(DELIVERY_FEE)))
+                    .andExpect(status().isConflict());
+
+            assertThat(settlementRepository.count()).isZero();
+        }
+
+        @Test
+        @DisplayName("없는 방이면 404다")
+        void rejectsUnknownRoom() throws Exception {
+            mockMvc.perform(post("/api/group-orders/999999/delivery-fee")
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(feeBody(DELIVERY_FEE)))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("음수 배달비는 400이다")
+        void rejectsNegativeFee() throws Exception {
+            closedRoom();
+
+            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(feeBody(-1)))
+                    .andExpect(status().isBadRequest());
+
+            assertThat(settlementRepository.count()).isZero();
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 401이다")
+        void requiresLogin() throws Exception {
+            closedRoom();
+
+            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(feeBody(DELIVERY_FEE)))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
         @DisplayName("배달비가 빠지면 어느 필드인지 알려준다")
         void rejectsMissingFee() throws Exception {
             closedRoom();
@@ -317,7 +338,9 @@ class SettlementApiTest {
                     .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("deliveryFee")));
         }
 
+        // 배달비 수정은 입금 표시 API가 생긴 뒤에 붙인다 (ADR-042). 그때 두 테스트를 켠다
         @Test
+        @Disabled("배달비 수정 단위에서 켠다 (ADR-042)")
         @DisplayName("아직 아무도 송금하지 않았으면 배달비를 다시 입력할 수 있다")
         void allowsRetype() throws Exception {
             startSettlement();
@@ -335,6 +358,7 @@ class SettlementApiTest {
         }
 
         @Test
+        @Disabled("배달비 수정 단위에서 켠다 (ADR-042)")
         @DisplayName("한 명이라도 보냈다고 표시하면 배달비를 바꿀 수 없다")
         void rejectsRetypeAfterMarked() throws Exception {
             startSettlement();

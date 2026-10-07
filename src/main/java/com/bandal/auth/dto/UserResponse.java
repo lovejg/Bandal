@@ -10,7 +10,9 @@ public record UserResponse(
         Long universityId,
         String universityName,
         boolean emailVerified,
-        int trustScore
+        int trustScore,
+        // 계좌가 있는지만. 방 만들기 폼을 열기 전에 계좌 등록으로 보낼지 정하는 데 쓴다 (ADR-041)
+        boolean hasAccount
 ) {
 
     public static UserResponse of(User user) {
@@ -21,7 +23,8 @@ public record UserResponse(
                 user.getUniversity().getId(),
                 user.getUniversity().getName(),
                 user.getEmailVerifiedAt() != null,
-                user.getTrustScore()
+                user.getTrustScore(),
+                user.hasAccount()
         );
     }
 }

@@ -12,6 +12,10 @@ import java.util.Optional;
 public interface GroupOrderRepository extends JpaRepository<GroupOrder, Long> {
     Optional<GroupOrder> findById(Long id);
 
+    // 이 사람이 방장인 방 중에 이 상태인 방이 하나라도 있는지. 정산중인 방장의 계좌 변경을 막을 때 쓴다
+    // 메서드 이름으로 만드는 쿼리다. host.id와 status로 찾고, exists라 하나만 찾으면 멈춘다
+    boolean existsByHostIdAndStatus(Long hostId, GroupOrderStatus status);
+
     // 방 목록 조회용 쿼리
     @Query("""
         SELECT go FROM GroupOrder go

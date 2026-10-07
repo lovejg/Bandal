@@ -10,11 +10,8 @@ public record DeliveryFeeRequest(
         // 래퍼 타입이라야 값이 빠졌을 때 어느 필드인지 알려줄 수 있다 (ADR-023)
         @NotNull(message = "배달비를 적어주세요")
         @PositiveOrZero(message = "배달비는 0원 이상이어야 합니다")
-        Long deliveryFee,
+        Long deliveryFee
 
-        // 방장이 실제로 결제한 금액. 쿠폰이나 결제수단 할인 때문에 다를 수 있다.
-        // 통계용이라 정산식에는 쓰지 않는다. 선택 입력이라 null이어도 된다
-        @PositiveOrZero(message = "결제 금액은 0원 이상이어야 합니다")
-        Long totalPaidAmount
+        // 실제 결제금액은 여기서 받지 않는다. 이 시점엔 방장이 아직 결제 전이다 (ADR-042)
 ) {
 }

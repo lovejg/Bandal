@@ -43,10 +43,10 @@ public class GroupOrder {
     @Enumerated(EnumType.STRING)
     private GroupOrderStatus status;
 
-    // 배달비. 주문완료 때 방장이 입력한다. null이면 아직 주문 전
+    // 배달비. 방장이 정산을 시작할 때 입력한다. null이면 아직 정산 전
     private Long deliveryFee;
 
-    // 방장이 배달앱에서 실제로 결제한 금액. 통계용이고 정산식에는 쓰지 않는다
+    // 방장이 배달앱에서 실제로 결제한 금액. 주문완료 때 받는다. 통계용이고 정산식에는 쓰지 않는다 (ADR-042)
     private Long totalPaidAmount;
 
     // 취소된 방에만 값이 있다. 방장이 모집중에 취소하면 사유 없이 null일 수도 있다
@@ -93,7 +93,7 @@ public class GroupOrder {
         }
     }
 
-    // 방장이 직접 마감. 조건에 안 맞으면 사유를 담아 거절한다
+    // 방장이 직접 마감. 조건에 안 맞으면 사유를 담아 거절한다. 마감 시각이 지나면 자동 규칙에 맡긴다
     public void closeByHost(Long requesterId, long participantCount, long menuTotalAmount, Instant now) {
         if (status != GroupOrderStatus.RECRUITING) {
             throw new IllegalStateException("모집중인 방만 마감할 수 있습니다");
@@ -164,5 +164,21 @@ public class GroupOrder {
         }
         cancelReason = reason;
         status = GroupOrderStatus.CANCELED; // 취소
+    }
+
+    // 방장이 배달비를 입력해 정산을 시작한다. 마감된 방에서, 방장만 할 수 있다. 결제금액은 주문완료 때 받으므로 없다
+    public void startSettlement(Long requesterId, long deliveryFee) {
+        if(this.status != GroupOrderStatus.CLOSED) {
+            throw new IllegalStateException("마감된 방만 정산을 시작할 수 있습니다");
+        }
+        if(!Objects.equals(this.host.getId(), requesterId)) {
+            throw new IllegalStateException("방장만 배달비를 입력할 수 있습니다");
+        }
+        if(deliveryFee < 0) {
+            throw new IllegalArgumentException("배달비는 0원 이상이어야 합니다");
+        }
+
+        this.deliveryFee = deliveryFee;
+        status = GroupOrderStatus.SETTLING; // 정산중
     }
 }

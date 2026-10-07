@@ -109,15 +109,15 @@ public class GroupOrderService {
         GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
-        long participantcount = participationRepository.countByGroupOrderId(groupOrderId);
+        long participantCount = participationRepository.countByGroupOrderId(groupOrderId);
         long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
 
-        groupOrder.closeByHost(userId, participantcount, menuTotalAmount, Instant.now());
+        groupOrder.closeByHost(userId, participantCount, menuTotalAmount, Instant.now());
 
         Long myParticipationId = participationRepository.findByGroupOrderIdAndUserId(groupOrderId, userId)
             .map(Participation::getId)
             .orElse(null);
 
-        return GroupOrderResponse.of(groupOrder, participantcount, menuTotalAmount, myParticipationId);
+        return GroupOrderResponse.of(groupOrder, participantCount, menuTotalAmount, myParticipationId);
     }
 }

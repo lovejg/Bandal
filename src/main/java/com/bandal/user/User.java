@@ -62,9 +62,17 @@ public class User {
 
     // 송금받을 계좌를 등록한다. 다시 부르면 덮어쓴다(계좌를 바꿀 수 있어야 한다)
     public void registerAccount(String bankName, String accountNumber, String accountHolder) {
-        if(bankName == null || accountNumber == null || accountHolder == null) return;
+        if(bankName == null || bankName.isBlank()) {
+            throw new IllegalArgumentException("잘못된 은행정보입니다. 다시 입력해주세요");
+        }
+        if(accountNumber == null) throw new IllegalArgumentException("잘못된 계좌번호입니다. 다시 입력해주세요");
+        String tempNumber = accountNumber.replaceAll("[^0-9]", ""); // - 및 공백 제거
+        if(tempNumber.isBlank()) throw new IllegalArgumentException("잘못된 계좌번호입니다. 다시 입력해주세요");
+        if(accountHolder == null || accountHolder.isBlank()) {
+            throw new IllegalArgumentException("잘못된 예금주 정보입니다. 다시 입력해주세요");
+        }
         this.bankName = bankName;
-        this.accountNumber = accountNumber.replaceAll("[^0-9]", ""); // - 및 공백 제거
+        this.accountNumber = tempNumber;
         this.accountHolder = accountHolder;
     }
 
