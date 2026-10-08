@@ -1,6 +1,7 @@
 package com.bandal.settlement;
 
 import com.bandal.grouporder.GroupOrder;
+import com.bandal.grouporder.GroupOrderStatus;
 import com.bandal.user.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -45,6 +46,8 @@ public class Settlement {
     // 방장이 "받았어요"를 누른 시각. 이 값이 주문완료 전이의 기준이다
     private Instant confirmedPaidAt;
 
+    // 방장이 확인을 취소한 마지막 시각. 값이 있으면 확인했다가 되돌린 적이 있다는 뜻이다
+    private Instant confirmRevokedAt;
 
     Settlement(GroupOrder groupOrder, User user, long menuTotalAmount, long feeShare,
                boolean host, Instant now) {
@@ -62,6 +65,9 @@ public class Settlement {
 
     // 참여자가 송금하고 "보냈어요"를 누른다
     public void markPaid(Long requesterId, Instant now) {
+        if(this.groupOrder.getStatus() != GroupOrderStatus.SETTLING) {
+            throw new IllegalStateException("정산중인 방에서만 할 수 있습니다");
+        }
         if(!Objects.equals(this.user.getId(), requesterId)) {
             throw new IllegalStateException("자기 몫만 표시할 수 있습니다");
         }
@@ -79,7 +85,9 @@ public class Settlement {
 
     // 방장이 입금을 확인한다.
     public void confirm(Long requesterId, Instant now) {
-        // 지연로딩 프록시라도 getId()는 SELECT를 내지 않는다
+        if(this.groupOrder.getStatus() != GroupOrderStatus.SETTLING) {
+            throw new IllegalStateException("정산중인 방에서만 할 수 있습니다");
+        }
         if (!Objects.equals(groupOrder.getHost().getId(), requesterId)) {
             throw new IllegalStateException("방장만 입금을 확인할 수 있습니다");
         }
@@ -88,6 +96,31 @@ public class Settlement {
         }
 
         confirmedPaidAt = now;
+    }
+
+    // 방장이 잘못 누른 확인을 되돌린다. 참여자의 표시는 건드리지 않는다 (ADR-045)
+    public void revokeConfirm(Long requesterId, Instant now) {
+        if(this.groupOrder.getStatus() != GroupOrderStatus.SETTLING) {
+            throw new IllegalStateException("정산중인 방에서만 할 수 있습니다");
+        }
+        if(!Objects.equals(this.groupOrder.getHost().getId(), requesterId)) {
+            throw new IllegalStateException("방장만 확인을 취소할 수 있습니다");
+        }
+        if(host) {
+            throw new IllegalStateException("방장 줄은 확인을 취소할 수 없습니다");
+        }
+        if(confirmedPaidAt == null) {
+            return;
+        }
+
+        confirmedPaidAt = null;
+        confirmRevokedAt = now;
+    }
+
+    // 이 줄에 입금과 관련된 흔적이 하나라도 있는가. 있으면 배달비를 고칠 수 없다
+    public boolean hasPaymentRecord() {
+        if(host) return false; // 방장 줄은 있을리가 없음
+        return markedPaidAt != null || confirmedPaidAt != null || confirmRevokedAt != null;
     }
 
     // 입금이 정리됐는가

@@ -16,7 +16,9 @@ public record SettlementLineResponse(
         long feeShare,
         long totalAmount,
         Instant markedPaidAt,
-        Instant confirmedPaidAt
+        Instant confirmedPaidAt,
+        // 방장이 확인을 취소한 시각. 참여자가 "확인했다가 취소했다"를 따질 근거다 (ADR-045)
+        Instant confirmRevokedAt
 ) {
 
     public static SettlementLineResponse of(Settlement settlement) {
@@ -29,7 +31,8 @@ public record SettlementLineResponse(
                 settlement.getFeeShare(),
                 settlement.getTotalAmount(),
                 settlement.getMarkedPaidAt(),
-                settlement.getConfirmedPaidAt()
+                settlement.getConfirmedPaidAt(),
+                settlement.getConfirmRevokedAt()
         );
     }
 }

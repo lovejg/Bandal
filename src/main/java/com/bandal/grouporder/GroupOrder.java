@@ -181,4 +181,27 @@ public class GroupOrder {
         this.deliveryFee = deliveryFee;
         status = GroupOrderStatus.SETTLING; // 정산중
     }
+
+    // 정산 정보를 보여줘도 되는 상태인지 확인한다
+    public void checkSettlementVisible() {
+        if(this.status != GroupOrderStatus.SETTLING && this.status != GroupOrderStatus.ORDERED
+                && this.status != GroupOrderStatus.DELIVERED) {
+            throw new IllegalStateException("정산이 시작된 방만 정산 정보를 볼 수 있습니다");
+        }
+    }
+
+    // 방장이 배달비를 고친다. 정산중에서만 받고 상태는 그대로다
+    public void changeDeliveryFee(Long requesterId, long deliveryFee) {
+        if(this.status != GroupOrderStatus.SETTLING) {
+            throw new IllegalStateException("정산중인 방만 배달비를 수정할 수 있습니다");
+        }
+        if(!Objects.equals(this.host.getId(), requesterId)) {
+            throw new IllegalStateException("방장만 배달비를 입력할 수 있습니다");
+        }
+        if(deliveryFee < 0) {
+            throw new IllegalArgumentException("배달비는 0원 이상이어야 합니다");
+        }
+
+        this.deliveryFee = deliveryFee;
+    }
 }

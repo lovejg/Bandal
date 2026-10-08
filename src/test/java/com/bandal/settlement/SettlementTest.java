@@ -1,6 +1,7 @@
 package com.bandal.settlement;
 
 import com.bandal.grouporder.GroupOrder;
+import com.bandal.grouporder.GroupOrderStatus;
 import com.bandal.pickupspot.PickupSpot;
 import com.bandal.university.University;
 import com.bandal.user.User;
@@ -44,6 +45,14 @@ class SettlementTest {
 
         groupOrder = new GroupOrder(host, pickupSpot, "○○마라탕", 15_000,
                 Instant.parse("2026-09-26T10:30:00Z"), 4);
+        // 표시와 확인은 정산중에만 받는다 (ADR-044). 줄은 정산을 시작할 때 생기므로 여기까지 보내 둔다
+        groupOrder.closeByHost(HOST_ID, 2, 17_000, Instant.parse("2026-09-26T10:00:00Z"));
+        groupOrder.startSettlement(HOST_ID, 2_334);
+    }
+
+    // 주문완료, 배달완료 전이는 아직 없어서 상태만 바꾼다
+    void forceStatus(GroupOrderStatus status) {
+        ReflectionTestUtils.setField(groupOrder, "status", status);
     }
 
     // 참여자 줄. 메뉴 9,000원에 배달비 분담 1,166원
@@ -188,7 +197,7 @@ class SettlementTest {
         @Test
         @DisplayName("참여자가 보냈다고 안 눌렀어도 방장은 확인할 수 있다")
         void confirmsWithoutMark() {
-            // 현금으로 받았거나 참여자가 누르는 걸 잊었을 수 있다
+            // 참여자가 이체만 하고 누르는 걸 잊었을 수 있다 (ADR-044)
             Settlement line = memberLine();
 
             line.confirm(HOST_ID, NOW);
@@ -207,6 +216,233 @@ class SettlementTest {
 
             // 처음 확인한 시각이 밀리지 않는다
             assertThat(line.getConfirmedPaidAt()).isEqualTo(NOW);
+        }
+    }
+
+    // 방장의 확인 취소 (ADR-045)
+    @Nested
+    @DisplayName("확인 취소")
+    class RevokeConfirm {
+
+        static final Instant CONFIRMED_AT = NOW.plusSeconds(60);
+        static final Instant REVOKED_AT = NOW.plusSeconds(600);
+
+        @Test
+        @DisplayName("확인을 비우고 취소한 시각을 남긴다")
+        void revokes() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, CONFIRMED_AT);
+
+            line.revokeConfirm(HOST_ID, REVOKED_AT);
+
+            assertThat(line.getConfirmedPaidAt()).isNull();
+            assertThat(line.isConfirmed()).isFalse();
+            assertThat(line.getConfirmRevokedAt()).isEqualTo(REVOKED_AT);
+        }
+
+        @Test
+        @DisplayName("참여자의 보냈어요 기록은 그대로 둔다")
+        void keepsMark() {
+            // 표시는 참여자의 주장이다. 방장이 지울 수 없다
+            Settlement line = memberLine();
+            line.markPaid(MEMBER_ID, NOW);
+            line.confirm(HOST_ID, CONFIRMED_AT);
+
+            line.revokeConfirm(HOST_ID, REVOKED_AT);
+
+            assertThat(line.getMarkedPaidAt()).isEqualTo(NOW);
+            // "보냈다는데 확인 안 됨"으로 돌아간다 (ADR-032)
+            assertThat(line.isDisputed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("확인 안 된 줄이면 아무것도 바꾸지 않는다")
+        void ignoresUnconfirmed() {
+            Settlement line = memberLine();
+
+            line.revokeConfirm(HOST_ID, REVOKED_AT);
+
+            // 되돌린 게 없으니 흔적도 없다. 흔적이 있으면 "확인한 적이 있다"는 뜻이 된다
+            assertThat(line.getConfirmRevokedAt()).isNull();
+            assertThat(line.getConfirmedPaidAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("참여자는 확인을 취소할 수 없다")
+        void rejectsMember() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, CONFIRMED_AT);
+
+            assertThatThrownBy(() -> line.revokeConfirm(MEMBER_ID, REVOKED_AT))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getConfirmedPaidAt()).isEqualTo(CONFIRMED_AT);
+            assertThat(line.getConfirmRevokedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("확인 안 된 줄이어도 참여자가 누르면 거절한다")
+        void rejectsMemberOnUnconfirmed() {
+            // 할 일이 없다고 조용히 넘기면, 권한 없는 요청이 성공으로 보인다
+            Settlement line = memberLine();
+
+            assertThatThrownBy(() -> line.revokeConfirm(MEMBER_ID, REVOKED_AT))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("방장 줄은 확인을 취소할 수 없다")
+        void rejectsHostLine() {
+            // 방장 줄이 비면 전원 확인이 영영 안 채워진다 (ADR-030)
+            Settlement line = hostLine();
+
+            assertThatThrownBy(() -> line.revokeConfirm(HOST_ID, REVOKED_AT))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.isConfirmed()).isTrue();
+            assertThat(line.getConfirmRevokedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("정산중이 아니면 취소할 수 없다")
+        void rejectsAfterOrdered() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, CONFIRMED_AT);
+            forceStatus(GroupOrderStatus.ORDERED);
+
+            assertThatThrownBy(() -> line.revokeConfirm(HOST_ID, REVOKED_AT))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getConfirmedPaidAt()).isEqualTo(CONFIRMED_AT);
+        }
+
+        @Test
+        @DisplayName("취소한 뒤 다시 확인할 수 있고, 취소한 흔적은 남는다")
+        void reconfirmKeepsTrace() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, CONFIRMED_AT);
+            line.revokeConfirm(HOST_ID, REVOKED_AT);
+
+            line.confirm(HOST_ID, REVOKED_AT.plusSeconds(60));
+
+            assertThat(line.isConfirmed()).isTrue();
+            assertThat(line.getConfirmRevokedAt()).isEqualTo(REVOKED_AT);
+        }
+    }
+
+    // 배달비를 고쳐도 되는지 판단하는 재료 (ADR-046)
+    @Nested
+    @DisplayName("입금 흔적")
+    class PaymentRecord {
+
+        @Test
+        @DisplayName("아무 일도 없던 참여자 줄은 흔적이 없다")
+        void cleanLine() {
+            assertThat(memberLine().hasPaymentRecord()).isFalse();
+        }
+
+        @Test
+        @DisplayName("보냈어요를 눌렀으면 흔적이 있다")
+        void marked() {
+            Settlement line = memberLine();
+            line.markPaid(MEMBER_ID, NOW);
+
+            assertThat(line.hasPaymentRecord()).isTrue();
+        }
+
+        @Test
+        @DisplayName("표시 없이 방장이 확인했어도 흔적이 있다")
+        void confirmedWithoutMark() {
+            // 이체만 하고 누르는 걸 잊은 경우. 이미 돈이 갔다 (ADR-044)
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW);
+
+            assertThat(line.hasPaymentRecord()).isTrue();
+        }
+
+        @Test
+        @DisplayName("확인했다가 취소했어도 흔적이 있다")
+        void revoked() {
+            // 정산표를 지우면 취소한 흔적도 사라진다 (ADR-045)
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW);
+            line.revokeConfirm(HOST_ID, NOW.plusSeconds(60));
+
+            assertThat(line.getMarkedPaidAt()).isNull();
+            assertThat(line.getConfirmedPaidAt()).isNull();
+            assertThat(line.hasPaymentRecord()).isTrue();
+        }
+
+        @Test
+        @DisplayName("방장 줄은 처음부터 채워진 시각이 있어도 흔적이 아니다")
+        void ignoresHostLine() {
+            // 방장 줄의 시각은 만들 때 채운 것이지 누가 누른 게 아니다 (ADR-030)
+            assertThat(hostLine().hasPaymentRecord()).isFalse();
+        }
+    }
+
+    // 표시와 확인은 정산중에만 받는다 (ADR-044)
+    @Nested
+    @DisplayName("방 상태")
+    class RoomState {
+
+        @Test
+        @DisplayName("주문완료된 방에서는 보냈다고 표시할 수 없다")
+        void rejectsMarkAfterOrdered() {
+            Settlement line = memberLine();
+            forceStatus(GroupOrderStatus.ORDERED);
+
+            assertThatThrownBy(() -> line.markPaid(MEMBER_ID, NOW))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getMarkedPaidAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("취소된 방에서는 보냈다고 표시할 수 없다")
+        void rejectsMarkAfterCanceled() {
+            Settlement line = memberLine();
+            forceStatus(GroupOrderStatus.CANCELED);
+
+            assertThatThrownBy(() -> line.markPaid(MEMBER_ID, NOW))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getMarkedPaidAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("주문완료된 방에서는 확인할 수 없다")
+        void rejectsConfirmAfterOrdered() {
+            Settlement line = memberLine();
+            forceStatus(GroupOrderStatus.ORDERED);
+
+            assertThatThrownBy(() -> line.confirm(HOST_ID, NOW))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.isConfirmed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("취소된 방에서는 확인할 수 없다")
+        void rejectsConfirmAfterCanceled() {
+            // 취소된 방의 정산표는 환불 근거다. 취소 뒤에 바뀌면 안 된다 (ADR-030)
+            Settlement line = memberLine();
+            forceStatus(GroupOrderStatus.CANCELED);
+
+            assertThatThrownBy(() -> line.confirm(HOST_ID, NOW))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.isConfirmed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("배달완료된 방에서도 확인할 수 없다")
+        void rejectsConfirmAfterDelivered() {
+            Settlement line = memberLine();
+            forceStatus(GroupOrderStatus.DELIVERED);
+
+            assertThatThrownBy(() -> line.confirm(HOST_ID, NOW))
+                    .isInstanceOf(IllegalStateException.class);
         }
     }
 }

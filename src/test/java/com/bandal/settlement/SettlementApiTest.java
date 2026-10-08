@@ -4,6 +4,7 @@ import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.JwtProvider;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
+import com.bandal.grouporder.GroupOrderStatus;
 import com.bandal.participation.OrderItemRepository;
 import com.bandal.participation.Participation;
 import com.bandal.participation.ParticipationRepository;
@@ -14,7 +15,6 @@ import com.bandal.university.UniversityRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -31,8 +31,12 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -338,32 +342,10 @@ class SettlementApiTest {
                     .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("deliveryFee")));
         }
 
-        // 배달비 수정은 입금 표시 API가 생긴 뒤에 붙인다 (ADR-042). 그때 두 테스트를 켠다
         @Test
-        @Disabled("배달비 수정 단위에서 켠다 (ADR-042)")
-        @DisplayName("아직 아무도 송금하지 않았으면 배달비를 다시 입력할 수 있다")
-        void allowsRetype() throws Exception {
+        @DisplayName("이미 정산중인 방에 다시 POST하면 409다. 수정은 PUT으로 한다")
+        void rejectsSecondPost() throws Exception {
             startSettlement();
-
-            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
-                            .header("Authorization", bearer(host.getId()))
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(feeBody(5_000)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.deliveryFee").value(5_000));
-
-            // 정산표는 지우고 다시 만든다. 행이 쌓이지 않는다 (ADR-030)
-            assertThat(settlementRepository.findByGroupOrderId(groupOrder.getId())).hasSize(2);
-            assertThat(lineOf(member).getFeeShare()).isEqualTo(2_500);
-        }
-
-        @Test
-        @Disabled("배달비 수정 단위에서 켠다 (ADR-042)")
-        @DisplayName("한 명이라도 보냈다고 표시하면 배달비를 바꿀 수 없다")
-        void rejectsRetypeAfterMarked() throws Exception {
-            startSettlement();
-            mockMvc.perform(post("/api/settlements/" + lineOf(member).getId() + "/mark-paid")
-                    .header("Authorization", bearer(member.getId())));
 
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
                             .header("Authorization", bearer(host.getId()))
@@ -371,10 +353,167 @@ class SettlementApiTest {
                             .content(feeBody(5_000)))
                     .andExpect(status().isConflict());
 
-            assertThat(lineOf(member).getFeeShare()).isEqualTo(1_750);
+            assertThat(settlementRepository.findByGroupOrderId(groupOrder.getId())).hasSize(2);
         }
     }
 
+    // PUT으로 배달비를 고친다
+    void changeFee(User requester, long deliveryFee, int expectedStatus) throws Exception {
+        mockMvc.perform(put("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
+                        .header("Authorization", bearer(requester.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(feeBody(deliveryFee)))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    GroupOrder savedRoom() {
+        return groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
+    }
+
+    // 배달비 수정 (ADR-030, 042, 046)
+    @Nested
+    @DisplayName("배달비 수정")
+    class ChangeFee {
+
+        @Test
+        @DisplayName("아직 아무 흔적이 없으면 고칠 수 있고 정산표가 새로 만들어진다")
+        void changes() throws Exception {
+            startSettlement();
+
+            changeFee(host, 5_000, 200);
+
+            // 지우고 다시 만든다. 줄이 쌓이지 않는다 (ADR-030)
+            assertThat(settlementRepository.findByGroupOrderId(groupOrder.getId())).hasSize(2);
+            assertThat(lineOf(member).getFeeShare()).isEqualTo(2_500);
+            assertThat(lineOf(member).getTotalAmount()).isEqualTo(MEMBER_MENU + 2_500);
+            // 방의 배달비도 바뀌고 상태는 정산중 그대로다
+            assertThat(savedRoom().getDeliveryFee()).isEqualTo(5_000);
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("새로 만든 방장 줄도 처음부터 확인된 상태다")
+        void hostLineStaysConfirmed() throws Exception {
+            startSettlement();
+
+            changeFee(host, 5_000, 200);
+
+            assertThat(lineOf(host).isConfirmed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("응답은 처음 입력과 같은 방장 시점의 정산 정보다")
+        void respondsHostView() throws Exception {
+            startSettlement();
+
+            mockMvc.perform(put("/api/group-orders/" + groupOrder.getId() + "/delivery-fee")
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(feeBody(5_000)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.deliveryFee").value(5_000))
+                    .andExpect(jsonPath("$.status").value("SETTLING"))
+                    .andExpect(jsonPath("$.lines.length()").value(2))
+                    .andExpect(jsonPath("$.hostAccount.bankName").value("한국은행"));
+        }
+
+        @Test
+        @DisplayName("한 명이라도 보냈다고 표시하면 고칠 수 없다")
+        void rejectsAfterMarked() throws Exception {
+            startSettlement();
+            mockMvc.perform(post(markPaidUrl(member))
+                    .header("Authorization", bearer(member.getId())));
+
+            changeFee(host, 5_000, 409);
+
+            assertThat(lineOf(member).getFeeShare()).isEqualTo(1_750);
+            assertThat(savedRoom().getDeliveryFee()).isEqualTo(DELIVERY_FEE);
+        }
+
+        @Test
+        @DisplayName("표시 없이 방장이 확인했어도 고칠 수 없다")
+        void rejectsAfterConfirmedWithoutMark() throws Exception {
+            // 이체만 하고 누르는 걸 잊은 참여자. 돈은 이미 옛 금액으로 갔다
+            startSettlement();
+            mockMvc.perform(post(confirmUrl(member))
+                    .header("Authorization", bearer(host.getId())));
+
+            changeFee(host, 5_000, 409);
+
+            assertThat(lineOf(member).isConfirmed()).isTrue();
+            assertThat(savedRoom().getDeliveryFee()).isEqualTo(DELIVERY_FEE);
+        }
+
+        @Test
+        @DisplayName("확인했다가 취소한 줄이 있으면 고칠 수 없다")
+        void rejectsAfterRevoked() throws Exception {
+            // 지우면 취소한 흔적이 사라진다 (ADR-045)
+            startSettlement();
+            mockMvc.perform(post(confirmUrl(member))
+                    .header("Authorization", bearer(host.getId())));
+            mockMvc.perform(post(unconfirmUrl(member))
+                    .header("Authorization", bearer(host.getId())));
+
+            changeFee(host, 5_000, 409);
+
+            assertThat(lineOf(member).getConfirmRevokedAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("마감된 방은 처음 입력(POST)부터 해야 한다")
+        void rejectsClosedRoom() throws Exception {
+            closedRoom();
+
+            changeFee(host, 5_000, 409);
+
+            assertThat(settlementRepository.count()).isZero();
+            assertThat(savedRoom().getDeliveryFee()).isNull();
+        }
+
+        @Test
+        @DisplayName("참여자는 고칠 수 없다")
+        void rejectsNonHost() throws Exception {
+            startSettlement();
+
+            changeFee(member, 5_000, 409);
+
+            assertThat(lineOf(member).getFeeShare()).isEqualTo(1_750);
+        }
+
+        @Test
+        @DisplayName("음수 배달비는 400이다")
+        void rejectsNegative() throws Exception {
+            startSettlement();
+
+            changeFee(host, -1, 400);
+
+            assertThat(savedRoom().getDeliveryFee()).isEqualTo(DELIVERY_FEE);
+        }
+
+        @Test
+        @DisplayName("없는 방이면 404다")
+        void rejectsUnknownRoom() throws Exception {
+            mockMvc.perform(put("/api/group-orders/999999/delivery-fee")
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(feeBody(5_000)))
+                    .andExpect(status().isNotFound());
+        }
+    }
+
+    // 주문완료, 배달완료, 취소로 가는 API가 아직 없어서 상태만 직접 바꾼다.
+    // API로 바뀐 방을 다시 읽어와서 바꾼다. 필드의 groupOrder는 마감 때 모습 그대로라 덮어쓰면 배달비가 지워진다
+    void forceStatus(GroupOrderStatus status) {
+        GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
+        ReflectionTestUtils.setField(saved, "status", status);
+        groupOrderRepository.save(saved);
+    }
+
+    String settlementUrl() {
+        return "/api/group-orders/" + groupOrder.getId() + "/settlement";
+    }
+
+    // 정산 정보 조회 (ADR-043)
     @Nested
     @DisplayName("정산 정보 조회")
     class Find {
@@ -384,11 +523,27 @@ class SettlementApiTest {
         void hostSeesEveryone() throws Exception {
             startSettlement();
 
-            mockMvc.perform(get("/api/group-orders/" + groupOrder.getId() + "/settlement")
+            // 계좌번호를 잘못 등록했을 때 참여자가 보는 것을 방장도 확인할 수 있어야 한다
+            mockMvc.perform(get(settlementUrl())
                             .header("Authorization", bearer(host.getId())))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.lines.length()").value(2))
-                    .andExpect(jsonPath("$.hostAccount.bankName").value("한국은행"));
+                    .andExpect(jsonPath("$.hostAccount.bankName").value("한국은행"))
+                    .andExpect(jsonPath("$.hostAccount.accountNumber").value("110-123-456789"));
+        }
+
+        @Test
+        @DisplayName("방장은 줄마다 id와 입금 상태를 본다")
+        void hostSeesPaymentState() throws Exception {
+            startSettlement();
+
+            // 줄 순서는 정해져 있지 않아서 host 값으로 골라낸다. 골라낸 결과는 배열이라 contains로 본다
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines[?(@.host == false)].id", contains(notNullValue())))
+                    .andExpect(jsonPath("$.lines[?(@.host == false)].markedPaidAt", contains(nullValue())))
+                    .andExpect(jsonPath("$.lines[?(@.host == true)].confirmedPaidAt", contains(notNullValue())));
         }
 
         @Test
@@ -396,13 +551,71 @@ class SettlementApiTest {
         void memberSeesOwnLineOnly() throws Exception {
             startSettlement();
 
-            mockMvc.perform(get("/api/group-orders/" + groupOrder.getId() + "/settlement")
+            mockMvc.perform(get(settlementUrl())
                             .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.lines.length()").value(1))
                     .andExpect(jsonPath("$.lines[0].userId").value(member.getId()))
                     .andExpect(jsonPath("$.lines[0].totalAmount").value(MEMBER_MENU + 1_750))
                     .andExpect(jsonPath("$.hostAccount.accountNumber").value("110-123-456789"));
+        }
+
+        @Test
+        @DisplayName("참여자가 봐도 메뉴 합계는 방 전체 값이다")
+        void memberSeesRoomMenuTotal() throws Exception {
+            startSettlement();
+
+            // 줄은 하나만 내려가도 합계는 그 줄의 메뉴값이 아니다
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.menuTotalAmount").value(HOST_MENU + MEMBER_MENU))
+                    .andExpect(jsonPath("$.deliveryFee").value(DELIVERY_FEE));
+        }
+
+        @Test
+        @DisplayName("주문완료 뒤에도 볼 수 있다")
+        void showsAfterOrdered() throws Exception {
+            startSettlement();
+            forceStatus(GroupOrderStatus.ORDERED);
+
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("ORDERED"));
+        }
+
+        @Test
+        @DisplayName("배달완료 뒤에도 볼 수 있다")
+        void showsAfterDelivered() throws Exception {
+            startSettlement();
+            forceStatus(GroupOrderStatus.DELIVERED);
+
+            // 지난주에 얼마 냈는지 다시 보는 경우
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines[0].totalAmount").value(MEMBER_MENU + 1_750));
+        }
+
+        @Test
+        @DisplayName("취소된 방은 일단 막는다")
+        void rejectsCanceled() throws Exception {
+            startSettlement();
+            forceStatus(GroupOrderStatus.CANCELED);
+
+            // 정산중에 취소된 방은 환불이 걸려 있다. 무엇을 보여줄지는 취소 단계에서 정한다
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isConflict());
+        }
+
+        @Test
+        @DisplayName("없는 방이면 404다")
+        void rejectsUnknownRoom() throws Exception {
+            mockMvc.perform(get("/api/group-orders/999999/settlement")
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isNotFound());
         }
 
         @Test
@@ -448,6 +661,15 @@ class SettlementApiTest {
         }
     }
 
+    String markPaidUrl(User user) {
+        return "/api/settlements/" + lineOf(user).getId() + "/mark-paid";
+    }
+
+    String confirmUrl(User user) {
+        return "/api/settlements/" + lineOf(user).getId() + "/confirm";
+    }
+
+    // 입금 표시와 확인 (ADR-044)
     @Nested
     @DisplayName("입금 표시와 확인")
     class Payment {
@@ -457,22 +679,64 @@ class SettlementApiTest {
         void marksPaid() throws Exception {
             startSettlement();
 
-            mockMvc.perform(post("/api/settlements/" + lineOf(member).getId() + "/mark-paid")
+            mockMvc.perform(post(markPaidUrl(member))
                             .header("Authorization", bearer(member.getId())))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.markedPaidAt").isNotEmpty())
-                    .andExpect(jsonPath("$.confirmedPaidAt").isEmpty());
+                    .andExpect(status().isOk());
 
-            assertThat(lineOf(member).isDisputed()).isTrue();
+            assertThat(lineOf(member).getMarkedPaidAt()).isNotNull();
+            assertThat(lineOf(member).isConfirmed()).isFalse();
         }
 
         @Test
-        @DisplayName("남의 줄에는 표시할 수 없다")
-        void rejectsMarkingOthersLine() throws Exception {
+        @DisplayName("표시하면 참여자 시점의 정산 정보가 돌아온다")
+        void markPaidRespondsMemberView() throws Exception {
             startSettlement();
 
-            mockMvc.perform(post("/api/settlements/" + lineOf(member).getId() + "/mark-paid")
+            // 조회(ADR-043)와 같은 응답이다. 자기 줄 하나와 방장 계좌
+            mockMvc.perform(post(markPaidUrl(member))
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines.length()").value(1))
+                    .andExpect(jsonPath("$.lines[0].markedPaidAt").isNotEmpty())
+                    .andExpect(jsonPath("$.lines[0].confirmedPaidAt").isEmpty())
+                    .andExpect(jsonPath("$.hostAccount.bankName").value("한국은행"));
+        }
+
+        @Test
+        @DisplayName("두 번 눌러도 성공하고 처음 시각이 남는다")
+        void markPaidTwice() throws Exception {
+            startSettlement();
+            mockMvc.perform(post(markPaidUrl(member))
+                    .header("Authorization", bearer(member.getId())));
+            Instant first = lineOf(member).getMarkedPaidAt();
+
+            // 송금 전에 잘못 눌렀다가 실제로 보낸 뒤 다시 누르는 경우. 되돌리기 없이 이걸로 해결된다
+            mockMvc.perform(post(markPaidUrl(member))
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk());
+
+            assertThat(lineOf(member).getMarkedPaidAt()).isEqualTo(first);
+        }
+
+        @Test
+        @DisplayName("외부인은 남의 줄에 표시할 수 없다")
+        void rejectsMarkingByOutsider() throws Exception {
+            startSettlement();
+
+            mockMvc.perform(post(markPaidUrl(member))
                             .header("Authorization", bearer(outsider.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(lineOf(member).getMarkedPaidAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("방장도 참여자 줄에 대신 표시할 수 없다")
+        void rejectsMarkingByHost() throws Exception {
+            startSettlement();
+
+            mockMvc.perform(post(markPaidUrl(member))
+                            .header("Authorization", bearer(host.getId())))
                     .andExpect(status().isConflict());
         }
 
@@ -480,13 +744,41 @@ class SettlementApiTest {
         @DisplayName("방장이 확인하면 정리된다")
         void confirms() throws Exception {
             startSettlement();
+            mockMvc.perform(post(markPaidUrl(member))
+                    .header("Authorization", bearer(member.getId())));
 
-            mockMvc.perform(post("/api/settlements/" + lineOf(member).getId() + "/confirm")
+            mockMvc.perform(post(confirmUrl(member))
                             .header("Authorization", bearer(host.getId())))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.confirmedPaidAt").isNotEmpty());
+                    .andExpect(status().isOk());
 
             assertThat(lineOf(member).isConfirmed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("확인하면 방장 시점의 정산 정보가 돌아온다")
+        void confirmRespondsHostView() throws Exception {
+            startSettlement();
+
+            // 확인 직후 남은 사람이 몇 명인지 바로 보여야 한다
+            mockMvc.perform(post(confirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines.length()").value(2))
+                    .andExpect(jsonPath("$.lines[?(@.host == false)].confirmedPaidAt", contains(notNullValue())));
+        }
+
+        @Test
+        @DisplayName("보냈다는 표시가 없어도 방장은 확인할 수 있다")
+        void confirmsWithoutMark() throws Exception {
+            startSettlement();
+
+            // 참여자가 이체만 하고 누르는 걸 잊은 경우
+            mockMvc.perform(post(confirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk());
+
+            assertThat(lineOf(member).isConfirmed()).isTrue();
+            assertThat(lineOf(member).getMarkedPaidAt()).isNull();
         }
 
         @Test
@@ -494,8 +786,35 @@ class SettlementApiTest {
         void rejectsSelfConfirm() throws Exception {
             startSettlement();
 
-            mockMvc.perform(post("/api/settlements/" + lineOf(member).getId() + "/confirm")
+            mockMvc.perform(post(confirmUrl(member))
                             .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(lineOf(member).isConfirmed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("주문완료된 방에서는 표시할 수 없다")
+        void rejectsMarkAfterOrdered() throws Exception {
+            startSettlement();
+            forceStatus(GroupOrderStatus.ORDERED);
+
+            mockMvc.perform(post(markPaidUrl(member))
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(lineOf(member).getMarkedPaidAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("취소된 방에서는 확인할 수 없다")
+        void rejectsConfirmAfterCanceled() throws Exception {
+            startSettlement();
+            forceStatus(GroupOrderStatus.CANCELED);
+
+            // 취소된 방의 정산표는 환불 근거라 바뀌면 안 된다 (ADR-030)
+            mockMvc.perform(post(confirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
                     .andExpect(status().isConflict());
 
             assertThat(lineOf(member).isConfirmed()).isFalse();
@@ -507,6 +826,137 @@ class SettlementApiTest {
             startSettlement();
 
             mockMvc.perform(post("/api/settlements/999999/confirm")
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isNotFound());
+            mockMvc.perform(post("/api/settlements/999999/mark-paid")
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 누를 수 없다")
+        void requiresLogin() throws Exception {
+            startSettlement();
+
+            mockMvc.perform(post(markPaidUrl(member)))
+                    .andExpect(status().isUnauthorized());
+        }
+    }
+
+    String unconfirmUrl(User user) {
+        return "/api/settlements/" + lineOf(user).getId() + "/unconfirm";
+    }
+
+    // 방장의 확인 취소 (ADR-045)
+    @Nested
+    @DisplayName("확인 취소")
+    class Unconfirm {
+
+        // 참여자가 보냈다고 표시하고 방장이 확인까지 한 상태
+        void confirmedByHost() throws Exception {
+            startSettlement();
+            mockMvc.perform(post(markPaidUrl(member))
+                    .header("Authorization", bearer(member.getId())));
+            mockMvc.perform(post(confirmUrl(member))
+                    .header("Authorization", bearer(host.getId())));
+        }
+
+        @Test
+        @DisplayName("방장이 취소하면 확인이 비고 표시는 남는다")
+        void revokes() throws Exception {
+            confirmedByHost();
+
+            mockMvc.perform(post(unconfirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk());
+
+            Settlement line = lineOf(member);
+            assertThat(line.isConfirmed()).isFalse();
+            assertThat(line.getMarkedPaidAt()).isNotNull();
+            assertThat(line.getConfirmRevokedAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("방장 시점의 정산 정보가 돌아오고 취소 시각이 보인다")
+        void respondsHostView() throws Exception {
+            confirmedByHost();
+
+            mockMvc.perform(post(unconfirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines.length()").value(2))
+                    .andExpect(jsonPath("$.lines[?(@.host == false)].confirmedPaidAt", contains(nullValue())))
+                    .andExpect(jsonPath("$.lines[?(@.host == false)].confirmRevokedAt", contains(notNullValue())));
+        }
+
+        @Test
+        @DisplayName("참여자도 자기 줄에서 취소된 흔적을 본다")
+        void memberSeesTrace() throws Exception {
+            confirmedByHost();
+            mockMvc.perform(post(unconfirmUrl(member))
+                    .header("Authorization", bearer(host.getId())));
+
+            // "확인했다가 취소했다"를 따질 근거다
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines[0].confirmRevokedAt").isNotEmpty());
+        }
+
+        @Test
+        @DisplayName("확인 안 된 줄이면 200이고 아무것도 바뀌지 않는다")
+        void ignoresUnconfirmed() throws Exception {
+            startSettlement();
+
+            mockMvc.perform(post(unconfirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk());
+
+            assertThat(lineOf(member).getConfirmRevokedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("참여자는 취소할 수 없다")
+        void rejectsMember() throws Exception {
+            confirmedByHost();
+
+            mockMvc.perform(post(unconfirmUrl(member))
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(lineOf(member).isConfirmed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("방장 자기 줄은 취소할 수 없다")
+        void rejectsHostLine() throws Exception {
+            startSettlement();
+
+            mockMvc.perform(post(unconfirmUrl(host))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(lineOf(host).isConfirmed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("취소된 방에서는 취소할 수 없다")
+        void rejectsAfterCanceled() throws Exception {
+            confirmedByHost();
+            forceStatus(GroupOrderStatus.CANCELED);
+
+            // 취소된 방의 정산표는 환불 근거다 (ADR-030)
+            mockMvc.perform(post(unconfirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(lineOf(member).isConfirmed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("없는 정산 줄이면 404다")
+        void rejectsUnknownSettlement() throws Exception {
+            mockMvc.perform(post("/api/settlements/999999/unconfirm")
                             .header("Authorization", bearer(host.getId())))
                     .andExpect(status().isNotFound());
         }
