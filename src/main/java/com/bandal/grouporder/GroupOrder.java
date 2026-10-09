@@ -204,4 +204,31 @@ public class GroupOrder {
 
         this.deliveryFee = deliveryFee;
     }
+
+    // 방장이 배달앱에서 주문을 마쳤다. 전원 입금 확인은 줄을 모아야 알 수 있어 서비스가 본다
+    // 결제금액은 통계용이라 비워도(null) 된다
+    public void order(Long requesterId, Long totalPaidAmount) {
+        if(this.status != GroupOrderStatus.SETTLING) {
+            throw new IllegalStateException("정산중인 방만 주문완료로 넘어갈 수 있습니다");
+        }
+        if(!Objects.equals(this.host.getId(), requesterId)) {
+            throw new IllegalStateException("방장만 주문완료로 넘어갈 수 있습니다");
+        }
+        if(totalPaidAmount != null && totalPaidAmount < 0) {
+            throw new IllegalArgumentException("결제금액은 0원 이상이어야 합니다");
+        }
+        this.totalPaidAmount = totalPaidAmount;
+        this.status = GroupOrderStatus.ORDERED;
+    }
+
+    // 음식이 도착했다. 배달앱과 연동돼있는게 아니라서 방장이 눌러야 알 수 있다
+    public void deliver(Long requesterId) {
+        if(this.status != GroupOrderStatus.ORDERED) {
+            throw new IllegalStateException("주문완료된 방만 배달완료로 넘어갈 수 있습니다");
+        }
+        if(!Objects.equals(this.host.getId(), requesterId)) {
+            throw new IllegalStateException("방장만 배달완료로 넘어갈 수 있습니다");
+        }
+        this.status = GroupOrderStatus.DELIVERED;
+    }
 }

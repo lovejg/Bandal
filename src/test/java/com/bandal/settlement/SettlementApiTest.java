@@ -962,71 +962,265 @@ class SettlementApiTest {
         }
     }
 
+    String orderUrl() {
+        return "/api/group-orders/" + groupOrder.getId() + "/order";
+    }
+
+    String deliverUrl() {
+        return "/api/group-orders/" + groupOrder.getId() + "/deliver";
+    }
+
+    // 결제금액을 비우면 빈 객체를 보낸다. 본문 자체는 늘 있다 (ADR-047)
+    String orderBody(Long totalPaidAmount) {
+        if (totalPaidAmount == null) {
+            return "{}";
+        }
+        return """
+                {"totalPaidAmount": %d}
+                """.formatted(totalPaidAmount);
+    }
+
+    void order(User requester, Long totalPaidAmount, int expectedStatus) throws Exception {
+        mockMvc.perform(post(orderUrl())
+                        .header("Authorization", bearer(requester.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(orderBody(totalPaidAmount)))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    // 방장이 참여자의 입금을 확인한다. 방장 줄은 처음부터 확인돼 있어서 이걸로 전원 확인이다
+    void confirmMember() throws Exception {
+        mockMvc.perform(post(confirmUrl(member))
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(status().isOk());
+    }
+
+    // 정산을 마치고 주문완료까지 보낸다
+    void orderedRoom() throws Exception {
+        startSettlement();
+        confirmMember();
+        order(host, 19_000L, 200);
+    }
+
+    // 주문완료 (ADR-047)
     @Nested
-    @DisplayName("주문완료와 배달완료")
-    class Transitions {
+    @DisplayName("주문완료")
+    class Order {
 
         @Test
-        @DisplayName("전원 확인이 끝나면 주문완료로 넘어간다")
+        @DisplayName("전원 확인이 끝나면 주문완료로 넘어가고 결제금액이 남는다")
         void ordersWhenAllConfirmed() throws Exception {
             startSettlement();
-            mockMvc.perform(post("/api/settlements/" + lineOf(member).getId() + "/confirm")
-                    .header("Authorization", bearer(host.getId())));
+            confirmMember();
 
-            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/order")
-                            .header("Authorization", bearer(host.getId())))
+            order(host, 19_000L, 200);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+            // 메뉴 17,000 + 배달비 3,500 = 20,500이지만 쿠폰으로 19,000을 냈다. 정산은 그대로다
+            assertThat(savedRoom().getTotalPaidAmount()).isEqualTo(19_000);
+            assertThat(lineOf(member).getTotalAmount()).isEqualTo(MEMBER_MENU + 1_750);
+        }
+
+        @Test
+        @DisplayName("응답은 방장 시점의 정산 정보다")
+        void respondsHostView() throws Exception {
+            startSettlement();
+            confirmMember();
+
+            mockMvc.perform(post(orderUrl())
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(orderBody(19_000L)))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.status").value("ORDERED"));
+                    .andExpect(jsonPath("$.status").value("ORDERED"))
+                    .andExpect(jsonPath("$.lines.length()").value(2));
+        }
+
+        @Test
+        @DisplayName("결제금액은 비워도 된다")
+        void allowsNoPaidAmount() throws Exception {
+            startSettlement();
+            confirmMember();
+
+            order(host, null, 200);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+            assertThat(savedRoom().getTotalPaidAmount()).isNull();
         }
 
         @Test
         @DisplayName("확인 안 된 사람이 남아 있으면 주문할 수 없다")
-        void rejectsOrderWhenUnconfirmed() throws Exception {
+        void rejectsWhenUnconfirmed() throws Exception {
             startSettlement();
 
-            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/order")
-                            .header("Authorization", bearer(host.getId())))
-                    .andExpect(status().isConflict());
+            order(host, 19_000L, 409);
 
-            assertThat(groupOrderRepository.findById(groupOrder.getId()).orElseThrow()
-                    .getStatus().name()).isEqualTo("SETTLING");
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+            assertThat(savedRoom().getTotalPaidAmount()).isNull();
         }
 
         @Test
-        @DisplayName("주문완료 뒤에 배달완료로 넘어간다")
-        void delivers() throws Exception {
+        @DisplayName("보냈다고 표시만 하고 방장이 확인하지 않았으면 주문할 수 없다")
+        void rejectsWhenOnlyMarked() throws Exception {
+            // 보냈어요는 본인의 주장이다. 돈이 들어온 걸 아는 건 방장뿐이다
             startSettlement();
-            mockMvc.perform(post("/api/settlements/" + lineOf(member).getId() + "/confirm")
-                    .header("Authorization", bearer(host.getId())));
-            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/order")
-                    .header("Authorization", bearer(host.getId())));
+            mockMvc.perform(post(markPaidUrl(member))
+                    .header("Authorization", bearer(member.getId())));
 
-            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/deliver")
-                            .header("Authorization", bearer(host.getId())))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.status").value("DELIVERED"));
+            order(host, 19_000L, 409);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
         }
 
         @Test
-        @DisplayName("정산중에서 배달완료로 건너뛸 수 없다")
-        void rejectsDeliverFromSettling() throws Exception {
+        @DisplayName("확인했다가 취소한 줄이 있으면 주문할 수 없다")
+        void rejectsAfterRevoked() throws Exception {
             startSettlement();
+            confirmMember();
+            mockMvc.perform(post(unconfirmUrl(member))
+                    .header("Authorization", bearer(host.getId())));
 
-            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/deliver")
-                            .header("Authorization", bearer(host.getId())))
-                    .andExpect(status().isConflict());
+            order(host, 19_000L, 409);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
         }
 
         @Test
         @DisplayName("참여자는 주문완료로 넘길 수 없다")
-        void rejectsNonHostOrder() throws Exception {
+        void rejectsNonHost() throws Exception {
             startSettlement();
-            mockMvc.perform(post("/api/settlements/" + lineOf(member).getId() + "/confirm")
-                    .header("Authorization", bearer(host.getId())));
+            confirmMember();
 
-            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/order")
+            order(member, 19_000L, 409);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("결제금액이 음수면 400이고 어느 필드인지 알려준다")
+        void rejectsNegative() throws Exception {
+            startSettlement();
+            confirmMember();
+
+            mockMvc.perform(post(orderUrl())
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(orderBody(-1L)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value(
+                            org.hamcrest.Matchers.containsString("totalPaidAmount")));
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("마감된 방은 정산부터 해야 한다")
+        void rejectsClosedRoom() throws Exception {
+            closedRoom();
+
+            order(host, 19_000L, 409);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.CLOSED);
+        }
+
+        @Test
+        @DisplayName("이미 주문완료된 방은 다시 주문할 수 없다")
+        void rejectsSecondOrder() throws Exception {
+            orderedRoom();
+
+            order(host, 30_000L, 409);
+
+            assertThat(savedRoom().getTotalPaidAmount()).isEqualTo(19_000);
+        }
+
+        @Test
+        @DisplayName("주문완료 뒤에는 입금 확인을 되돌릴 수 없다")
+        void locksPaymentsAfterOrder() throws Exception {
+            // 이미 주문해서 돈이 나갔다. 되돌리면 주문완료인데 미확인 줄이 생긴다 (ADR-044, 045)
+            orderedRoom();
+
+            mockMvc.perform(post(unconfirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(lineOf(member).isConfirmed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("없는 방이면 404다")
+        void rejectsUnknownRoom() throws Exception {
+            mockMvc.perform(post("/api/group-orders/999999/order")
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(orderBody(19_000L)))
+                    .andExpect(status().isNotFound());
+        }
+    }
+
+    // 배달완료 (ADR-047)
+    @Nested
+    @DisplayName("배달완료")
+    class Deliver {
+
+        @Test
+        @DisplayName("주문완료 뒤에 방장이 누르면 배달완료로 넘어간다")
+        void delivers() throws Exception {
+            orderedRoom();
+
+            mockMvc.perform(post(deliverUrl())
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("DELIVERED"))
+                    .andExpect(jsonPath("$.lines.length()").value(2));
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.DELIVERED);
+        }
+
+        @Test
+        @DisplayName("정산중에서 배달완료로 건너뛸 수 없다")
+        void rejectsFromSettling() throws Exception {
+            startSettlement();
+            confirmMember();
+
+            mockMvc.perform(post(deliverUrl())
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("참여자는 배달완료로 넘길 수 없다")
+        void rejectsNonHost() throws Exception {
+            orderedRoom();
+
+            mockMvc.perform(post(deliverUrl())
                             .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isConflict());
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+        }
+
+        @Test
+        @DisplayName("배달완료된 방도 참여자가 자기 정산 줄을 볼 수 있다")
+        void memberStillSeesSettlement() throws Exception {
+            orderedRoom();
+            mockMvc.perform(post(deliverUrl())
+                    .header("Authorization", bearer(host.getId())));
+
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("DELIVERED"))
+                    .andExpect(jsonPath("$.lines.length()").value(1));
+        }
+
+        @Test
+        @DisplayName("없는 방이면 404다")
+        void rejectsUnknownRoom() throws Exception {
+            mockMvc.perform(post("/api/group-orders/999999/deliver")
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isNotFound());
         }
     }
 }

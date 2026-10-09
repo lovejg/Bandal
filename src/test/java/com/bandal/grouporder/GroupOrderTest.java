@@ -725,6 +725,155 @@ class GroupOrderTest {
         }
     }
 
-    // 주문완료와 배달완료 전이의 단위 테스트는 그 단계에서 다시 만든다.
-    // 예전 것은 커밋 8888991에 남아 있다
+    // 주문완료 전이 (ADR-047). 전원 확인 여부는 줄을 모아야 알 수 있어 서비스가 본다
+    @Nested
+    @DisplayName("주문완료")
+    class Order {
+
+        void startSettlement() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
+            groupOrder.startSettlement(HOST_ID, 3_500);
+        }
+
+        @Test
+        @DisplayName("정산중인 방에서 방장이 누르면 주문완료가 되고 결제금액이 남는다")
+        void orders() {
+            startSettlement();
+
+            groupOrder.order(HOST_ID, 22_000L);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+            assertThat(groupOrder.getTotalPaidAmount()).isEqualTo(22_000);
+        }
+
+        @Test
+        @DisplayName("결제금액은 비워도 된다")
+        void allowsNoPaidAmount() {
+            startSettlement();
+
+            groupOrder.order(HOST_ID, null);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+            assertThat(groupOrder.getTotalPaidAmount()).isNull();
+        }
+
+        @Test
+        @DisplayName("쿠폰으로 전액 할인되면 0원이다")
+        void allowsZeroPaidAmount() {
+            startSettlement();
+
+            groupOrder.order(HOST_ID, 0L);
+
+            assertThat(groupOrder.getTotalPaidAmount()).isZero();
+        }
+
+        @Test
+        @DisplayName("마감된 방은 정산부터 해야 한다")
+        void rejectsClosed() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
+
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, 22_000L))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CLOSED);
+            assertThat(groupOrder.getTotalPaidAmount()).isNull();
+        }
+
+        @Test
+        @DisplayName("이미 주문완료된 방은 다시 주문할 수 없다")
+        void rejectsOrdered() {
+            startSettlement();
+            groupOrder.order(HOST_ID, 22_000L);
+
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, 30_000L))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getTotalPaidAmount()).isEqualTo(22_000);
+        }
+
+        @Test
+        @DisplayName("방장이 아니면 주문완료로 넘길 수 없다")
+        void rejectsNonHost() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.order(OTHER_ID, 22_000L))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("결제금액이 음수면 값이 틀린 것이라 400이다")
+        void rejectsNegativePaidAmount() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, -1L))
+                    .isInstanceOf(IllegalArgumentException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+            assertThat(groupOrder.getTotalPaidAmount()).isNull();
+        }
+    }
+
+    // 배달완료 전이 (ADR-047)
+    @Nested
+    @DisplayName("배달완료")
+    class Deliver {
+
+        void order() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
+            groupOrder.startSettlement(HOST_ID, 3_500);
+            groupOrder.order(HOST_ID, null);
+        }
+
+        @Test
+        @DisplayName("주문완료된 방에서 방장이 누르면 배달완료가 된다")
+        void delivers() {
+            order();
+
+            groupOrder.deliver(HOST_ID);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.DELIVERED);
+        }
+
+        @Test
+        @DisplayName("정산중에서 배달완료로 건너뛸 수 없다")
+        void rejectsSettling() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
+            groupOrder.startSettlement(HOST_ID, 3_500);
+
+            assertThatThrownBy(() -> groupOrder.deliver(HOST_ID))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("모집중에서 배달완료로 건너뛸 수 없다")
+        void rejectsRecruiting() {
+            assertThatThrownBy(() -> groupOrder.deliver(HOST_ID))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("이미 배달완료된 방은 다시 누를 수 없다")
+        void rejectsDelivered() {
+            order();
+            groupOrder.deliver(HOST_ID);
+
+            assertThatThrownBy(() -> groupOrder.deliver(HOST_ID))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("방장이 아니면 배달완료로 넘길 수 없다")
+        void rejectsNonHost() {
+            order();
+
+            assertThatThrownBy(() -> groupOrder.deliver(OTHER_ID))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+        }
+    }
 }

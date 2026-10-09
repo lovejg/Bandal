@@ -7,6 +7,7 @@ import com.bandal.participation.OrderItemRepository;
 import com.bandal.participation.Participation;
 import com.bandal.participation.ParticipationRepository;
 import com.bandal.settlement.dto.DeliveryFeeRequest;
+import com.bandal.settlement.dto.OrderRequest;
 import com.bandal.settlement.dto.SettlementResponse;
 import com.bandal.user.User;
 import lombok.RequiredArgsConstructor;
@@ -148,5 +149,32 @@ public class SettlementService {
         settlementRepository.saveAll(lines);
 
         return SettlementResponse.of(groupOrder, menuTotalAmount, lines);
+    }
+
+    // 방장의 주문 완료 버튼(전원 입금 확인됐을 때)
+    @Transactional
+    public SettlementResponse order(Long groupOrderId, Long requesterId, OrderRequest orderRequest) {
+        GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+
+        groupOrder.order(requesterId, orderRequest.totalPaidAmount());
+
+        List<Settlement> lines = settlementRepository.findByGroupOrderId(groupOrderId);
+        if(!lines.stream().allMatch(Settlement::isConfirmed)) {
+            throw new IllegalStateException("입금 확인이 되지 않은 참여자가 있습니다");
+        }
+
+        return find(groupOrderId, requesterId);
+    }
+
+    // 방장의 배달 완료 버튼(배달 앱을 통해 도착했는지 직접 확인)
+    @Transactional
+    public SettlementResponse deliver(Long groupOrderId, Long requesterId) {
+        GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+
+        groupOrder.deliver(requesterId);
+
+        return find(groupOrderId, requesterId);
     }
 }

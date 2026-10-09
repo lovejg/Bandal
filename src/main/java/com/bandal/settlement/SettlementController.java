@@ -1,6 +1,7 @@
 package com.bandal.settlement;
 
 import com.bandal.settlement.dto.DeliveryFeeRequest;
+import com.bandal.settlement.dto.OrderRequest;
 import com.bandal.settlement.dto.SettlementResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -67,5 +68,21 @@ public class SettlementController {
     public SettlementResponse revokeConfirm(@PathVariable Long settlementId,
                                             @AuthenticationPrincipal Long userId) {
         return settlementService.revokeConfirm(settlementId, userId);
+    }
+
+    // 방장의 "주문했어요". 전원의 입금을 확인했을 때만 주문완료로 넘어간다 (ADR-047)
+    // 결제금액은 비워도 되지만 본문은 늘 받는다. 비울 때는 {}를 보낸다
+    @PostMapping("/api/group-orders/{groupOrderId}/order")
+    public SettlementResponse order(@PathVariable Long groupOrderId,
+                                    @AuthenticationPrincipal Long userId,
+                                    @Valid @RequestBody OrderRequest request) {
+        return settlementService.order(groupOrderId, userId, request);
+    }
+
+    // 방장의 "배달 왔어요". 받을 값이 없어서 본문이 없다 (ADR-047)
+    @PostMapping("/api/group-orders/{groupOrderId}/deliver")
+    public SettlementResponse deliver(@PathVariable Long groupOrderId,
+                                      @AuthenticationPrincipal Long userId) {
+        return settlementService.deliver(groupOrderId, userId);
     }
 }

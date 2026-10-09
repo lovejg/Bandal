@@ -14,9 +14,6 @@ public interface SettlementRepository extends JpaRepository<Settlement, Long> {
 
     Optional<Settlement> findByGroupOrderIdAndUserId(Long groupOrderId, Long userId);
 
-    // 주문완료로 넘어갈 수 있는지. 0이어야 한다
-    long countByGroupOrderIdAndConfirmedPaidAtIsNull(Long groupOrderId);
-
     // 배달비 수정 때 정산표를 통째로 지운다
     // 이름으로만 만들면 하나씩 불러와서 하나씩 지운다. DELETE 한 번으로 보낸다
     // flushAutomatically: DELETE 전에 쌓여 있던 변경(방의 배달비)을 먼저 DB에 보낸다
