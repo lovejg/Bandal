@@ -79,6 +79,28 @@ public class SettlementController {
         return settlementService.order(groupOrderId, userId, request);
     }
 
+    // 방장의 "돌려줬어요". 정산중에 취소된 방의 환불 대상 줄에만 받는다 (ADR-049)
+    // 완료는 참여자가 정하므로 이건 알림이다. 응답은 방장 시점의 전원 줄이다
+    @PostMapping("/api/settlements/{settlementId}/send-refund")
+    public SettlementResponse sendRefund(@PathVariable Long settlementId,
+                                         @AuthenticationPrincipal Long userId) {
+        return settlementService.sendRefund(settlementId, userId);
+    }
+
+    // 방장의 "입금 안 됐어요". 보냈어요만 있고 확인은 없는 줄에만 받는다 (ADR-048, 049)
+    @PostMapping("/api/settlements/{settlementId}/deny-payment")
+    public SettlementResponse denyPayment(@PathVariable Long settlementId,
+                                          @AuthenticationPrincipal Long userId) {
+        return settlementService.denyPayment(settlementId, userId);
+    }
+
+    // 참여자의 "돌려받았어요". 환불 완료의 기준이고, 앞의 버튼과 상관없이 받는다 (ADR-049)
+    @PostMapping("/api/settlements/{settlementId}/receive-refund")
+    public SettlementResponse receiveRefund(@PathVariable Long settlementId,
+                                            @AuthenticationPrincipal Long userId) {
+        return settlementService.receiveRefund(settlementId, userId);
+    }
+
     // 방장의 "배달 왔어요". 받을 값이 없어서 본문이 없다 (ADR-047)
     @PostMapping("/api/group-orders/{groupOrderId}/deliver")
     public SettlementResponse deliver(@PathVariable Long groupOrderId,

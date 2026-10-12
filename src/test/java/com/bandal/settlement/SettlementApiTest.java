@@ -598,17 +598,7 @@ class SettlementApiTest {
                     .andExpect(jsonPath("$.lines[0].totalAmount").value(MEMBER_MENU + 1_750));
         }
 
-        @Test
-        @DisplayName("취소된 방은 일단 막는다")
-        void rejectsCanceled() throws Exception {
-            startSettlement();
-            forceStatus(GroupOrderStatus.CANCELED);
-
-            // 정산중에 취소된 방은 환불이 걸려 있다. 무엇을 보여줄지는 취소 단계에서 정한다
-            mockMvc.perform(get(settlementUrl())
-                            .header("Authorization", bearer(member.getId())))
-                    .andExpect(status().isConflict());
-        }
+        // 취소된 방의 조회는 정산중 취소(CancelWhileSettling)에서 본다 (ADR-048)
 
         @Test
         @DisplayName("없는 방이면 404다")
@@ -1221,6 +1211,417 @@ class SettlementApiTest {
             mockMvc.perform(post("/api/group-orders/999999/deliver")
                             .header("Authorization", bearer(host.getId())))
                     .andExpect(status().isNotFound());
+        }
+    }
+
+    static final String CANCEL_REASON = "가게가 갑자기 문을 닫았어요";
+
+    void cancel(User requester, String reason, int expectedStatus) throws Exception {
+        String body = reason == null ? "{}" : """
+                {"reason": "%s"}
+                """.formatted(reason);
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/cancel")
+                        .header("Authorization", bearer(requester.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    // 방장의 정산중 취소와 취소된 방의 정산 조회 (ADR-021, 048)
+    @Nested
+    @DisplayName("정산중 취소")
+    class CancelWhileSettling {
+
+        @Test
+        @DisplayName("사유를 적으면 취소되고 정산중 취소로 남는다")
+        void cancels() throws Exception {
+            startSettlement();
+
+            cancel(host, CANCEL_REASON, 200);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+            assertThat(savedRoom().getCancelType().name()).isEqualTo("HOST_AFTER_SETTLING");
+            assertThat(savedRoom().getCancelReason()).isEqualTo(CANCEL_REASON);
+        }
+
+        @Test
+        @DisplayName("정산표는 지우지 않고 입금 기록도 그대로 남는다")
+        void keepsPaymentRecords() throws Exception {
+            // 누가 이미 보냈는지가 환불의 근거다
+            startSettlement();
+            mockMvc.perform(post(markPaidUrl(member))
+                    .header("Authorization", bearer(member.getId())));
+            confirmMember();
+
+            cancel(host, CANCEL_REASON, 200);
+
+            assertThat(settlementRepository.findByGroupOrderId(groupOrder.getId())).hasSize(2);
+            assertThat(lineOf(member).getMarkedPaidAt()).isNotNull();
+            assertThat(lineOf(member).getConfirmedPaidAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("사유 없이 취소하면 409이고 정산중으로 남는다")
+        void rejectsWithoutReason() throws Exception {
+            startSettlement();
+
+            cancel(host, null, 409);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("참여자는 취소할 수 없다")
+        void rejectsNonHost() throws Exception {
+            startSettlement();
+
+            cancel(member, CANCEL_REASON, 409);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("주문완료 뒤에는 취소할 수 없다")
+        void rejectsAfterOrdered() throws Exception {
+            orderedRoom();
+
+            cancel(host, CANCEL_REASON, 409);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+            assertThat(savedRoom().getCancelType()).isNull();
+        }
+
+        // 취소 뒤에도 보냈어요는 늦게 누를 수 있다. 환불(Refund)에서 본다 (ADR-049)
+
+        @Test
+        @DisplayName("취소 뒤에는 방장이 확인이나 확인 취소를 할 수 없다")
+        void freezesConfirm() throws Exception {
+            startSettlement();
+            confirmMember();
+            cancel(host, CANCEL_REASON, 200);
+
+            // 확인을 취소할 수 있으면 방장이 환불 대상에서 빼려고 기록을 지울 수 있다
+            mockMvc.perform(post(unconfirmUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isConflict());
+
+            assertThat(lineOf(member).isConfirmed()).isTrue();
+        }
+
+        @Test
+        @DisplayName("취소 뒤에는 주문완료로 넘길 수 없다")
+        void rejectsOrderAfterCancel() throws Exception {
+            startSettlement();
+            confirmMember();
+            cancel(host, CANCEL_REASON, 200);
+
+            order(host, 19_000L, 409);
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+        }
+
+        @Test
+        @DisplayName("참여자는 취소된 방에서도 자기 줄을 본다")
+        void memberSeesOwnLineAfterCancel() throws Exception {
+            startSettlement();
+            mockMvc.perform(post(markPaidUrl(member))
+                    .header("Authorization", bearer(member.getId())));
+            cancel(host, CANCEL_REASON, 200);
+
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("CANCELED"))
+                    .andExpect(jsonPath("$.lines.length()").value(1))
+                    .andExpect(jsonPath("$.lines[0].markedPaidAt").isNotEmpty())
+                    .andExpect(jsonPath("$.lines[0].totalAmount").value(MEMBER_MENU + 1_750));
+        }
+
+        @Test
+        @DisplayName("방장은 취소된 방에서도 전원의 줄을 본다")
+        void hostSeesAllLinesAfterCancel() throws Exception {
+            startSettlement();
+            cancel(host, CANCEL_REASON, 200);
+
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("CANCELED"))
+                    .andExpect(jsonPath("$.lines.length()").value(2));
+        }
+
+        @Test
+        @DisplayName("참여하지 않은 사람에게는 취소된 방도 없는 방이다")
+        void hidesFromOutsiderAfterCancel() throws Exception {
+            startSettlement();
+            cancel(host, CANCEL_REASON, 200);
+
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(outsider.getId())))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("마감 뒤에 취소된 방은 정산표가 없어서 409다")
+        void rejectsViewOfCanceledAfterClosed() throws Exception {
+            closedRoom();
+            cancel(host, CANCEL_REASON, 200);
+
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isConflict());
+        }
+    }
+
+    String sendRefundUrl(User user) {
+        return "/api/settlements/" + lineOf(user).getId() + "/send-refund";
+    }
+
+    String denyPaymentUrl(User user) {
+        return "/api/settlements/" + lineOf(user).getId() + "/deny-payment";
+    }
+
+    String receiveRefundUrl(User user) {
+        return "/api/settlements/" + lineOf(user).getId() + "/receive-refund";
+    }
+
+    // 본문 없는 버튼 하나를 누른다
+    void press(String url, User requester, int expectedStatus) throws Exception {
+        mockMvc.perform(post(url)
+                        .header("Authorization", bearer(requester.getId())))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    // 참여자가 보냈어요를 누르고 방장이 확인까지 한 뒤 정산중에 취소된 방
+    void confirmedThenCanceled() throws Exception {
+        startSettlement();
+        press(markPaidUrl(member), member, 200);
+        confirmMember();
+        cancel(host, CANCEL_REASON, 200);
+    }
+
+    // 참여자가 보냈어요만 누르고 방장은 확인하지 않은 채 취소된 방
+    void markedThenCanceled() throws Exception {
+        startSettlement();
+        press(markPaidUrl(member), member, 200);
+        cancel(host, CANCEL_REASON, 200);
+    }
+
+    // 정산중 취소 뒤 환불 (ADR-048, 049)
+    @Nested
+    @DisplayName("환불")
+    class Refund {
+
+        @Test
+        @DisplayName("취소 뒤에도 보냈어요를 늦게 누를 수 있고 환불 대기가 된다")
+        void lateMark() throws Exception {
+            // 취소 직전에 이체해서 누를 틈이 없었던 참여자
+            startSettlement();
+            cancel(host, CANCEL_REASON, 200);
+
+            mockMvc.perform(post(markPaidUrl(member))
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines[0].markedPaidAt").isNotEmpty())
+                    .andExpect(jsonPath("$.lines[0].refundStatus").value("REFUND_PENDING"));
+
+            assertThat(lineOf(member).getMarkedPaidAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("아무것도 누르지 않은 참여자의 줄은 환불 상태가 없다")
+        void noStatusForUntouched() throws Exception {
+            startSettlement();
+            cancel(host, CANCEL_REASON, 200);
+
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines[0].refundStatus").isEmpty());
+        }
+
+        @Test
+        @DisplayName("정산중인 방의 줄에는 환불 상태가 없다")
+        void noStatusWhileSettling() throws Exception {
+            startSettlement();
+            confirmMember();
+
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines[0].refundStatus").isEmpty());
+        }
+
+        @Test
+        @DisplayName("방장이 돌려줬어요를 누르면 방장 시점의 정산 정보가 돌아온다")
+        void sendRefund() throws Exception {
+            confirmedThenCanceled();
+
+            mockMvc.perform(post(sendRefundUrl(member))
+                            .header("Authorization", bearer(host.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines.length()").value(2))
+                    .andExpect(jsonPath("$.lines[?(@.host == false)].refundSentAt", contains(notNullValue())))
+                    .andExpect(jsonPath("$.lines[?(@.host == false)].refundStatus", contains("REFUND_SENT")))
+                    .andExpect(jsonPath("$.lines[?(@.host == true)].refundStatus", contains(nullValue())));
+
+            assertThat(lineOf(member).getRefundSentAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("참여자가 돌려받았어요를 누르면 완료되고 자기 줄을 받는다")
+        void receiveRefund() throws Exception {
+            confirmedThenCanceled();
+            press(sendRefundUrl(member), host, 200);
+
+            mockMvc.perform(post(receiveRefundUrl(member))
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines.length()").value(1))
+                    .andExpect(jsonPath("$.lines[0].refundReceivedAt").isNotEmpty())
+                    .andExpect(jsonPath("$.lines[0].refundStatus").value("REFUNDED"));
+
+            assertThat(lineOf(member).getRefundReceivedAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("방장이 돌려줬어요를 잊었어도 참여자는 돌려받았어요를 누를 수 있다")
+        void receiveWithoutSent() throws Exception {
+            confirmedThenCanceled();
+
+            press(receiveRefundUrl(member), member, 200);
+
+            assertThat(lineOf(member).getRefundReceivedAt()).isNotNull();
+            assertThat(lineOf(member).getRefundSentAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("방장이 입금 안 됐어요를 누르면 참여자도 반박을 본다")
+        void denyPayment() throws Exception {
+            markedThenCanceled();
+
+            press(denyPaymentUrl(member), host, 200);
+
+            assertThat(lineOf(member).getPaymentDeniedAt()).isNotNull();
+            // 반박은 양쪽이 보는 기록이다 (ADR-048)
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.lines[0].paymentDeniedAt").isNotEmpty())
+                    .andExpect(jsonPath("$.lines[0].refundStatus").value("PAYMENT_DENIED"));
+        }
+
+        @Test
+        @DisplayName("반박했다가 돈을 발견해 돌려주면 끝까지 갈 수 있다")
+        void deniedThenRefunded() throws Exception {
+            markedThenCanceled();
+            press(denyPaymentUrl(member), host, 200);
+
+            press(sendRefundUrl(member), host, 200);
+            press(receiveRefundUrl(member), member, 200);
+
+            // 반박 기록은 남고 상태는 완료다
+            assertThat(lineOf(member).getPaymentDeniedAt()).isNotNull();
+            mockMvc.perform(get(settlementUrl())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(jsonPath("$.lines[0].refundStatus").value("REFUNDED"));
+        }
+
+        @Test
+        @DisplayName("확인된 줄은 반박할 수 없다")
+        void rejectsDenyOnConfirmed() throws Exception {
+            confirmedThenCanceled();
+
+            press(denyPaymentUrl(member), host, 409);
+
+            assertThat(lineOf(member).getPaymentDeniedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("돌려줬어요 뒤에는 반박할 수 없다")
+        void rejectsDenyAfterSent() throws Exception {
+            markedThenCanceled();
+            press(sendRefundUrl(member), host, 200);
+
+            press(denyPaymentUrl(member), host, 409);
+
+            assertThat(lineOf(member).getPaymentDeniedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("참여자는 돌려줬어요나 입금 안 됐어요를 누를 수 없다")
+        void rejectsHostButtonsByMember() throws Exception {
+            markedThenCanceled();
+
+            press(sendRefundUrl(member), member, 409);
+            press(denyPaymentUrl(member), member, 409);
+
+            assertThat(lineOf(member).getRefundSentAt()).isNull();
+            assertThat(lineOf(member).getPaymentDeniedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("방장이나 외부인은 돌려받았어요를 대신 누를 수 없다")
+        void rejectsReceiveByOthers() throws Exception {
+            confirmedThenCanceled();
+
+            press(receiveRefundUrl(member), host, 409);
+            press(receiveRefundUrl(member), outsider, 409);
+
+            assertThat(lineOf(member).getRefundReceivedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("아무것도 누르지 않은 줄에는 환불 버튼을 누를 수 없다")
+        void rejectsOnNonTarget() throws Exception {
+            startSettlement();
+            cancel(host, CANCEL_REASON, 200);
+
+            press(sendRefundUrl(member), host, 409);
+            press(receiveRefundUrl(member), member, 409);
+
+            assertThat(lineOf(member).getRefundSentAt()).isNull();
+            assertThat(lineOf(member).getRefundReceivedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("정산중인 방에서는 환불 버튼을 누를 수 없다")
+        void rejectsWhileSettling() throws Exception {
+            startSettlement();
+            press(markPaidUrl(member), member, 200);
+            confirmMember();
+
+            press(sendRefundUrl(member), host, 409);
+            press(receiveRefundUrl(member), member, 409);
+
+            assertThat(lineOf(member).getRefundSentAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("취소 뒤에도 방장의 확인은 얼어 있다")
+        void confirmStaysFrozen() throws Exception {
+            markedThenCanceled();
+
+            press(confirmUrl(member), host, 409);
+
+            assertThat(lineOf(member).isConfirmed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("없는 정산 줄이면 404다")
+        void rejectsUnknownSettlement() throws Exception {
+            press("/api/settlements/999999/send-refund", host, 404);
+            press("/api/settlements/999999/deny-payment", host, 404);
+            press("/api/settlements/999999/receive-refund", member, 404);
+        }
+
+        @Test
+        @DisplayName("로그인하지 않으면 누를 수 없다")
+        void requiresLogin() throws Exception {
+            confirmedThenCanceled();
+
+            mockMvc.perform(post(receiveRefundUrl(member)))
+                    .andExpect(status().isUnauthorized());
         }
     }
 }

@@ -49,6 +49,16 @@ public class Settlement {
     // 방장이 확인을 취소한 마지막 시각. 값이 있으면 확인했다가 되돌린 적이 있다는 뜻이다
     private Instant confirmRevokedAt;
 
+    // 아래 셋은 정산중에 취소된 방의 환불 기록이다
+    // 방장이 "돌려줬어요"를 누른 시각
+    private Instant refundSentAt;
+
+    // 참여자가 "돌려받았어요"를 누른 시각. 환불 완료의 기준이다
+    private Instant refundReceivedAt;
+
+    // 방장이 "입금 안 됐어요"를 누른 시각
+    private Instant paymentDeniedAt;
+
     Settlement(GroupOrder groupOrder, User user, long menuTotalAmount, long feeShare,
                boolean host, Instant now) {
             if(host) {
@@ -65,22 +75,22 @@ public class Settlement {
 
     // 참여자가 송금하고 "보냈어요"를 누른다
     public void markPaid(Long requesterId, Instant now) {
-        if(this.groupOrder.getStatus() != GroupOrderStatus.SETTLING) {
-            throw new IllegalStateException("정산중인 방에서만 할 수 있습니다");
+        // 정산중 취소됐을 때 참여자가 보냈어요 버튼을 늦게 보낸 케이스 고려
+        if(this.groupOrder.getStatus() != GroupOrderStatus.SETTLING && !this.groupOrder.isCanceledWhileSettling()) {
+            throw new IllegalStateException("정산중이거나 정산중에 취소된 방에서만 할 수 있습니다");
         }
         if(!Objects.equals(this.user.getId(), requesterId)) {
             throw new IllegalStateException("자기 몫만 표시할 수 있습니다");
         }
-        else {
-            if(confirmedPaidAt != null) {
-                throw new IllegalStateException("이미 송금을 완료했습니다");
-            }
-            if(markedPaidAt != null) {
-                return;
-            }
 
-            markedPaidAt = now;
+        if(confirmedPaidAt != null) {
+            throw new IllegalStateException("이미 송금을 완료했습니다");
         }
+        if(markedPaidAt != null) {
+            return;
+        }
+
+        markedPaidAt = now;
     }
 
     // 방장이 입금을 확인한다.
@@ -131,5 +141,78 @@ public class Settlement {
     // 보냈다는데 확인이 안 된 상태. 분쟁의 신호다
     public boolean isDisputed() {
         return markedPaidAt != null && confirmedPaidAt == null;
+    }
+
+    // 이 줄이 환불 대상인가
+    public boolean isRefundTarget() {
+        if(this.host) return false;
+        if(!this.groupOrder.isCanceledWhileSettling()) return false;
+        return this.markedPaidAt != null || this.confirmedPaidAt != null;
+    }
+
+    // 방장의 돌려줬어요 버튼
+    public void sendRefund(Long requesterId, Instant now) {
+        if(!this.groupOrder.isCanceledWhileSettling()) {
+            throw new IllegalStateException("정산중에 취소된 방에서만 할 수 있습니다");
+        }
+        if(!Objects.equals(this.groupOrder.getHost().getId(), requesterId)) {
+            throw new IllegalStateException("방장만 돌려줬다고 표시할 수 있습니다");
+        }
+        if(!this.isRefundTarget()) {
+            throw new IllegalStateException("환불 대상이 아닙니다");
+        }
+        if(this.refundReceivedAt != null) {
+            throw new IllegalStateException("이미 환불이 완료됐습니다");
+        }
+         if(this.refundSentAt != null) return;
+        this.refundSentAt = now;
+    }
+
+    // 방장의 입금 안 됐어요 버튼
+    public void denyPayment(Long requesterId, Instant now) {
+        if(!this.groupOrder.isCanceledWhileSettling()) {
+            throw new IllegalStateException("정산중에 취소된 방에서만 할 수 있습니다");
+        }
+        if(!Objects.equals(this.groupOrder.getHost().getId(), requesterId)) {
+            throw new IllegalStateException("방장만 돌려줬다고 표시할 수 있습니다");
+        }
+        if(!this.isRefundTarget()) {
+            throw new IllegalStateException("환불 대상이 아닙니다");
+        }
+        if(this.confirmedPaidAt != null) {
+            throw new IllegalStateException("입금을 확인한 줄은 반박할 수 없습니다");
+        }
+        if(this.refundReceivedAt != null) {
+            throw new IllegalStateException("이미 환불이 완료됐습니다");
+        }
+        if(this.refundSentAt != null) {
+            throw new IllegalStateException("환불했다고 표시한 줄은 반박할 수 없습니다");
+        }
+        if(this.paymentDeniedAt != null) return;
+        this.paymentDeniedAt = now;
+    }
+
+    // 참여자의 돌려받았어요 버튼
+    public void receiveRefund(Long requesterId, Instant now) {
+        if(!this.groupOrder.isCanceledWhileSettling()) {
+            throw new IllegalStateException("정산중에 취소된 방에서만 할 수 있습니다");
+        }
+        if(!Objects.equals(this.user.getId(), requesterId)) {
+            throw new IllegalStateException("자기 몫만 표시할 수 있습니다");
+        }
+        if(!this.isRefundTarget()) {
+            throw new IllegalStateException("환불 대상이 아닙니다");
+        }
+        if(this.refundReceivedAt != null) return;
+        this.refundReceivedAt = now;
+    }
+
+    // 화면에 넘길 환불 상태. 대상이 아니면 null
+    public RefundStatus refundStatus() {
+        if(!isRefundTarget()) return null;
+        if(this.refundReceivedAt != null) return RefundStatus.REFUNDED;
+        if(this.refundSentAt != null) return RefundStatus.REFUND_SENT;
+        if(paymentDeniedAt != null) return RefundStatus.PAYMENT_DENIED;
+        return RefundStatus.REFUND_PENDING;
     }
 }

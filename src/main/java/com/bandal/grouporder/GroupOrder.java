@@ -145,14 +145,15 @@ public class GroupOrder {
         if (status == GroupOrderStatus.CANCELED) {
             throw new IllegalStateException("이미 취소된 방입니다");
         }
-        if (status != GroupOrderStatus.RECRUITING && status != GroupOrderStatus.CLOSED) {
+        if (status != GroupOrderStatus.RECRUITING && status != GroupOrderStatus.CLOSED
+                && status != GroupOrderStatus.SETTLING) {
             throw new IllegalStateException("이미 주문이 시작된 방은 취소할 수 없습니다");
         }
         if (!Objects.equals(requesterId, host.getId())) {
             throw new IllegalStateException("방장만 방을 취소할 수 있습니다");
         }
-        // 마감 뒤 취소는 참여자들에게 피해가 커서 사유를 받는다 (ADR-021)
-        if (status == GroupOrderStatus.CLOSED && (reason == null || reason.isBlank())) {
+        // 마감 뒤 취소(정산중 포함)는 참여자들에게 피해가 커서 사유를 받는다
+        if (status != GroupOrderStatus.RECRUITING && (reason == null || reason.isBlank())) {
             throw new IllegalStateException("마감 뒤에 취소할 때는 사유를 적어야 합니다");
         }
 
@@ -161,6 +162,9 @@ public class GroupOrder {
         }
         else if(status == GroupOrderStatus.CLOSED) {
             cancelType = CancelType.HOST_AFTER_CLOSED;
+        }
+        else if(status == GroupOrderStatus.SETTLING) {
+            cancelType = CancelType.HOST_AFTER_SETTLING;
         }
         cancelReason = reason;
         status = GroupOrderStatus.CANCELED; // 취소
@@ -182,10 +186,16 @@ public class GroupOrder {
         status = GroupOrderStatus.SETTLING; // 정산중
     }
 
+    // 정산중에 취소된 방인가(환불을 받는 방)
+    public boolean isCanceledWhileSettling() {
+        return this.cancelType == CancelType.HOST_AFTER_SETTLING;
+    }
+
     // 정산 정보를 보여줘도 되는 상태인지 확인한다
     public void checkSettlementVisible() {
+        boolean canceledWhileSettling = this.cancelType == CancelType.HOST_AFTER_SETTLING;
         if(this.status != GroupOrderStatus.SETTLING && this.status != GroupOrderStatus.ORDERED
-                && this.status != GroupOrderStatus.DELIVERED) {
+                && this.status != GroupOrderStatus.DELIVERED && !canceledWhileSettling) {
             throw new IllegalStateException("정산이 시작된 방만 정산 정보를 볼 수 있습니다");
         }
     }

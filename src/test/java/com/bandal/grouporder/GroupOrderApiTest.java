@@ -552,6 +552,118 @@ class GroupOrderApiTest {
                 .andExpect(status().isNotFound());
     }
 
+    // 방장의 취소 (ADR-021, 048). 정산중 취소는 정산표가 얽혀 있어 SettlementApiTest에서 본다
+    String cancelBody(String reason) {
+        if (reason == null) {
+            return "{}";
+        }
+        return """
+                {"reason": "%s"}
+                """.formatted(reason);
+    }
+
+    void cancel(GroupOrder groupOrder, User requester, String reason, int expectedStatus) throws Exception {
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/cancel")
+                        .header("Authorization", bearer(requester.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cancelBody(reason)))
+                .andExpect(status().is(expectedStatus));
+    }
+
+    @Test
+    @DisplayName("모집중인 방은 사유 없이 취소하면 200이고 취소 종류가 남는다")
+    void cancelsRecruitingWithoutReason() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/cancel")
+                        .header("Authorization", bearer(host.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cancelBody(null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELED"))
+                .andExpect(jsonPath("$.cancelType").value("HOST_WHILE_RECRUITING"))
+                .andExpect(jsonPath("$.cancelReason").isEmpty())
+                // 응답은 마감과 같은 방 상세 모양이다
+                .andExpect(jsonPath("$.participantCount").value(2));
+
+        GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
+        assertThat(saved.getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+        assertThat(saved.getCancelType()).isEqualTo(CancelType.HOST_WHILE_RECRUITING);
+    }
+
+    @Test
+    @DisplayName("마감된 방은 사유를 적으면 취소된다")
+    void cancelsClosedWithReason() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(status().isOk());
+
+        cancel(groupOrder, host, "가게가 문을 닫았어요", 200);
+
+        GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
+        assertThat(saved.getCancelType()).isEqualTo(CancelType.HOST_AFTER_CLOSED);
+        assertThat(saved.getCancelReason()).isEqualTo("가게가 문을 닫았어요");
+    }
+
+    @Test
+    @DisplayName("마감된 방을 사유 없이 취소하면 409이고 마감으로 남는다")
+    void rejectsCancelClosedWithoutReason() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+        mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
+                        .header("Authorization", bearer(host.getId())))
+                .andExpect(status().isOk());
+
+        cancel(groupOrder, host, null, 409);
+
+        assertThat(groupOrderRepository.findById(groupOrder.getId()).orElseThrow().getStatus())
+                .isEqualTo(GroupOrderStatus.CLOSED);
+    }
+
+    @Test
+    @DisplayName("방장이 아닌 사람이 취소하려 하면 409이고 방은 그대로다")
+    void rejectsCancelByNonHost() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+
+        cancel(groupOrder, member, "그냥요", 409);
+
+        assertThat(groupOrderRepository.findById(groupOrder.getId()).orElseThrow().getStatus())
+                .isEqualTo(GroupOrderStatus.RECRUITING);
+    }
+
+    @Test
+    @DisplayName("이미 취소된 방을 다시 취소하면 409이고 처음 기록이 남는다")
+    void rejectsCancelTwice() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+        cancel(groupOrder, host, null, 200);
+
+        cancel(groupOrder, host, "다시 취소", 409);
+
+        assertThat(groupOrderRepository.findById(groupOrder.getId()).orElseThrow().getCancelReason())
+                .isNull();
+    }
+
+    @Test
+    @DisplayName("사유가 200자를 넘으면 400이다")
+    void rejectsTooLongReason() throws Exception {
+        GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
+
+        cancel(groupOrder, host, "가".repeat(201), 400);
+
+        assertThat(groupOrderRepository.findById(groupOrder.getId()).orElseThrow().getStatus())
+                .isEqualTo(GroupOrderStatus.RECRUITING);
+    }
+
+    @Test
+    @DisplayName("없는 방을 취소하려 하면 404다")
+    void rejectsCancelOfUnknownGroupOrder() throws Exception {
+        mockMvc.perform(post("/api/group-orders/999999/cancel")
+                        .header("Authorization", bearer(host.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cancelBody(null)))
+                .andExpect(status().isNotFound());
+    }
+
     // 방장과 참여자 한 명, 메뉴 20,000원어치가 있는 방
     GroupOrder givenRoomWithTwoPeopleAndMenu() {
         GroupOrder groupOrder = groupOrderRepository.save(

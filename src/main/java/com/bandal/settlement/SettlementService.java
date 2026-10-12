@@ -177,4 +177,34 @@ public class SettlementService {
 
         return find(groupOrderId, requesterId);
     }
+
+    // 방장의 환불 버튼
+    @Transactional
+    public SettlementResponse sendRefund(Long settlementId, Long requesterId) {
+        Settlement settlement = settlementRepository.findById(settlementId)
+            .orElseThrow(() -> new NotFoundException("없는 정산입니다"));
+
+        settlement.sendRefund(requesterId, Instant.now());
+        return find(settlement.getGroupOrder().getId(), requesterId);
+    }
+
+    // 방장의 입금 안 받음 버튼(입금 안 받으니 환불 못한다)
+    @Transactional
+    public SettlementResponse denyPayment(Long settlementId, Long requesterId) {
+        Settlement settlement = settlementRepository.findById(settlementId)
+            .orElseThrow(() -> new NotFoundException("없는 정산입니다"));
+
+        settlement.denyPayment(requesterId, Instant.now());
+        return find(settlement.getGroupOrder().getId(), requesterId);
+    }
+
+    // 사용자의 환불 확인 버튼
+    @Transactional
+    public SettlementResponse receiveRefund(Long settlementId, Long requesterId) {
+        Settlement settlement = settlementRepository.findById(settlementId)
+            .orElseThrow(() -> new NotFoundException("없는 정산입니다"));
+
+        settlement.receiveRefund(requesterId, Instant.now());
+        return find(settlement.getGroupOrder().getId(), requesterId);
+    }
 }

@@ -1,5 +1,6 @@
 package com.bandal.settlement.dto;
 
+import com.bandal.settlement.RefundStatus;
 import com.bandal.settlement.Settlement;
 
 import java.time.Instant;
@@ -18,7 +19,13 @@ public record SettlementLineResponse(
         Instant markedPaidAt,
         Instant confirmedPaidAt,
         // 방장이 확인을 취소한 시각. 참여자가 "확인했다가 취소했다"를 따질 근거다 (ADR-045)
-        Instant confirmRevokedAt
+        Instant confirmRevokedAt,
+        // 아래 넷은 정산중에 취소된 방의 환불 기록이다 (ADR-048, 049)
+        Instant refundSentAt,
+        Instant refundReceivedAt,
+        Instant paymentDeniedAt,
+        // 위 칸들을 서버가 정리한 상태. 화면은 이것만 보고 문구를 고른다. 환불 대상이 아니면 null
+        RefundStatus refundStatus
 ) {
 
     public static SettlementLineResponse of(Settlement settlement) {
@@ -32,7 +39,11 @@ public record SettlementLineResponse(
                 settlement.getTotalAmount(),
                 settlement.getMarkedPaidAt(),
                 settlement.getConfirmedPaidAt(),
-                settlement.getConfirmRevokedAt()
+                settlement.getConfirmRevokedAt(),
+                settlement.getRefundSentAt(),
+                settlement.getRefundReceivedAt(),
+                settlement.getPaymentDeniedAt(),
+                settlement.refundStatus()
         );
     }
 }

@@ -1,10 +1,7 @@
 package com.bandal.grouporder;
 
 import com.bandal.common.NotFoundException;
-import com.bandal.grouporder.dto.CreateGroupOrderRequest;
-import com.bandal.grouporder.dto.GroupOrderListResponse;
-import com.bandal.grouporder.dto.GroupOrderResponse;
-import com.bandal.grouporder.dto.GroupOrderSummaryResponse;
+import com.bandal.grouporder.dto.*;
 import com.bandal.participation.GroupOrderStat;
 import com.bandal.participation.OrderItemRepository;
 import com.bandal.participation.Participation;
@@ -54,11 +51,11 @@ public class GroupOrderService {
 
     // 방 상세 조회(단 건)
     @Transactional(readOnly = true)
-    public GroupOrderResponse find(Long groupOrderId, Long userId) {
+    public GroupOrderResponse find(Long groupOrderId, Long requesterId) {
         GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
-        Long myParticipationId = participationRepository.findByGroupOrderIdAndUserId(groupOrderId, userId)
+        Long myParticipationId = participationRepository.findByGroupOrderIdAndUserId(groupOrderId, requesterId)
             .map(Participation::getId)
             .orElse(null);
 
@@ -105,16 +102,32 @@ public class GroupOrderService {
 
     // 방장 마감
     @Transactional
-    public GroupOrderResponse close(Long groupOrderId, Long userId) {
+    public GroupOrderResponse close(Long groupOrderId, Long requesterId) {
         GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         long participantCount = participationRepository.countByGroupOrderId(groupOrderId);
         long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
 
-        groupOrder.closeByHost(userId, participantCount, menuTotalAmount, Instant.now());
+        groupOrder.closeByHost(requesterId, participantCount, menuTotalAmount, Instant.now());
 
-        Long myParticipationId = participationRepository.findByGroupOrderIdAndUserId(groupOrderId, userId)
+        Long myParticipationId = participationRepository.findByGroupOrderIdAndUserId(groupOrderId, requesterId)
+            .map(Participation::getId)
+            .orElse(null);
+
+        return GroupOrderResponse.of(groupOrder, participantCount, menuTotalAmount, myParticipationId);
+    }
+
+    @Transactional
+    public GroupOrderResponse cancel(Long groupOrderId, Long requesterId, CancelRequest request) {
+        GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+
+        groupOrder.cancelByHost(requesterId, request.reason());
+
+        long participantCount = participationRepository.countByGroupOrderId(groupOrderId);
+        long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
+        Long myParticipationId = participationRepository.findByGroupOrderIdAndUserId(groupOrderId, requesterId)
             .map(Participation::getId)
             .orElse(null);
 

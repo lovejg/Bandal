@@ -1,5 +1,6 @@
 package com.bandal.grouporder;
 
+import com.bandal.grouporder.dto.CancelRequest;
 import com.bandal.grouporder.dto.CreateGroupOrderRequest;
 import com.bandal.grouporder.dto.GroupOrderListResponse;
 import com.bandal.grouporder.dto.GroupOrderResponse;
@@ -56,5 +57,14 @@ public class GroupOrderController {
     public GroupOrderResponse close(@PathVariable Long groupOrderId,
                                     @AuthenticationPrincipal Long userId) {
         return groupOrderService.close(groupOrderId, userId);
+    }
+
+    // 방장의 취소. 모집중, 마감, 정산중을 한 주소로 받고 무엇이 되는지는 방 상태가 정한다 (ADR-021, 048)
+    // 사유는 비워도 되는 상태가 있어서 본문은 늘 받고 비울 때는 {}를 보낸다
+    @PostMapping("/{groupOrderId}/cancel")
+    public GroupOrderResponse cancel(@PathVariable Long groupOrderId,
+                                     @AuthenticationPrincipal Long userId,
+                                     @Valid @RequestBody CancelRequest request) {
+        return groupOrderService.cancel(groupOrderId, userId, request);
     }
 }

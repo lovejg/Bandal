@@ -1,5 +1,6 @@
 package com.bandal.settlement;
 
+import com.bandal.grouporder.CancelType;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderStatus;
 import com.bandal.pickupspot.PickupSpot;
@@ -399,10 +400,12 @@ class SettlementTest {
         }
 
         @Test
-        @DisplayName("취소된 방에서는 보냈다고 표시할 수 없다")
+        @DisplayName("정산중 취소가 아닌 취소 방에서는 보냈다고 표시할 수 없다")
         void rejectsMarkAfterCanceled() {
+            // 정산중에 취소된 방의 늦은 표시는 LateMark에서 본다 (ADR-049)
             Settlement line = memberLine();
             forceStatus(GroupOrderStatus.CANCELED);
+            ReflectionTestUtils.setField(groupOrder, "cancelType", CancelType.HOST_AFTER_CLOSED);
 
             assertThatThrownBy(() -> line.markPaid(MEMBER_ID, NOW))
                     .isInstanceOf(IllegalStateException.class);
@@ -443,6 +446,591 @@ class SettlementTest {
 
             assertThatThrownBy(() -> line.confirm(HOST_ID, NOW))
                     .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    // ===== 여기부터 환불 (ADR-048, 049) =====
+
+    static final String CANCEL_REASON = "가게가 문을 닫았어요";
+    static final Instant LATER = NOW.plusSeconds(3_600);
+
+    // 방장이 정산중에 방을 취소한다. 입금 기록은 그 전에 찍어둬야 한다
+    void cancelWhileSettling() {
+        groupOrder.cancelByHost(HOST_ID, CANCEL_REASON);
+    }
+
+    // 보냈어요만 있는 줄로 정산중 취소까지
+    Settlement markedThenCanceled() {
+        Settlement line = memberLine();
+        line.markPaid(MEMBER_ID, NOW);
+        cancelWhileSettling();
+        return line;
+    }
+
+    // 확인까지 된 줄로 정산중 취소까지
+    Settlement confirmedThenCanceled() {
+        Settlement line = memberLine();
+        line.markPaid(MEMBER_ID, NOW);
+        line.confirm(HOST_ID, NOW.plusSeconds(60));
+        cancelWhileSettling();
+        return line;
+    }
+
+    // 조각 7-1
+    @Nested
+    @DisplayName("환불 대상")
+    class RefundTarget {
+
+        @Test
+        @DisplayName("정산중에 취소된 방이면 참이다")
+        void canceledWhileSettling() {
+            cancelWhileSettling();
+
+            assertThat(groupOrder.isCanceledWhileSettling()).isTrue();
+        }
+
+        @Test
+        @DisplayName("정산중인 방은 아직 취소된 방이 아니다")
+        void settlingIsNotCanceled() {
+            assertThat(groupOrder.isCanceledWhileSettling()).isFalse();
+        }
+
+        @Test
+        @DisplayName("마감 뒤에 취소된 방은 정산중 취소가 아니다")
+        void canceledAfterClosedIsNot() {
+            forceStatus(GroupOrderStatus.CANCELED);
+            ReflectionTestUtils.setField(groupOrder, "cancelType", CancelType.HOST_AFTER_CLOSED);
+
+            assertThat(groupOrder.isCanceledWhileSettling()).isFalse();
+        }
+
+        @Test
+        @DisplayName("보냈어요만 있는 줄도 대상이다")
+        void markedOnly() {
+            // 돈이 왔는데 방장이 확인을 안 눌렀을 수 있다 (ADR-048)
+            assertThat(markedThenCanceled().isRefundTarget()).isTrue();
+        }
+
+        @Test
+        @DisplayName("확인된 줄은 대상이다")
+        void confirmed() {
+            assertThat(confirmedThenCanceled().isRefundTarget()).isTrue();
+        }
+
+        @Test
+        @DisplayName("보냈어요 없이 확인만 된 줄도 대상이다")
+        void confirmedWithoutMark() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW);
+            cancelWhileSettling();
+
+            assertThat(line.isRefundTarget()).isTrue();
+        }
+
+        @Test
+        @DisplayName("아무것도 누르지 않은 줄은 대상이 아니다")
+        void untouched() {
+            Settlement line = memberLine();
+            cancelWhileSettling();
+
+            assertThat(line.isRefundTarget()).isFalse();
+        }
+
+        @Test
+        @DisplayName("방장 줄은 시각이 채워져 있어도 대상이 아니다")
+        void excludesHostLine() {
+            // 방장 줄의 시각은 만들 때 채운 것이다. 자기에게 돌려줄 돈은 없다
+            Settlement line = hostLine();
+            cancelWhileSettling();
+
+            assertThat(line.isRefundTarget()).isFalse();
+        }
+
+        @Test
+        @DisplayName("정산중인 방의 줄은 보냈어요가 있어도 대상이 아니다")
+        void notWhileSettling() {
+            Settlement line = memberLine();
+            line.markPaid(MEMBER_ID, NOW);
+
+            assertThat(line.isRefundTarget()).isFalse();
+        }
+
+        @Test
+        @DisplayName("주문완료된 방의 줄은 대상이 아니다")
+        void notAfterOrdered() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW);
+            forceStatus(GroupOrderStatus.ORDERED);
+
+            assertThat(line.isRefundTarget()).isFalse();
+        }
+    }
+
+    // 조각 7-2
+    @Nested
+    @DisplayName("취소 뒤 늦은 보냈어요")
+    class LateMark {
+
+        @Test
+        @DisplayName("정산중에 취소된 방에서는 늦게라도 보냈어요를 누를 수 있고 대상이 된다")
+        void marksAfterCancel() {
+            // 취소 20초 전에 이체해서 버튼을 누를 틈이 없었던 경우 (ADR-049)
+            Settlement line = memberLine();
+            cancelWhileSettling();
+
+            line.markPaid(MEMBER_ID, LATER);
+
+            assertThat(line.getMarkedPaidAt()).isEqualTo(LATER);
+            assertThat(line.isRefundTarget()).isTrue();
+        }
+
+        @Test
+        @DisplayName("이미 보냈어요가 있으면 처음 시각이 남는다")
+        void keepsFirstMark() {
+            Settlement line = markedThenCanceled();
+
+            line.markPaid(MEMBER_ID, LATER);
+
+            assertThat(line.getMarkedPaidAt()).isEqualTo(NOW);
+        }
+
+        @Test
+        @DisplayName("남의 줄에는 누를 수 없다")
+        void rejectsOther() {
+            Settlement line = memberLine();
+            cancelWhileSettling();
+
+            assertThatThrownBy(() -> line.markPaid(OTHER_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThatThrownBy(() -> line.markPaid(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getMarkedPaidAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("확인된 줄에는 누를 필요가 없다")
+        void rejectsConfirmed() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW);
+            cancelWhileSettling();
+
+            assertThatThrownBy(() -> line.markPaid(MEMBER_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("확인은 여전히 얼어 있다")
+        void confirmStaysFrozen() {
+            // 늦은 보냈어요가 열렸다고 확인 쪽까지 열리지 않는다
+            Settlement line = markedThenCanceled();
+
+            assertThatThrownBy(() -> line.confirm(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.isConfirmed()).isFalse();
+        }
+
+        @Test
+        @DisplayName("확인 취소도 여전히 얼어 있다")
+        void revokeStaysFrozen() {
+            // 방장이 확인을 지울 수 있으면 환불 대상에서 스스로 빠질 수 있다
+            Settlement line = confirmedThenCanceled();
+
+            assertThatThrownBy(() -> line.revokeConfirm(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.isConfirmed()).isTrue();
+        }
+    }
+
+    // 조각 7-3
+    @Nested
+    @DisplayName("돌려줬어요")
+    class SendRefund {
+
+        @Test
+        @DisplayName("방장이 확인된 줄에 누르면 시각이 남는다")
+        void sendsOnConfirmed() {
+            Settlement line = confirmedThenCanceled();
+
+            line.sendRefund(HOST_ID, LATER);
+
+            assertThat(line.getRefundSentAt()).isEqualTo(LATER);
+            // 완료는 참여자가 정한다
+            assertThat(line.getRefundReceivedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("보냈어요만 있는 줄에도 누를 수 있다")
+        void sendsOnMarkedOnly() {
+            Settlement line = markedThenCanceled();
+
+            line.sendRefund(HOST_ID, LATER);
+
+            assertThat(line.getRefundSentAt()).isEqualTo(LATER);
+        }
+
+        @Test
+        @DisplayName("두 번 눌러도 처음 시각이 남는다")
+        void keepsFirstTime() {
+            Settlement line = confirmedThenCanceled();
+            line.sendRefund(HOST_ID, LATER);
+
+            line.sendRefund(HOST_ID, LATER.plusSeconds(60));
+
+            assertThat(line.getRefundSentAt()).isEqualTo(LATER);
+        }
+
+        @Test
+        @DisplayName("반박한 줄에도 누를 수 있다")
+        void sendsAfterDenial() {
+            // 반박한 뒤 통장을 다시 보니 돈이 있었다 (ADR-049)
+            Settlement line = markedThenCanceled();
+            line.denyPayment(HOST_ID, LATER);
+
+            line.sendRefund(HOST_ID, LATER.plusSeconds(60));
+
+            assertThat(line.getRefundSentAt()).isEqualTo(LATER.plusSeconds(60));
+        }
+
+        @Test
+        @DisplayName("참여자는 누를 수 없다")
+        void rejectsMember() {
+            Settlement line = confirmedThenCanceled();
+
+            assertThatThrownBy(() -> line.sendRefund(MEMBER_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getRefundSentAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("대상이 아닌 줄에는 누를 수 없다")
+        void rejectsNonTarget() {
+            Settlement line = memberLine();
+            cancelWhileSettling();
+
+            assertThatThrownBy(() -> line.sendRefund(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getRefundSentAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("방장 자기 줄에는 누를 수 없다")
+        void rejectsHostLine() {
+            Settlement line = hostLine();
+            cancelWhileSettling();
+
+            assertThatThrownBy(() -> line.sendRefund(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("정산중인 방에서는 누를 수 없다")
+        void rejectsWhileSettling() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW);
+
+            assertThatThrownBy(() -> line.sendRefund(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getRefundSentAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("이미 돌려받은 줄에는 누를 수 없다")
+        void rejectsAfterReceived() {
+            Settlement line = confirmedThenCanceled();
+            line.receiveRefund(MEMBER_ID, LATER);
+
+            assertThatThrownBy(() -> line.sendRefund(HOST_ID, LATER.plusSeconds(60)))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getRefundSentAt()).isNull();
+        }
+    }
+
+    // 조각 7-4
+    @Nested
+    @DisplayName("입금 안 됐어요")
+    class DenyPayment {
+
+        @Test
+        @DisplayName("방장이 보냈어요만 있는 줄에 누르면 시각이 남는다")
+        void denies() {
+            Settlement line = markedThenCanceled();
+
+            line.denyPayment(HOST_ID, LATER);
+
+            assertThat(line.getPaymentDeniedAt()).isEqualTo(LATER);
+            // 보냈어요는 참여자의 주장이라 지우지 않는다
+            assertThat(line.getMarkedPaidAt()).isEqualTo(NOW);
+        }
+
+        @Test
+        @DisplayName("두 번 눌러도 처음 시각이 남는다")
+        void keepsFirstTime() {
+            Settlement line = markedThenCanceled();
+            line.denyPayment(HOST_ID, LATER);
+
+            line.denyPayment(HOST_ID, LATER.plusSeconds(60));
+
+            assertThat(line.getPaymentDeniedAt()).isEqualTo(LATER);
+        }
+
+        @Test
+        @DisplayName("확인된 줄은 반박할 수 없다")
+        void rejectsConfirmed() {
+            // 확인해놓고 안 왔다고 하면 확인이 무의미해진다 (ADR-049)
+            Settlement line = confirmedThenCanceled();
+
+            assertThatThrownBy(() -> line.denyPayment(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getPaymentDeniedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("대상이 아닌 줄은 반박할 것이 없다")
+        void rejectsNonTarget() {
+            Settlement line = memberLine();
+            cancelWhileSettling();
+
+            assertThatThrownBy(() -> line.denyPayment(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("참여자는 누를 수 없다")
+        void rejectsMember() {
+            Settlement line = markedThenCanceled();
+
+            assertThatThrownBy(() -> line.denyPayment(MEMBER_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getPaymentDeniedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("돌려줬어요 뒤에는 반박할 수 없다")
+        void rejectsAfterSent() {
+            // 돌려줘 놓고 돈을 안 받았다고 하는 건 모순이다
+            Settlement line = markedThenCanceled();
+            line.sendRefund(HOST_ID, LATER);
+
+            assertThatThrownBy(() -> line.denyPayment(HOST_ID, LATER.plusSeconds(60)))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getPaymentDeniedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("이미 돌려받은 줄은 반박할 수 없다")
+        void rejectsAfterReceived() {
+            Settlement line = markedThenCanceled();
+            line.receiveRefund(MEMBER_ID, LATER);
+
+            assertThatThrownBy(() -> line.denyPayment(HOST_ID, LATER.plusSeconds(60)))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("정산중인 방에서는 누를 수 없다")
+        void rejectsWhileSettling() {
+            // 정산중에는 그냥 확인을 안 누르면 된다
+            Settlement line = memberLine();
+            line.markPaid(MEMBER_ID, NOW);
+
+            assertThatThrownBy(() -> line.denyPayment(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    // 조각 7-5
+    @Nested
+    @DisplayName("돌려받았어요")
+    class ReceiveRefund {
+
+        @Test
+        @DisplayName("방장이 돌려줬다고 한 뒤 참여자가 누르면 끝난다")
+        void receives() {
+            Settlement line = confirmedThenCanceled();
+            line.sendRefund(HOST_ID, LATER);
+
+            line.receiveRefund(MEMBER_ID, LATER.plusSeconds(60));
+
+            assertThat(line.getRefundReceivedAt()).isEqualTo(LATER.plusSeconds(60));
+        }
+
+        @Test
+        @DisplayName("방장이 돌려줬어요를 안 눌렀어도 누를 수 있다")
+        void receivesWithoutSent() {
+            // 방장이 이체만 하고 버튼을 잊었다 (ADR-049)
+            Settlement line = confirmedThenCanceled();
+
+            line.receiveRefund(MEMBER_ID, LATER);
+
+            assertThat(line.getRefundReceivedAt()).isEqualTo(LATER);
+            assertThat(line.getRefundSentAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("반박된 줄에서도 누를 수 있다")
+        void receivesAfterDenial() {
+            // 받았다는 말이 반박보다 우선한다
+            Settlement line = markedThenCanceled();
+            line.denyPayment(HOST_ID, LATER);
+
+            line.receiveRefund(MEMBER_ID, LATER.plusSeconds(60));
+
+            assertThat(line.getRefundReceivedAt()).isEqualTo(LATER.plusSeconds(60));
+        }
+
+        @Test
+        @DisplayName("두 번 눌러도 처음 시각이 남는다")
+        void keepsFirstTime() {
+            Settlement line = confirmedThenCanceled();
+            line.receiveRefund(MEMBER_ID, LATER);
+
+            line.receiveRefund(MEMBER_ID, LATER.plusSeconds(60));
+
+            assertThat(line.getRefundReceivedAt()).isEqualTo(LATER);
+        }
+
+        @Test
+        @DisplayName("방장이 대신 누를 수 없다")
+        void rejectsHost() {
+            // 이걸 허용하면 방장이 돈을 안 돌려주고 끝낼 수 있다
+            Settlement line = confirmedThenCanceled();
+
+            assertThatThrownBy(() -> line.receiveRefund(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getRefundReceivedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("남의 줄에는 누를 수 없다")
+        void rejectsOther() {
+            Settlement line = confirmedThenCanceled();
+
+            assertThatThrownBy(() -> line.receiveRefund(OTHER_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("대상이 아닌 줄에는 누를 수 없다")
+        void rejectsNonTarget() {
+            Settlement line = memberLine();
+            cancelWhileSettling();
+
+            assertThatThrownBy(() -> line.receiveRefund(MEMBER_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(line.getRefundReceivedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("방장 자기 줄에는 누를 수 없다")
+        void rejectsHostLine() {
+            Settlement line = hostLine();
+            cancelWhileSettling();
+
+            assertThatThrownBy(() -> line.receiveRefund(HOST_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("정산중인 방에서는 누를 수 없다")
+        void rejectsWhileSettling() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW);
+
+            assertThatThrownBy(() -> line.receiveRefund(MEMBER_ID, LATER))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    // 조각 7-6
+    @Nested
+    @DisplayName("환불 상태")
+    class Status {
+
+        @Test
+        @DisplayName("대상이 아니면 null이다")
+        void nullForNonTarget() {
+            Settlement untouched = memberLine();
+            Settlement host = hostLine();
+            cancelWhileSettling();
+
+            assertThat(untouched.refundStatus()).isNull();
+            assertThat(host.refundStatus()).isNull();
+        }
+
+        @Test
+        @DisplayName("정산중인 방의 줄은 null이다")
+        void nullWhileSettling() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW);
+
+            assertThat(line.refundStatus()).isNull();
+        }
+
+        @Test
+        @DisplayName("대상인데 아무 일도 없으면 대기다")
+        void pending() {
+            assertThat(confirmedThenCanceled().refundStatus()).isEqualTo(RefundStatus.REFUND_PENDING);
+        }
+
+        @Test
+        @DisplayName("반박하면 반박이다")
+        void denied() {
+            Settlement line = markedThenCanceled();
+            line.denyPayment(HOST_ID, LATER);
+
+            assertThat(line.refundStatus()).isEqualTo(RefundStatus.PAYMENT_DENIED);
+        }
+
+        @Test
+        @DisplayName("돌려줬다고 하면 돌려줌이다")
+        void sent() {
+            Settlement line = confirmedThenCanceled();
+            line.sendRefund(HOST_ID, LATER);
+
+            assertThat(line.refundStatus()).isEqualTo(RefundStatus.REFUND_SENT);
+        }
+
+        @Test
+        @DisplayName("반박한 뒤 돌려줬다고 하면 돌려줌이다")
+        void sentAfterDenial() {
+            // 두 칸이 같이 있으면 돌려줬어요가 늘 나중이다. 방장이 생각을 바꿨다 (ADR-049)
+            Settlement line = markedThenCanceled();
+            line.denyPayment(HOST_ID, LATER);
+            line.sendRefund(HOST_ID, LATER.plusSeconds(60));
+
+            assertThat(line.refundStatus()).isEqualTo(RefundStatus.REFUND_SENT);
+        }
+
+        @Test
+        @DisplayName("돌려받았다고 하면 완료다")
+        void refunded() {
+            Settlement line = confirmedThenCanceled();
+            line.sendRefund(HOST_ID, LATER);
+            line.receiveRefund(MEMBER_ID, LATER.plusSeconds(60));
+
+            assertThat(line.refundStatus()).isEqualTo(RefundStatus.REFUNDED);
+        }
+
+        @Test
+        @DisplayName("반박된 줄이라도 돌려받았다고 하면 완료다")
+        void refundedAfterDenial() {
+            Settlement line = markedThenCanceled();
+            line.denyPayment(HOST_ID, LATER);
+            line.receiveRefund(MEMBER_ID, LATER.plusSeconds(60));
+
+            assertThat(line.refundStatus()).isEqualTo(RefundStatus.REFUNDED);
         }
     }
 }

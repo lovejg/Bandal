@@ -27,12 +27,12 @@ public class ParticipationService {
 
     // 방 참여
     @Transactional
-    public ParticipationResponse join(Long groupOrderId, Long userId) {
+    public ParticipationResponse join(Long groupOrderId, Long requesterId) {
          GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
              .orElseThrow(() -> new NotFoundException("없는 방입니다"));
-         User user = userRepository.findById(userId).orElseThrow(() -> new NotFoundException("없는 사용자입니다"));
+         User user = userRepository.findById(requesterId).orElseThrow(() -> new NotFoundException("없는 사용자입니다"));
 
-         if(participationRepository.existsByGroupOrderIdAndUserId(groupOrderId, userId)) {
+         if(participationRepository.existsByGroupOrderIdAndUserId(groupOrderId, requesterId)) {
              throw new IllegalStateException("이미 참여한 방입니다");
          }
 
@@ -46,11 +46,11 @@ public class ParticipationService {
 
     // 방 나가기(방장은 나갈 수 없음. 반드시 취소해야 됨)
     @Transactional
-    public void leave(Long participationId, Long userId) {
+    public void leave(Long participationId, Long requesterId) {
         Participation participation = participationRepository.findById(participationId)
             .orElseThrow(() -> new NotFoundException("없는 참여입니다"));
 
-        participation.checkLeavable(userId, Instant.now());
+        participation.checkLeavable(requesterId, Instant.now());
 
         orderItemRepository.deleteByParticipationId(participationId);
         participationRepository.delete(participation);
@@ -58,11 +58,11 @@ public class ParticipationService {
 
     // 메뉴 담기
     @Transactional
-    public ParticipationItemsResponse addItem(Long participationId, Long userId, OrderItemRequest request) {
+    public ParticipationItemsResponse addItem(Long participationId, Long requesterId, OrderItemRequest request) {
         Participation participation = participationRepository.findById(participationId)
             .orElseThrow(() -> new NotFoundException("없는 참여입니다"));
 
-        OrderItem item = participation.addItem(userId, request.menuName(),
+        OrderItem item = participation.addItem(requesterId, request.menuName(),
             request.options(), request.unitPrice(), request.quantity(), Instant.now());
         orderItemRepository.save(item);
 
@@ -73,11 +73,11 @@ public class ParticipationService {
 
     // 메뉴 고치기. 주인(모집중) 또는 방장(마감)
     @Transactional
-    public ParticipationItemsResponse updateItem(Long orderItemId, Long userId, OrderItemRequest request) {
+    public ParticipationItemsResponse updateItem(Long orderItemId, Long requesterId, OrderItemRequest request) {
         OrderItem item = orderItemRepository.findById(orderItemId)
             .orElseThrow(() -> new NotFoundException("없는 메뉴입니다"));
 
-        item.update(userId, request.menuName(), request.options(),
+        item.update(requesterId, request.menuName(), request.options(),
             request.unitPrice(), request.quantity(), Instant.now());
 
         Participation participation = item.getParticipation();
@@ -89,13 +89,13 @@ public class ParticipationService {
 
     // 메뉴 빼기
     @Transactional
-    public ParticipationItemsResponse removeItem(Long orderItemId, Long userId) {
+    public ParticipationItemsResponse removeItem(Long orderItemId, Long requesterId) {
         OrderItem item = orderItemRepository.findById(orderItemId)
             .orElseThrow(() -> new NotFoundException("없는 메뉴입니다"));
         Participation participation = item.getParticipation();
         Long participationId = participation.getId();
 
-        participation.removeItem(userId, item, Instant.now());
+        participation.removeItem(requesterId, item, Instant.now());
         orderItemRepository.delete(item);
 
         return ParticipationItemsResponse.of(participationId,
@@ -105,11 +105,11 @@ public class ParticipationService {
 
     // 내 메뉴 조회(나 자신과 방장만 가능)
     @Transactional(readOnly = true)
-    public ParticipationItemsResponse findItems(Long participationId, Long userId) {
+    public ParticipationItemsResponse findItems(Long participationId, Long requesterId) {
         Participation participation = participationRepository.findById(participationId)
             .orElseThrow(() -> new NotFoundException("없는 참여입니다"));
 
-        participation.checkItemsViewable(userId);
+        participation.checkItemsViewable(requesterId);
 
         return ParticipationItemsResponse.of(participationId,
             orderItemRepository.findByParticipationId(participationId),
@@ -118,10 +118,10 @@ public class ParticipationService {
 
     // 방장의 전체 검수
     @Transactional(readOnly = true)
-    public GroupOrderItemsResponse findReviewList(Long groupOrderId, Long userId) {
+    public GroupOrderItemsResponse findReviewList(Long groupOrderId, Long requesterId) {
         GroupOrder groupOrder = groupOrderRepository.findById(groupOrderId)
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
-        if(!groupOrder.isHost(userId)) throw new IllegalStateException("방장만 볼 수 있습니다");
+        if(!groupOrder.isHost(requesterId)) throw new IllegalStateException("방장만 볼 수 있습니다");
 
         // 모든 참여 및 사용자 다 가져오기
         List<Participation> participations = participationRepository.findRosterWithUser(groupOrderId);

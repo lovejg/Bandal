@@ -479,6 +479,85 @@ class GroupOrderTest {
 
             assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.DEADLINE_UNMET);
         }
+
+        // 정산중 취소 (ADR-021 2026-09-26 수정, ADR-048)
+        void startSettlement() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
+            groupOrder.startSettlement(HOST_ID, 3_500);
+        }
+
+        @Test
+        @DisplayName("정산중에는 사유를 적으면 취소할 수 있고 종류가 따로 남는다")
+        void cancelsWhileSettlingWithReason() {
+            startSettlement();
+
+            groupOrder.cancelByHost(HOST_ID, REASON);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
+            // 돈이 오간 뒤의 취소라 마감 뒤 취소와 구분한다
+            assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.HOST_AFTER_SETTLING);
+            assertThat(groupOrder.getCancelReason()).isEqualTo(REASON);
+        }
+
+        @Test
+        @DisplayName("정산중에는 사유 없이 취소할 수 없고 정산중으로 남는다")
+        void rejectsSettlingWithoutReason() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, null))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+            assertThat(groupOrder.getCancelType()).isNull();
+        }
+
+        @Test
+        @DisplayName("정산중에 공백만 적은 사유는 사유가 없는 것으로 본다")
+        void rejectsSettlingWithBlankReason() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, "  "))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("정산중에도 방장이 아니면 취소할 수 없다")
+        void rejectsNonHostWhileSettling() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.cancelByHost(OTHER_ID, REASON))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("주문완료 뒤에는 이미 결제가 나가서 취소할 수 없다")
+        void rejectsOrdered() {
+            startSettlement();
+            groupOrder.order(HOST_ID, null);
+
+            assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, REASON))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+            assertThat(groupOrder.getCancelType()).isNull();
+        }
+
+        @Test
+        @DisplayName("배달완료 뒤에도 취소할 수 없다")
+        void rejectsDelivered() {
+            startSettlement();
+            groupOrder.order(HOST_ID, null);
+            groupOrder.deliver(HOST_ID);
+
+            assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, REASON))
+                    .isInstanceOf(IllegalStateException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.DELIVERED);
+        }
     }
 
     @Nested
@@ -629,13 +708,41 @@ class GroupOrderTest {
         }
 
         @Test
-        @DisplayName("취소된 방은 막는다")
-        void rejectsCanceled() {
+        @DisplayName("마감 뒤에 취소된 방은 정산표가 없어서 막는다")
+        void rejectsCanceledAfterClosed() {
             groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
             groupOrder.cancelByHost(HOST_ID, "가게가 문을 닫았어요");
 
             assertThatThrownBy(() -> groupOrder.checkSettlementVisible())
                     .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("모집중에 취소된 방도 막는다")
+        void rejectsCanceledWhileRecruiting() {
+            groupOrder.cancelByHost(HOST_ID, null);
+
+            assertThatThrownBy(() -> groupOrder.checkSettlementVisible())
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("마감 시각에 자동 취소된 방도 막는다")
+        void rejectsCanceledAtDeadline() {
+            groupOrder.closeAtDeadline(1, 20_000, DEADLINE);
+
+            assertThatThrownBy(() -> groupOrder.checkSettlementVisible())
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("정산중에 취소된 방은 보여준다. 누가 보냈는지가 환불의 근거다")
+        void allowsCanceledWhileSettling() {
+            // 상태는 같은 CANCELED라도 취소 종류가 정산표가 있었는지를 알려준다 (ADR-048)
+            startSettlement();
+            groupOrder.cancelByHost(HOST_ID, "가게가 문을 닫았어요");
+
+            assertThatCode(() -> groupOrder.checkSettlementVisible()).doesNotThrowAnyException();
         }
     }
 
