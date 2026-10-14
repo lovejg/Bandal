@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>반달</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+    />
+    <script>
+      // 고른 테마를 그리기 전에 적용한다. 안 그러면 다크 모드에서 흰 화면이 한 번 번쩍인다
+      try {
+        var saved = localStorage.getItem('bandal.theme')
+        if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

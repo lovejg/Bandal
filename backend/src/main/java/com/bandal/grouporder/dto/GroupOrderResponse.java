@@ -4,11 +4,14 @@ import com.bandal.grouporder.GroupOrder;
 
 import java.time.Instant;
 
-// 방장은 id만 내보낸다. host 엔티티를 그대로 담으면 비밀번호 해시와 이메일까지 나간다
+// 방장은 id와 닉네임만 내보낸다. host 엔티티를 그대로 담으면 비밀번호 해시와 이메일까지 나간다
 public record GroupOrderResponse(
         Long id,
         Long hostId,
+        // 닉네임과 수령지 이름은 화면 맨 위에 그대로 보인다. id만 주면 화면이 목록을 따로 불러 맞춰야 한다
+        String hostNickname,
         Long pickupSpotId,
+        String pickupSpotName,
         String storeName,
         long minOrderAmount,
         Instant deadlineAt,
@@ -29,7 +32,9 @@ public record GroupOrderResponse(
         return new GroupOrderResponse(
                 groupOrder.getId(),
                 groupOrder.getHost().getId(),
+                groupOrder.getHost().getNickname(),
                 groupOrder.getPickupSpot().getId(),
+                groupOrder.getPickupSpot().getName(),
                 groupOrder.getStoreName(),
                 groupOrder.getMinOrderAmount(),
                 groupOrder.getDeadlineAt(),

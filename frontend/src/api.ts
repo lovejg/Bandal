@@ -1,0 +1,278 @@
+// 백엔드와 주고받는 모양과 호출 한 곳.
+// 토큰은 localStorage에 둔다. 액세스 토큰이 만료돼 401이 오면 리프레시 토큰으로 한 번 갱신하고 다시 부른다
+
+export type Status = 'RECRUITING' | 'CLOSED' | 'SETTLING' | 'ORDERED' | 'DELIVERED' | 'CANCELED'
+export type RefundStatus = 'REFUND_PENDING' | 'PAYMENT_DENIED' | 'REFUND_SENT' | 'REFUNDED'
+
+export interface Me {
+  id: number
+  email: string
+  nickname: string
+  universityId: number
+  universityName: string
+  emailVerified: boolean
+  trustScore: number
+  hasAccount: boolean
+}
+
+export interface RoomSummary {
+  id: number
+  storeName: string
+  pickupSpotId: number
+  pickupSpotName: string
+  hostNickname: string
+  minOrderAmount: number
+  menuTotalAmount: number
+  participantCount: number
+  capacity: number
+  deadlineAt: string
+}
+
+export interface Room {
+  id: number
+  hostId: number
+  hostNickname: string
+  pickupSpotId: number
+  pickupSpotName: string
+  storeName: string
+  minOrderAmount: number
+  deadlineAt: string
+  capacity: number
+  status: Status
+  participantCount: number
+  menuTotalAmount: number
+  cancelReason: string | null
+  cancelType: string | null
+  myParticipationId: number | null
+}
+
+export interface OrderItem {
+  id: number
+  participationId: number
+  menuName: string
+  options: string | null
+  unitPrice: number
+  quantity: number
+  amount: number
+  editedByHost: boolean
+}
+
+export interface MyItems {
+  participationId: number
+  items: OrderItem[]
+  participationTotal: number
+  groupOrderTotal: number
+}
+
+export interface ReviewList {
+  groupOrderId: number
+  status: Status
+  groupOrderTotal: number
+  participants: {
+    participationId: number
+    userId: number
+    nickname: string
+    host: boolean
+    items: OrderItem[]
+    participationTotal: number
+  }[]
+}
+
+export interface SettlementLine {
+  id: number
+  userId: number
+  nickname: string
+  host: boolean
+  menuTotalAmount: number
+  feeShare: number
+  totalAmount: number
+  markedPaidAt: string | null
+  confirmedPaidAt: string | null
+  confirmRevokedAt: string | null
+  refundSentAt: string | null
+  refundReceivedAt: string | null
+  paymentDeniedAt: string | null
+  refundStatus: RefundStatus | null
+}
+
+export interface Settlement {
+  groupOrderId: number
+  status: Status
+  deliveryFee: number
+  menuTotalAmount: number
+  hostAccount: { bankName: string; accountNumber: string; accountHolder: string }
+  lines: SettlementLine[]
+}
+
+export interface MyRoom {
+  id: number
+  storeName: string
+  status: Status
+  host: boolean
+  markedPaidAt: string | null
+  confirmedPaidAt: string | null
+  refundStatus: RefundStatus | null
+  awaitingConfirmCount: number | null
+}
+
+export interface PickupSpot {
+  id: number
+  name: string
+  description: string | null
+}
+
+export interface ItemInput {
+  menuName: string
+  options: string | null
+  unitPrice: number
+  quantity: number
+}
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message)
+  }
+}
+
+interface Tokens {
+  accessToken: string
+  refreshToken: string
+}
+
+const TOKEN_KEY = 'bandal.tokens'
+
+export const tokenStore = {
+  get(): Tokens | null {
+    try {
+      const raw = localStorage.getItem(TOKEN_KEY)
+      return raw ? (JSON.parse(raw) as Tokens) : null
+    } catch {
+      return null
+    }
+  },
+  set(tokens: Tokens) {
+    try {
+      localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens))
+    } catch {
+      // 저장이 막힌 브라우저(사생활 보호 창 등)에서는 이번 탭에서만 로그인이 유지된다
+    }
+  },
+  clear() {
+    try {
+      localStorage.removeItem(TOKEN_KEY)
+    } catch {
+      // 위와 같다
+    }
+  },
+}
+
+// 갱신이 동시에 여러 번 나가지 않게 진행 중인 갱신을 함께 기다린다
+let refreshing: Promise<boolean> | null = null
+
+async function refreshTokens(): Promise<boolean> {
+  const current = tokenStore.get()
+  if (!current) return false
+  const res = await fetch('/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken: current.refreshToken }),
+  })
+  if (!res.ok) {
+    tokenStore.clear()
+    return false
+  }
+  tokenStore.set((await res.json()) as Tokens)
+  return true
+}
+
+export const LOGGED_OUT_EVENT = 'bandal:logged-out'
+
+async function request<T>(method: string, path: string, body?: unknown, retry = true): Promise<T> {
+  const tokens = tokenStore.get()
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (tokens) headers.Authorization = `Bearer ${tokens.accessToken}`
+
+  const res = await fetch(path, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+
+  if (res.status === 401 && retry && tokens) {
+    refreshing ??= refreshTokens().finally(() => {
+      refreshing = null
+    })
+    if (await refreshing) return request<T>(method, path, body, false)
+    window.dispatchEvent(new Event(LOGGED_OUT_EVENT))
+  }
+
+  if (!res.ok) {
+    let message = '요청을 처리하지 못했습니다'
+    try {
+      const err = (await res.json()) as { message?: string }
+      if (err.message) message = err.message
+    } catch {
+      // 본문이 JSON이 아니면 기본 문구를 쓴다
+    }
+    throw new ApiError(res.status, message)
+  }
+
+  const text = await res.text()
+  return (text ? JSON.parse(text) : undefined) as T
+}
+
+const get = <T,>(path: string) => request<T>('GET', path)
+const post = <T,>(path: string, body?: unknown) => request<T>('POST', path, body)
+const put = <T,>(path: string, body?: unknown) => request<T>('PUT', path, body)
+const del = <T,>(path: string) => request<T>('DELETE', path)
+
+export const api = {
+  login: (email: string, password: string) =>
+    post<Tokens>('/api/auth/login', { email, password }).then((t) => tokenStore.set(t)),
+  logout: () => {
+    const tokens = tokenStore.get()
+    tokenStore.clear()
+    if (tokens) return post<void>('/api/auth/logout', { refreshToken: tokens.refreshToken }).catch(() => undefined)
+    return Promise.resolve()
+  },
+  me: () => get<Me>('/api/auth/me'),
+  registerAccount: (bankName: string, accountNumber: string, accountHolder: string) =>
+    put<void>('/api/users/me/account', { bankName, accountNumber, accountHolder }),
+
+  pickupSpots: () => get<{ spots: PickupSpot[] }>('/api/pickup-spots').then((r) => r.spots),
+  createPickupSpot: (name: string, description: string | null) =>
+    post<PickupSpot>('/api/pickup-spots', { name, description }),
+
+  rooms: (page: number, size: number) =>
+    get<{ rooms: RoomSummary[]; hasNext: boolean }>(`/api/group-orders?page=${page}&size=${size}`),
+  room: (id: number) => get<Room>(`/api/group-orders/${id}`),
+  createRoom: (body: { pickupSpotId: number; storeName: string; minOrderAmount: number; deadlineAt: string; capacity: number }) =>
+    post<Room>('/api/group-orders', body),
+  closeRoom: (id: number) => post<Room>(`/api/group-orders/${id}/close`),
+  cancelRoom: (id: number, reason: string | null) => post<Room>(`/api/group-orders/${id}/cancel`, { reason }),
+
+  join: (roomId: number) => post<{ id: number }>(`/api/group-orders/${roomId}/participations`),
+  leave: (participationId: number) => del<void>(`/api/participations/${participationId}`),
+  myItems: (participationId: number) => get<MyItems>(`/api/participations/${participationId}/order-items`),
+  addItem: (participationId: number, item: ItemInput) =>
+    post<MyItems>(`/api/participations/${participationId}/order-items`, item),
+  updateItem: (itemId: number, item: ItemInput) => put<MyItems>(`/api/order-items/${itemId}`, item),
+  removeItem: (itemId: number) => del<MyItems>(`/api/order-items/${itemId}`),
+  reviewList: (roomId: number) => get<ReviewList>(`/api/group-orders/${roomId}/order-items`),
+
+  settlement: (roomId: number) => get<Settlement>(`/api/group-orders/${roomId}/settlement`),
+  startSettlement: (roomId: number, deliveryFee: number) =>
+    post<Settlement>(`/api/group-orders/${roomId}/delivery-fee`, { deliveryFee }),
+  changeDeliveryFee: (roomId: number, deliveryFee: number) =>
+    put<Settlement>(`/api/group-orders/${roomId}/delivery-fee`, { deliveryFee }),
+  lineAction: (lineId: number, action: 'mark-paid' | 'confirm' | 'unconfirm' | 'send-refund' | 'deny-payment' | 'receive-refund') =>
+    post<Settlement>(`/api/settlements/${lineId}/${action}`),
+  order: (roomId: number, totalPaidAmount: number | null) =>
+    post<Settlement>(`/api/group-orders/${roomId}/order`, { totalPaidAmount }),
+  deliver: (roomId: number) => post<Settlement>(`/api/group-orders/${roomId}/deliver`),
+
+  myActive: () => get<{ rooms: MyRoom[]; hasNext: boolean }>('/api/users/me/group-orders/active'),
+  myDone: (page: number, size: number) =>
+    get<{ rooms: MyRoom[]; hasNext: boolean }>(`/api/users/me/group-orders/done?page=${page}&size=${size}`),
+}

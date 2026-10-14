@@ -1173,3 +1173,51 @@ Expecting code not to raise a throwable but caught
 
 **한 줄 요약** "스케줄러 루프에서 방 하나가 예외를 던지자 뒤의 방이 처리되지 않았고, 순서가 고정이라 매분 같은 방에서 막힐
 구조였다. 방마다 트랜잭션과 try-catch를 두고 실패한 id를 로그로 남겨 고쳤다."
+
+## 2026-10-14. 쿼리 하나의 패키지 이름 오타로 상관없는 테스트 394개가 같이 쓰러졌다
+
+**상황** 내 방 목록(ADR-053)의 진행 중 탭 쿼리를 `@Query`로 직접 짰다. 상태 비교에 enum 상수를 JPQL 안에 전체 이름으로
+적는 쿼리다.
+
+**증상** 전체 테스트 652개 중 394개가 실패했다. 내 방 목록과 상관없는 회원가입, 로그인 테스트까지 쓰러졌다. 실패한 테스트는
+전부 스프링을 띄우는 테스트였고, 스프링 없이 도는 엔티티 테스트(`GroupOrderTest`, `SettlementTest` 등)는 통과했다.
+맨 아래 원인부터 위로 읽으면 이렇다.
+
+```
+Caused by: org.hibernate.query.SemanticException: Could not interpret path expression 'com.bandal.groupOrder.GroupOrderStatus.RECRUITING'
+Caused by: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'groupOrderRepository'
+  ... Query validation failed for 'SELECT go FROM Participation p JOIN p.groupOrder go WHERE p.user.id = :userId
+  AND (go.status IN (com.bandal.groupOrder.GroupOrderStatus.RECRUITING, ...'
+Caused by: org.springframework.beans.factory.UnsatisfiedDependencyException: Error creating bean with name 'groupOrderController'
+  ... Error creating bean with name 'groupOrderService' ...
+```
+
+**원인** 패키지 이름을 `com.bandal.grouporder`가 아니라 `com.bandal.groupOrder`로 적었다. 같은 쿼리 바로 앞의
+`p.groupOrder`는 엔티티 필드 이름이라 카멜케이스가 맞고, 패키지 이름은 폴더 이름이라 전부 소문자다. 둘이 똑같이 생겨서
+섞였다. 같은 쿼리 안에서도 참고본을 복사한 줄(`com.bandal.grouporder.CancelType.HOST_WHILE_SETTLING`)은 맞고 손으로 친
+줄은 틀려 있었다.
+
+하이버네이트는 먼저 `com.bandal.groupOrder.GroupOrderStatus`라는 클래스를 찾는다. 대소문자가 달라 없으니, `go.status` 같은
+엔티티 필드 경로로 보고 다시 해석한다. `com`이라는 별칭도 필드도 없으니 "경로 표현식을 해석할 수 없다"가 된다. 메시지가
+오타 자리를 짚어 주지 않는다.
+
+테스트가 394개나 쓰러진 건 `@Query`가 앱이 뜰 때 미리 검사되기 때문이다. 검사에 실패하면 `GroupOrderRepository` 빈이
+만들어지지 않고, 그 리포지토리를 받는 서비스, 그 서비스를 받는 컨트롤러가 줄줄이 만들어지지 않아서 스프링 컨텍스트 전체가
+뜨지 못한다. 그 컨텍스트를 쓰는 테스트는 무엇을 검사하든 다 실패한다.
+
+**시도한 것** 처음 돌렸을 때는 쿼리가 아직 짜는 중이라(`go.cancelType IN ()`이 비어 있었다) 그 탓으로 보일 수 있었다. 다 짠
+뒤에 다시 돌려도 같은 `SemanticException`이 남아서 빈 괄호가 아니라 경로가 원인이라는 게 드러났다.
+
+**해결** 따옴표 안에 찍힌 경로를 참고본과 한 글자씩 비교해 `groupOrder`를 `grouporder`로 고쳤다(다섯 군데). 652개 전부 통과.
+
+**배운 것**
+- 테스트 수백 개가 한꺼번에 깨지면 테스트 하나하나를 보지 말고 맨 아래 `Caused by`부터 본다. 대개 원인은 하나다.
+- `@Query`(그리고 메서드 이름으로 만드는 쿼리)는 앱이 뜰 때 검사된다. 답답하지만 덕분에 배포 전에 잡힌다. 문자열 쿼리인데도
+  런타임 첫 호출까지 기다리지 않는다.
+- `SemanticException: Could not interpret path expression '...'`은 오타 자리를 알려 주지 않는다. 따옴표 안의 문자열을
+  정답과 나란히 놓고 비교하는 게 가장 빠르다.
+- JPQL 안의 enum 상수는 패키지 경로까지 적어야 해서 오타가 나기 쉽다. 파라미터로 넘기면(`:statuses`) 문자열 안의 경로가
+  사라진다.
+
+**한 줄 요약** "JPQL에 적은 enum 경로의 패키지 이름 대소문자 하나 때문에 리포지토리 빈이 만들어지지 않았고, 스프링 컨텍스트가
+통째로 뜨지 못해 상관없는 테스트 394개가 같이 실패했다. `@Query`가 기동 시점에 검사된다는 걸 이때 실제로 봤다."

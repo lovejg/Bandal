@@ -74,8 +74,9 @@
   중복과 장난 입력은 감수하고, 병합 도구는 나중에. (ADR-033)
 - **실시간성**: 초기에는 폴링. WebSocket은 필요해진 게 확인되면 그때 넣는다.
 - **인증**: 로컬 회원가입만. 학교 이메일 + 비밀번호로 가입하고 인증 메일을 통과해야
-  활성화된다. OAuth는 쓰지 않는다. Spring Security + JWT, 리프레시 토큰과 로그아웃
-  블랙리스트는 Redis에 둔다.
+  활성화된다. OAuth는 쓰지 않는다. Spring Security + JWT. 액세스 토큰은 15분짜리이고
+  리프레시 토큰은 Redis에 둔다. 로그아웃은 리프레시 토큰을 지우는 것이다. (ADR-024)
+- **조회도 로그인이 필요하다**: 보안 설정의 기본값은 "전부 닫힘"이고, 가입·로그인 같은 입구만 연다. (ADR-034)
 - **회원가입이 곧 거점 자격 확인이다**: 학교 이메일 인증을 통과하면 그 학교 소속이
   확정되고, 그 학교의 모든 거점에 접근할 수 있다. 별도의 거점 인증 개념은 두지 않는다.
 - **대학은 학교 단위, 이메일 도메인은 학교당 하나**: University에 `emailDomain` 컬럼을
@@ -102,11 +103,11 @@
 | University | 대학 (학교 단위) | id, name, emailDomain (unique, ADR-014) |
 | User | 사용자 | id, universityId, email(unique), password(해시), nickname(unique), emailVerifiedAt(null이면 미인증), trustScore(int, 50에서 시작), bankName/accountNumber/accountHolder(방장이 되려면 필요, 노출은 마스킹) (ADR-015, 016, 031) |
 | (이메일 인증 토큰) | 테이블이 아니라 Redis에 둔다. `verify:{토큰} -> 사용자 id`, TTL 30분, 쓰면 삭제 (ADR-027) |
-| PickupSpot | 수령 거점 | id, universityId, name, description (좌표 없음, ADR-013). 사용자가 자기 학교에 만들고 학교 단위로 공유된다 (ADR-033) |
-| GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만), cancelType(취소된 방만, 이름으로 저장) (ADR-017, 021) |
+| PickupSpot | 수령 거점 | id, universityId, name, normalizedName(중복 검사용으로 정리한 이름, 학교 안에서 unique), description (좌표 없음, ADR-013). 사용자가 자기 학교에 만들고 학교 단위로 공유된다 (ADR-033, 036) |
+| GroupOrder | 공구방 | id, hostId, pickupSpotId, storeName, minOrderAmount, deadlineAt, capacity, status(이름으로 저장), deliveryFee(주문 전 null), totalPaidAmount(기록용, nullable), cancelReason(취소된 방만), cancelType(취소된 방만, 이름으로 저장), 상태별 도달 시각 closedAt/settlementStartedAt/orderedAt/deliveredAt/canceledAt(거치지 않았으면 null, 스케줄러가 멈춘 방을 잰다) (ADR-017, 021, 051) |
 | Participation | 방 참여 (방장 포함) | id, groupOrderId, userId, joinedAt. (groupOrderId, userId) unique. 이탈하면 행 삭제 (ADR-019) |
 | OrderItem | 담은 메뉴 한 줄 | id, participationId, menuName, options(자유 문자열, nullable), unitPrice(옵션 포함 단가), quantity, editedByHost(마감 후 방장이 고쳤으면 true). 빼면 행 삭제 (ADR-022, 038) |
-| Settlement | 정산 내역 (참여자 1명당 1행) | id, groupOrderId, userId, menuTotalAmount, feeShare, totalAmount, markedPaidAt(참여자가 보냈다고 누른 시각), confirmedPaidAt(방장이 받았다고 누른 시각), confirmRevokedAt(방장이 확인을 취소한 시각). 방장 행도 만들고 두 시각을 생성 시각으로 채운다 (ADR-030, 045). 정산중 취소 뒤 환불 기록으로 refundSentAt(방장이 돌려줬다고 누른 시각), refundReceivedAt(참여자가 돌려받았다고 누른 시각, 완료 기준), paymentDeniedAt(방장이 입금 안 됐다고 누른 시각) (ADR-048, 049) |
+| Settlement | 정산 내역 (참여자 1명당 1행) | id, groupOrderId, userId, menuTotalAmount, feeShare, totalAmount, host(방장 행인지), markedPaidAt(참여자가 보냈다고 누른 시각), confirmedPaidAt(방장이 받았다고 누른 시각), confirmRevokedAt(방장이 확인을 취소한 시각). 방장 행도 만들고 두 시각을 생성 시각으로 채운다 (ADR-030, 045). 정산중 취소 뒤 환불 기록으로 refundSentAt(방장이 돌려줬다고 누른 시각), refundReceivedAt(참여자가 돌려받았다고 누른 시각, 완료 기준), paymentDeniedAt(방장이 입금 안 됐다고 누른 시각) (ADR-048, 049) |
 
 관계
 
@@ -125,8 +126,8 @@ erDiagram
   group_order ||--o{ participation : "참여"
   users ||--o{ participation : "참여자"
   participation ||--o{ order_item : "담은 메뉴"
-  group_order ||--o{ settlement : "정산표 (예정)"
-  users ||--o{ settlement : "낼 사람 (예정)"
+  group_order ||--o{ settlement : "정산표"
+  users ||--o{ settlement : "낼 사람"
 ```
 
 User가 University를 직접 들고 있으므로 "이 방에 참여할 자격이 있는가"는
@@ -172,6 +173,9 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
   결제했다는 뜻이다. 총 결제금액은 이때 받는다. 결제 전에는 쿠폰·할인이 적용된 금액을
   알 수 없다. (ADR-042)
 - 주문완료 -> 배달완료: 방장이 전이시킨다. 여기 도달하면 돈은 이미 다 정리돼 있다.
+- 방장이 사라지면 1분마다 도는 스케줄러가 멈춘 방을 넘긴다. 마감 시각이 지난 모집중은 마감 또는 취소,
+  3시간 멈춘 마감과 24시간 멈춘 정산중은 취소(정산중이면 환불 흐름이 열린다), 6시간 멈춘 주문완료는
+  배달완료. (ADR-051, 052)
 
 취소 규칙
 
@@ -182,8 +186,8 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
   누가 무엇을 말했는지만 기록한다. 방장의 "돌려줬어요", 참여자의 "돌려받았어요"(완료 기준),
   방장의 "입금 안 됐어요"(반박). 취소 직전에 이체한 참여자는 취소 뒤에도 "보냈어요"를 누를 수
   있다. (ADR-048, 049)
-- 취소된 방은 지우지 않고 `취소` 상태로 남긴다. 취소 종류(방장-모집중, 방장-마감 뒤,
-  방장-정산중, 마감 시각 미달)를 함께 남겨 나중에 신뢰도 감점 근거로 쓴다. (ADR-021)
+- 취소된 방은 지우지 않고 `취소` 상태로 남긴다. 취소 종류(방장-모집중, 방장-마감, 방장-정산중,
+  마감 시각 미달, 마감에서 멈춤, 정산중에서 멈춤)를 함께 남겨 나중에 신뢰도 감점 근거로 쓴다. (ADR-021, 051)
 - 참여자 개별 이탈: `모집중`에서만 자유롭게. `마감` 이후에는 불가.
 
 ## 6. 기술 스택
@@ -192,8 +196,9 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
   포트폴리오로 가장 무난하다.
 - DB: PostgreSQL — 정산 금액 계산에 정확한 수치 타입이 필요하고, 나중에 지도 기반
   거점 탐색을 붙이게 되면 위치 확장(PostGIS) 여지가 있다.
-- 클라이언트: React (별도 진행) — 백엔드는 REST API로 분리.
-- Redis: 리프레시 토큰 저장과 로그아웃 블랙리스트, 마감 직전 동시 참여 제어(분산 락),
+- 클라이언트: React + Vite + TypeScript — 백엔드와는 REST API로만 이야기한다. 같은 저장소의
+  `frontend/`에 두고 백엔드는 `backend/`에 둔다. (ADR-056)
+- Redis: 리프레시 토큰과 이메일 인증 토큰 저장, 마감 직전 동시 참여 제어(분산 락),
   거점별 모집중 방 목록 캐싱, 마감 임박 정렬(ZSET).
 - Kafka: 방 상태 변경 이벤트를 알림 컨슈머와 통계 적재 컨슈머가 독립적으로 소비.
   컨슈머 그룹이 둘 이상이고 통계 쪽은 오프셋을 되감아 재처리해야 하므로 선택.
@@ -204,43 +209,59 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
 원칙: 위 항목들은 "써봤다"가 아니라 "이 문제가 이렇게 터졌고 이렇게 고쳤다"로
 설명할 수 있어야 한다. 그게 안 되는 항목은 뺀다.
 
-## 7. 이번 단계에서 만들 것
+## 7. 단계별로 만들 것
 
 각 단계는 **배포된 채로 동작하는 상태**로 끝난다. 다음 단계로 안 넘어가도 그 자체로
 완결된 결과물이어야 한다.
 
-**진행 순서는 1 → CI → 3 → 2 → 4 → 5 → 6이다.** Phase 2에서 테스트 자동 실행(CI)만 먼저 떼어
-Phase 3 앞에 두고, 동시성(3)을 배포(2)보다 먼저 한다. 배포는 실제 환경이 꼭 필요한 부하 테스트(4)
+**진행 순서는 1 → 최소 화면 → CI → 3 → 2 → 4 → 5 → 6이다.** Phase 2에서 React 최소 화면과
+테스트 자동 실행(CI)만 먼저 떼어 Phase 3 앞에 두고, 동시성(3)을 배포(2)보다 먼저 한다. 배포는 실제 환경이 꼭 필요한 부하 테스트(4)
 앞에 있으면 된다. Phase 3은 배포 없이 로컬과 테스트로 끝나고, 배포된 상태는 Phase 2에서 따라온다.
 (ADR-054)
 
-### Phase 1 — 도메인 코어와 REST API
+| 단계 | 상태 |
+| --- | --- |
+| Phase 1 도메인 코어와 REST API | 끝 |
+| 최소 화면 (Phase 2에서 앞으로 뗌) | 끝 |
+| CI (Phase 2에서 앞으로 뗌) | 다음 |
+| Phase 3 동시성 | |
+| Phase 2 배포 | |
+| Phase 4 ~ 6 | |
+
+### Phase 1 — 도메인 코어와 REST API (끝)
 
 순서대로. 도메인이 먼저 서야 인증이 무엇을 지켜야 하는지가 선명해진다.
 
 1. 도메인 코어 — 4번 모델과 5번 상태 흐름, 정산 계산기(배달비 균등 분담,
    나누어떨어지지 않는 나머지는 방장이 흡수). 외부 의존이 없는 순수 로직이라
    테스트로 바로 확정할 수 있다.
-2. Spring Security + 학교 이메일 회원가입 + JWT. 리프레시 토큰과 로그아웃
-   블랙리스트는 Redis.
+2. Spring Security + 학교 이메일 회원가입 + JWT. 리프레시 토큰은 Redis. (ADR-024, 026)
 3. 이메일 인증 — 토큰 발급(Redis, TTL 30분), 재전송 제한(1시간 5회), 미인증 사용자
    쓰기 차단. 로컬에서는 Mailpit으로 확인. (ADR-027, 028)
-
 4. 정산 — 배달비 입력과 정산표 생성, 입금 표시·확인, 주문완료·배달완료 전이.
-   계산기는 도메인 코어에서 이미 만들었다. (ADR-029~032)
+   계산기는 도메인 코어에서 이미 만들었다. (ADR-029~032, 042~047)
+5. 취소와 환불 — 정산중 취소 뒤 환불 기록. (ADR-048, 049)
+6. 멈춘 방을 넘기는 스케줄러 — 마감 시각 도달, 오래 멈춘 마감·정산중·주문완료. (ADR-051, 052)
+7. 내 방 목록 — 진행 중과 끝난 방. (ADR-053)
 
-- 계좌번호/금액 복사와 송금 딥링크용 정산 정보 응답
+- 계좌번호/금액 복사용 정산 정보 응답
 - Testcontainers 기반 통합 테스트
 - 완료 기준: API 호출만으로 2번 시나리오 1~8번이 끝까지 돌아간다
+
+### 최소 화면 (끝)
+
+- `frontend/`의 React 화면으로 2번 시나리오를 한 바퀴 돈다. 로그인, 방 목록, 방 만들기, 방 상세(참여,
+  메뉴, 마감, 정산, 환불), 내 방, 내 정보(계좌 등록).
+- 가입과 메일 인증 화면은 아직 없다. 개발용 계정(dev 프로필)으로 들어간다. Phase 2에서 붙인다.
 
 ### Phase 2 — 배포와 CI/CD
 
 - Docker, AWS(EC2 또는 ECS), RDS, GitHub Actions
-- 여기서 React 최소 화면을 붙여 실제로 써볼 수 있게 한다
-- 완료 기준: main에 push하면 자동 배포되고, 브라우저로 방을 만들고 참여할 수 있다
+- 가입과 메일 인증 화면, 실제 메일 발송 수단
+- 완료 기준: main에 push하면 자동 배포되고, 브라우저로 가입부터 방 만들기와 참여까지 할 수 있다
 - 일부러 앞으로 당겼다. 뒤로 미루면 안 하게 되고, 여기서 해두면 이후 모든 단계가
   실제 환경에서 굴러간다
-- 순서 변경(ADR-054): 테스트 자동 실행(CI)만 Phase 3 앞으로 떼어 내고, 나머지는 Phase 3
+- 순서 변경(ADR-054): 테스트 자동 실행(CI)과 최소 화면만 Phase 3 앞으로 떼어 내고, 나머지는 Phase 3
   다음에 한다. 실제 환경이 꼭 필요한 Phase 4보다는 앞에 둔다
 
 ### Phase 3 — 동시성 문제 재현과 해결
@@ -248,6 +269,11 @@ Phase 3 앞에 두고, 동시성(3)을 배포(2)보다 먼저 한다. 배포는 
 - 락 없는 순진한 구현을 그대로 두고, 마감 직전 동시 참여로 정원 초과를 **실제로 재현**
 - 낙관적 락 -> Redis 분산 락 순으로 고치면서 각각의 한계를 확인
 - 거점별 방 목록 캐싱과 캐시 무효화
+- Phase 1 정리 중에 코드를 읽다가 찾은 것 (아직 재현 전):
+  - 리프레시 토큰 갱신이 "읽기 → 지우기" 두 번이라, 같은 토큰으로 동시에 갱신하면 둘 다 새 토큰을 받을 수 있다.
+    `getAndDelete` 한 번으로 바꿀 후보.
+  - 같은 사람의 동시 참여나 같은 이름의 거점 동시 생성은 유니크 제약이 막지만, 그 예외
+    (`DataIntegrityViolationException`)가 500으로 나간다. 409로 바꿀 후보.
 - 완료 기준: 깨지는 케이스와 고친 뒤의 결과가 로그/테스트로 남는다
 
 ### Phase 4 — 부하 테스트와 관측

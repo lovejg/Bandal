@@ -50,3 +50,9 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// 로컬에서 ./gradlew bootRun으로 띄울 때만 dev 프로필을 켠다. 개발용 계정과 거점이 심어진다
+// 테스트와 배포용 jar에는 걸리지 않는다. 다른 프로필로 띄우려면 --args='--spring.profiles.active=...'가 이긴다
+tasks.named('bootRun') {
+    systemProperty 'spring.profiles.active', 'dev'
+}
