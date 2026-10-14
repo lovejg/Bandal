@@ -1,5 +1,6 @@
 package com.bandal.settlement;
 
+import com.bandal.common.ForbiddenException;
 import com.bandal.grouporder.CancelType;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderStatus;
@@ -48,10 +49,10 @@ class SettlementTest {
                 Instant.parse("2026-09-26T10:30:00Z"), 4);
         // 표시와 확인은 정산중에만 받는다 (ADR-044). 줄은 정산을 시작할 때 생기므로 여기까지 보내 둔다
         groupOrder.closeByHost(HOST_ID, 2, 17_000, Instant.parse("2026-09-26T10:00:00Z"));
-        groupOrder.startSettlement(HOST_ID, 2_334);
+        groupOrder.startSettlement(HOST_ID, 2_334, NOW);
     }
 
-    // 주문완료, 배달완료 전이는 아직 없어서 상태만 바꾼다
+    // 상태만 필요한 테스트라 주문완료, 배달완료 전이를 거치지 않고 상태를 바로 바꾼다
     void forceStatus(GroupOrderStatus status) {
         ReflectionTestUtils.setField(groupOrder, "status", status);
     }
@@ -119,7 +120,6 @@ class SettlementTest {
             assertThat(line.getMarkedPaidAt()).isEqualTo(NOW);
             // 방장이 확인한 건 아니다. 아직 정리된 게 아니다
             assertThat(line.isConfirmed()).isFalse();
-            assertThat(line.isDisputed()).isTrue();
         }
 
         @Test
@@ -128,7 +128,7 @@ class SettlementTest {
             Settlement line = memberLine();
 
             assertThatThrownBy(() -> line.markPaid(OTHER_ID, NOW))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
 
             assertThat(line.getMarkedPaidAt()).isNull();
         }
@@ -139,7 +139,7 @@ class SettlementTest {
             Settlement line = memberLine();
 
             assertThatThrownBy(() -> line.markPaid(HOST_ID, NOW))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
         }
 
         @Test
@@ -180,7 +180,6 @@ class SettlementTest {
 
             assertThat(line.getConfirmedPaidAt()).isEqualTo(NOW.plusSeconds(60));
             assertThat(line.isConfirmed()).isTrue();
-            assertThat(line.isDisputed()).isFalse();
         }
 
         @Test
@@ -190,7 +189,7 @@ class SettlementTest {
             Settlement line = memberLine();
 
             assertThatThrownBy(() -> line.confirm(MEMBER_ID, NOW))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
 
             assertThat(line.isConfirmed()).isFalse();
         }
@@ -253,7 +252,7 @@ class SettlementTest {
 
             assertThat(line.getMarkedPaidAt()).isEqualTo(NOW);
             // "보냈다는데 확인 안 됨"으로 돌아간다 (ADR-032)
-            assertThat(line.isDisputed()).isTrue();
+            assertThat(line.getConfirmedPaidAt()).isNull();
         }
 
         @Test
@@ -275,7 +274,7 @@ class SettlementTest {
             line.confirm(HOST_ID, CONFIRMED_AT);
 
             assertThatThrownBy(() -> line.revokeConfirm(MEMBER_ID, REVOKED_AT))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
 
             assertThat(line.getConfirmedPaidAt()).isEqualTo(CONFIRMED_AT);
             assertThat(line.getConfirmRevokedAt()).isNull();
@@ -288,7 +287,7 @@ class SettlementTest {
             Settlement line = memberLine();
 
             assertThatThrownBy(() -> line.revokeConfirm(MEMBER_ID, REVOKED_AT))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
         }
 
         @Test
@@ -405,7 +404,7 @@ class SettlementTest {
             // 정산중에 취소된 방의 늦은 표시는 LateMark에서 본다 (ADR-049)
             Settlement line = memberLine();
             forceStatus(GroupOrderStatus.CANCELED);
-            ReflectionTestUtils.setField(groupOrder, "cancelType", CancelType.HOST_AFTER_CLOSED);
+            ReflectionTestUtils.setField(groupOrder, "cancelType", CancelType.HOST_WHILE_CLOSED);
 
             assertThatThrownBy(() -> line.markPaid(MEMBER_ID, NOW))
                     .isInstanceOf(IllegalStateException.class);
@@ -456,7 +455,7 @@ class SettlementTest {
 
     // 방장이 정산중에 방을 취소한다. 입금 기록은 그 전에 찍어둬야 한다
     void cancelWhileSettling() {
-        groupOrder.cancelByHost(HOST_ID, CANCEL_REASON);
+        groupOrder.cancelByHost(HOST_ID, CANCEL_REASON, NOW);
     }
 
     // 보냈어요만 있는 줄로 정산중 취소까지
@@ -476,7 +475,6 @@ class SettlementTest {
         return line;
     }
 
-    // 조각 7-1
     @Nested
     @DisplayName("환불 대상")
     class RefundTarget {
@@ -499,7 +497,7 @@ class SettlementTest {
         @DisplayName("마감 뒤에 취소된 방은 정산중 취소가 아니다")
         void canceledAfterClosedIsNot() {
             forceStatus(GroupOrderStatus.CANCELED);
-            ReflectionTestUtils.setField(groupOrder, "cancelType", CancelType.HOST_AFTER_CLOSED);
+            ReflectionTestUtils.setField(groupOrder, "cancelType", CancelType.HOST_WHILE_CLOSED);
 
             assertThat(groupOrder.isCanceledWhileSettling()).isFalse();
         }
@@ -566,7 +564,6 @@ class SettlementTest {
         }
     }
 
-    // 조각 7-2
     @Nested
     @DisplayName("취소 뒤 늦은 보냈어요")
     class LateMark {
@@ -601,9 +598,9 @@ class SettlementTest {
             cancelWhileSettling();
 
             assertThatThrownBy(() -> line.markPaid(OTHER_ID, LATER))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
             assertThatThrownBy(() -> line.markPaid(HOST_ID, LATER))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
 
             assertThat(line.getMarkedPaidAt()).isNull();
         }
@@ -644,7 +641,6 @@ class SettlementTest {
         }
     }
 
-    // 조각 7-3
     @Nested
     @DisplayName("돌려줬어요")
     class SendRefund {
@@ -700,7 +696,7 @@ class SettlementTest {
             Settlement line = confirmedThenCanceled();
 
             assertThatThrownBy(() -> line.sendRefund(MEMBER_ID, LATER))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
 
             assertThat(line.getRefundSentAt()).isNull();
         }
@@ -752,7 +748,6 @@ class SettlementTest {
         }
     }
 
-    // 조각 7-4
     @Nested
     @DisplayName("입금 안 됐어요")
     class DenyPayment {
@@ -808,7 +803,7 @@ class SettlementTest {
             Settlement line = markedThenCanceled();
 
             assertThatThrownBy(() -> line.denyPayment(MEMBER_ID, LATER))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
 
             assertThat(line.getPaymentDeniedAt()).isNull();
         }
@@ -848,7 +843,6 @@ class SettlementTest {
         }
     }
 
-    // 조각 7-5
     @Nested
     @DisplayName("돌려받았어요")
     class ReceiveRefund {
@@ -906,7 +900,7 @@ class SettlementTest {
             Settlement line = confirmedThenCanceled();
 
             assertThatThrownBy(() -> line.receiveRefund(HOST_ID, LATER))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
 
             assertThat(line.getRefundReceivedAt()).isNull();
         }
@@ -917,7 +911,7 @@ class SettlementTest {
             Settlement line = confirmedThenCanceled();
 
             assertThatThrownBy(() -> line.receiveRefund(OTHER_ID, LATER))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
         }
 
         @Test
@@ -953,7 +947,6 @@ class SettlementTest {
         }
     }
 
-    // 조각 7-6
     @Nested
     @DisplayName("환불 상태")
     class Status {
@@ -1031,6 +1024,51 @@ class SettlementTest {
             line.receiveRefund(MEMBER_ID, LATER.plusSeconds(60));
 
             assertThat(line.refundStatus()).isEqualTo(RefundStatus.REFUNDED);
+        }
+    }
+
+    // 방장이 24시간 주문하지 않아 스케줄러가 취소한 방 (ADR-051)
+    @Nested
+    @DisplayName("자동 취소된 정산중 방의 환불")
+    class RefundAfterTimeout {
+
+        // setUp에서 NOW에 정산을 시작했다
+        static final Instant EXPIRED_AT = NOW.plus(GroupOrder.SETTLING_EXPIRY);
+
+        @Test
+        @DisplayName("확인된 줄은 환불 대기가 되고 참여자가 돌려받았어요를 누를 수 있다")
+        void confirmedLineIsRefundable() {
+            Settlement line = memberLine();
+            line.confirm(HOST_ID, NOW.plusSeconds(60));
+
+            groupOrder.expireIfStale(EXPIRED_AT);
+
+            assertThat(line.refundStatus()).isEqualTo(RefundStatus.REFUND_PENDING);
+            line.receiveRefund(MEMBER_ID, EXPIRED_AT.plusSeconds(60));
+            assertThat(line.refundStatus()).isEqualTo(RefundStatus.REFUNDED);
+        }
+
+        @Test
+        @DisplayName("늦은 보냈어요를 누를 수 있다")
+        void lateMark() {
+            Settlement line = memberLine();
+            groupOrder.expireIfStale(EXPIRED_AT);
+
+            line.markPaid(MEMBER_ID, EXPIRED_AT.plusSeconds(60));
+
+            assertThat(line.isRefundTarget()).isTrue();
+        }
+
+        @Test
+        @DisplayName("돌아온 방장이 돌려줬어요를 누를 수 있다")
+        void hostCanSendRefund() {
+            Settlement line = memberLine();
+            line.markPaid(MEMBER_ID, NOW.plusSeconds(30));
+            groupOrder.expireIfStale(EXPIRED_AT);
+
+            line.sendRefund(HOST_ID, EXPIRED_AT.plus(java.time.Duration.ofDays(1)));
+
+            assertThat(line.refundStatus()).isEqualTo(RefundStatus.REFUND_SENT);
         }
     }
 }

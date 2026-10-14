@@ -176,7 +176,7 @@ class GroupOrderListApiTest {
     @Test
     @DisplayName("마감 시각이 지났는데 아직 모집중으로 남은 방은 나오지 않는다")
     void hidesExpiredRoom() throws Exception {
-        // closeAtDeadline을 부르는 스케줄러가 아직 없어서 이런 방이 실제로 남는다
+        // 스케줄러는 1분마다 돌아서, 그 사이에는 이런 방이 실제로 남는다
         room(user(hankuk, "방장", true), dorm, "지난 방", 8_000, Instant.now().minus(1, ChronoUnit.HOURS), 4);
         room(user(hankuk, "다른방장", true), dorm, "살아있는 방", 8_000, inHours(2), 4);
 

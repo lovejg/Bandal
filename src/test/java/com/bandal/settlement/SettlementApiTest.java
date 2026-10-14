@@ -240,7 +240,7 @@ class SettlementApiTest {
                             .header("Authorization", bearer(member.getId()))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(feeBody(DELIVERY_FEE)))
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
 
             assertThat(settlementRepository.count()).isZero();
         }
@@ -460,6 +460,22 @@ class SettlementApiTest {
         }
 
         @Test
+        @DisplayName("고치기 전 화면의 옛 줄 id로 누르면 404이고 다시 불러오라고 알려준다")
+        void staleLineId() throws Exception {
+            // 지우고 다시 만들어서 줄 id가 바뀐다 (ADR-046, 050)
+            startSettlement();
+            String oldUrl = markPaidUrl(member);
+
+            changeFee(host, 5_000, 200);
+
+            mockMvc.perform(post(oldUrl)
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.message").value(
+                            org.hamcrest.Matchers.containsString("다시 불러와")));
+        }
+
+        @Test
         @DisplayName("마감된 방은 처음 입력(POST)부터 해야 한다")
         void rejectsClosedRoom() throws Exception {
             closedRoom();
@@ -475,7 +491,7 @@ class SettlementApiTest {
         void rejectsNonHost() throws Exception {
             startSettlement();
 
-            changeFee(member, 5_000, 409);
+            changeFee(member, 5_000, 403);
 
             assertThat(lineOf(member).getFeeShare()).isEqualTo(1_750);
         }
@@ -501,7 +517,7 @@ class SettlementApiTest {
         }
     }
 
-    // 주문완료, 배달완료, 취소로 가는 API가 아직 없어서 상태만 직접 바꾼다.
+    // 상태만 필요한 테스트라 주문완료, 배달완료, 취소 전이를 거치지 않고 상태를 바로 바꾼다.
     // API로 바뀐 방을 다시 읽어와서 바꾼다. 필드의 groupOrder는 마감 때 모습 그대로라 덮어쓰면 배달비가 지워진다
     void forceStatus(GroupOrderStatus status) {
         GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
@@ -715,7 +731,7 @@ class SettlementApiTest {
 
             mockMvc.perform(post(markPaidUrl(member))
                             .header("Authorization", bearer(outsider.getId())))
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
 
             assertThat(lineOf(member).getMarkedPaidAt()).isNull();
         }
@@ -727,7 +743,7 @@ class SettlementApiTest {
 
             mockMvc.perform(post(markPaidUrl(member))
                             .header("Authorization", bearer(host.getId())))
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
         }
 
         @Test
@@ -778,7 +794,7 @@ class SettlementApiTest {
 
             mockMvc.perform(post(confirmUrl(member))
                             .header("Authorization", bearer(member.getId())))
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
 
             assertThat(lineOf(member).isConfirmed()).isFalse();
         }
@@ -912,7 +928,7 @@ class SettlementApiTest {
 
             mockMvc.perform(post(unconfirmUrl(member))
                             .header("Authorization", bearer(member.getId())))
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
 
             assertThat(lineOf(member).isConfirmed()).isTrue();
         }
@@ -1081,7 +1097,7 @@ class SettlementApiTest {
             startSettlement();
             confirmMember();
 
-            order(member, 19_000L, 409);
+            order(member, 19_000L, 403);
 
             assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
         }
@@ -1167,6 +1183,21 @@ class SettlementApiTest {
         }
 
         @Test
+        @DisplayName("정산 시작부터 배달완료까지 전이 시각이 DB에 남는다")
+        void savesTransitionTimes() throws Exception {
+            // 스케줄러는 DB의 이 시각으로 멈춘 방을 찾는다 (ADR-051)
+            orderedRoom();
+            mockMvc.perform(post(deliverUrl())
+                    .header("Authorization", bearer(host.getId())));
+
+            GroupOrder saved = savedRoom();
+            assertThat(saved.getSettlementStartedAt()).isNotNull();
+            assertThat(saved.getOrderedAt()).isNotNull();
+            assertThat(saved.getDeliveredAt()).isNotNull();
+            assertThat(saved.getOrderedAt()).isAfterOrEqualTo(saved.getSettlementStartedAt());
+        }
+
+        @Test
         @DisplayName("정산중에서 배달완료로 건너뛸 수 없다")
         void rejectsFromSettling() throws Exception {
             startSettlement();
@@ -1186,7 +1217,7 @@ class SettlementApiTest {
 
             mockMvc.perform(post(deliverUrl())
                             .header("Authorization", bearer(member.getId())))
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
 
             assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
         }
@@ -1240,8 +1271,9 @@ class SettlementApiTest {
             cancel(host, CANCEL_REASON, 200);
 
             assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.CANCELED);
-            assertThat(savedRoom().getCancelType().name()).isEqualTo("HOST_AFTER_SETTLING");
+            assertThat(savedRoom().getCancelType().name()).isEqualTo("HOST_WHILE_SETTLING");
             assertThat(savedRoom().getCancelReason()).isEqualTo(CANCEL_REASON);
+            assertThat(savedRoom().getCanceledAt()).isNotNull();
         }
 
         @Test
@@ -1275,7 +1307,7 @@ class SettlementApiTest {
         void rejectsNonHost() throws Exception {
             startSettlement();
 
-            cancel(member, CANCEL_REASON, 409);
+            cancel(member, CANCEL_REASON, 403);
 
             assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
         }
@@ -1553,8 +1585,8 @@ class SettlementApiTest {
         void rejectsHostButtonsByMember() throws Exception {
             markedThenCanceled();
 
-            press(sendRefundUrl(member), member, 409);
-            press(denyPaymentUrl(member), member, 409);
+            press(sendRefundUrl(member), member, 403);
+            press(denyPaymentUrl(member), member, 403);
 
             assertThat(lineOf(member).getRefundSentAt()).isNull();
             assertThat(lineOf(member).getPaymentDeniedAt()).isNull();
@@ -1565,8 +1597,8 @@ class SettlementApiTest {
         void rejectsReceiveByOthers() throws Exception {
             confirmedThenCanceled();
 
-            press(receiveRefundUrl(member), host, 409);
-            press(receiveRefundUrl(member), outsider, 409);
+            press(receiveRefundUrl(member), host, 403);
+            press(receiveRefundUrl(member), outsider, 403);
 
             assertThat(lineOf(member).getRefundReceivedAt()).isNull();
         }

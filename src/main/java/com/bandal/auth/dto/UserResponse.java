@@ -2,7 +2,7 @@ package com.bandal.auth.dto;
 
 import com.bandal.user.User;
 
-// 가입 결과. 비밀번호 해시는 절대 나가지 않는다 (ADR-023)
+// 내 정보. 비밀번호 해시는 절대 나가지 않는다 (ADR-023)
 public record UserResponse(
         Long id,
         String email,

@@ -13,7 +13,7 @@ public record RegisterAccountRequest(
 
         @NotBlank(message = "계좌번호를 적어주세요")
         @Size(max = 30, message = "계좌번호가 너무 깁니다")
-        @Pattern(regexp = "^[0-9\\- ]+$")
+        @Pattern(regexp = "^[0-9\\- ]+$", message = "계좌번호는 숫자와 -만 쓸 수 있습니다")
         String accountNumber,
 
         @NotBlank(message = "예금주를 적어주세요")

@@ -1,6 +1,5 @@
 package com.bandal.auth;
 
-import com.bandal.common.NotFoundException;
 import com.bandal.common.TooManyRequestsException;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
@@ -32,7 +31,7 @@ public class EmailVerificationService {
     // 사용자가 "메일 다시 보내기"를 눌렀다. 로그인은 되어 있다
     @Transactional(readOnly = true)
     public void resend(Long userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new NotFoundException("사용자를 찾을 수 없습니다"));
+        User user = userRepository.findByIdOrThrow(userId);
         if(user.isEmailVerified()) throw new IllegalStateException("이미 인증된 계정입니다");
 
         if(verificationStore.increaseResendCount(userId) > resendLimit) {
@@ -48,7 +47,7 @@ public class EmailVerificationService {
     public void verify(String token) {
         Long userId = verificationStore.consume(token);
         if(userId == null) throw new IllegalArgumentException("만료되었거나 이미 사용된 링크입니다");
-        User user = userRepository.findById(userId).orElseThrow(() -> new NotFoundException("사용자를 찾을 수 없습니다"));
+        User user = userRepository.findByIdOrThrow(userId);
         user.verifyEmail(Instant.now());
     }
 }

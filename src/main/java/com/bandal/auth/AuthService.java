@@ -5,7 +5,6 @@ import com.bandal.auth.dto.SignUpRequest;
 import com.bandal.auth.dto.SignUpResponse;
 import com.bandal.auth.dto.TokenResponse;
 import com.bandal.auth.dto.UserResponse;
-import com.bandal.common.NotFoundException;
 import com.bandal.common.UnauthorizedException;
 import com.bandal.university.University;
 import com.bandal.university.UniversityRepository;
@@ -18,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -47,11 +47,10 @@ public class AuthService {
 
     @Transactional
     public SignUpResponse signUp(SignUpRequest request) {
-
-        String email = request.email();
+        String email = normalizeEmail(request.email());
         String password = request.password();
         String nickname = request.nickname();
-        String domain = email.substring(email.indexOf('@') + 1).toLowerCase();
+        String domain = email.substring(email.indexOf('@') + 1);
         University university = universityRepository.findByEmailDomain(domain)
             .orElseThrow(() -> new IllegalArgumentException("지원하지 않는 학교 이메일입니다"));
 
@@ -79,14 +78,13 @@ public class AuthService {
     // open-in-view를 꺼놨으므로 DTO 변환까지 트랜잭션 안에서 끝내야 한다
     @Transactional(readOnly = true)
     public UserResponse me(Long userId) {
-        return UserResponse.of(userRepository.findById(userId)
-                .orElseThrow(() -> new NotFoundException("사용자를 찾을 수 없습니다")));
+        return UserResponse.of(userRepository.findByIdOrThrow(userId));
     }
 
     // 로그인. 실패 이유는 구분하지 않는다
     @Transactional(readOnly = true)
     public TokenResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.email()).orElse(null);
+        User user = userRepository.findByEmail(normalizeEmail(request.email())).orElse(null);
 
         if (!matchesPassword(user, request.password())) {
             throw new UnauthorizedException("이메일 또는 비밀번호가 올바르지 않습니다");
@@ -113,9 +111,14 @@ public class AuthService {
         refreshTokenStore.revoke(refreshToken);
     }
 
+    // 이메일은 대소문자를 가리지 않는다. Kim@과 kim@이 다른 계정이 되면 같은 사람이 두 번 가입할 수 있고,
+    // 가입할 때와 다르게 쳐서 로그인이 막힌다. 저장과 조회 모두 소문자로 맞춘다 (ADR-055)
+    // Locale.ROOT: 터키어 설정에서는 I가 점 없는 i로 바뀐다. 언어 설정과 상관없이 같은 결과를 낸다
+    private static String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
 
-    // 사용자가 없어도 더미 해시로 대조를 한 번 돌린다.
-    // 없는 이메일만 빨리 실패하면 응답 시간만 재봐도 가입 여부를 알 수 있다
+    // 사용자가 없어도 더미 해시로 대조를 한 번 돌린다 (위 dummyHash 참고)
     private boolean matchesPassword(User user, String rawPassword) {
         String hash = (user == null) ? dummyHash : user.getPassword();
         // 순서를 바꾸면 안 된다. user != null을 앞에 두면 단축 평가 때문에 없는 이메일일 때 대조를 건너뛰어서 위의 방어가 사라진다

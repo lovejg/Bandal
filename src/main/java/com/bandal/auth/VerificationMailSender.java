@@ -22,6 +22,10 @@ public class VerificationMailSender {
     @Value("${app.mail-from}")
     private String from;
 
+    // 메일 문구의 만료 시간이 실제 토큰 수명과 어긋나지 않게 같은 설정을 읽는다
+    @Value("${app.verification-token-minutes}")
+    private long tokenMinutes;
+
     // 가입했거나 재전송을 눌렀을 때
     public void sendVerification(String email, String token) {
         String link = verifyLinkBase + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
@@ -31,9 +35,9 @@ public class VerificationMailSender {
 
                 %s
 
-                이 링크는 30분 뒤에 만료됩니다.
+                이 링크는 %d분 뒤에 만료됩니다.
                 본인이 가입한 적이 없다면 이 메일은 무시하셔도 됩니다.
-                """.formatted(link));
+                """.formatted(link, tokenMinutes));
     }
 
     // 이미 가입된 주소로 또 가입을 시도했을 때 (ADR-028)

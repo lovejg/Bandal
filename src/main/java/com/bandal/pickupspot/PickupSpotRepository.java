@@ -1,12 +1,15 @@
 package com.bandal.pickupspot;
 
+import com.bandal.common.NotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface PickupSpotRepository extends JpaRepository<PickupSpot, Long> {
-    Optional<PickupSpot> findById(Long id);
+
+    default PickupSpot findByIdOrThrow(Long id) {
+        return findById(id).orElseThrow(() -> new NotFoundException("없는 수령지입니다"));
+    }
 
     // 한 학교의 거점 전부. 페이징은 하지 않는다 (ADR-036)
     // 정렬은 여기서 하지 않는다. DB 기본 정렬 규칙(en_US)이 한글을 가나다 반대로 세워서, 서비스가 자바에서 한다

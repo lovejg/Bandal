@@ -492,13 +492,13 @@ class GroupOrderApiTest {
     }
 
     @Test
-    @DisplayName("마감 시각이 지났어도 방장이 아닌 사람은 409이고 방은 그대로다")
+    @DisplayName("마감 시각이 지났어도 방장이 아닌 사람은 403이고 방은 그대로다")
     void rejectsCloseByNonHostAfterDeadline() throws Exception {
         GroupOrder groupOrder = givenLateRoom(12_000);
 
         mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
                         .header("Authorization", bearer(member.getId())))
-                .andExpect(status().isConflict());
+                .andExpect(status().isForbidden());
 
         GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(GroupOrderStatus.RECRUITING);
@@ -535,13 +535,13 @@ class GroupOrderApiTest {
     }
 
     @Test
-    @DisplayName("방장이 아닌 사람이 마감하려 하면 409다")
+    @DisplayName("방장이 아닌 사람이 마감하려 하면 403다")
     void rejectsCloseByNonHost() throws Exception {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
 
         mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
                         .header("Authorization", bearer(member.getId())))
-                .andExpect(status().isConflict());
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -602,7 +602,7 @@ class GroupOrderApiTest {
         cancel(groupOrder, host, "가게가 문을 닫았어요", 200);
 
         GroupOrder saved = groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
-        assertThat(saved.getCancelType()).isEqualTo(CancelType.HOST_AFTER_CLOSED);
+        assertThat(saved.getCancelType()).isEqualTo(CancelType.HOST_WHILE_CLOSED);
         assertThat(saved.getCancelReason()).isEqualTo("가게가 문을 닫았어요");
     }
 
@@ -621,11 +621,11 @@ class GroupOrderApiTest {
     }
 
     @Test
-    @DisplayName("방장이 아닌 사람이 취소하려 하면 409이고 방은 그대로다")
+    @DisplayName("방장이 아닌 사람이 취소하려 하면 403이고 방은 그대로다")
     void rejectsCancelByNonHost() throws Exception {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
 
-        cancel(groupOrder, member, "그냥요", 409);
+        cancel(groupOrder, member, "그냥요", 403);
 
         assertThat(groupOrderRepository.findById(groupOrder.getId()).orElseThrow().getStatus())
                 .isEqualTo(GroupOrderStatus.RECRUITING);
@@ -678,7 +678,7 @@ class GroupOrderApiTest {
         return groupOrder;
     }
 
-    // 마감 시각이 30분 지났는데 스케줄러가 없어서 아직 모집중인 방. 방장과 참여자 한 명, 최소주문금액 15,000원
+    // 마감 시각이 30분 지났는데 아직 모집중인 방(스케줄러가 넘기기 전). 방장과 참여자 한 명, 최소주문금액 15,000원
     // 메뉴는 마감 전에 담았다. 담는 시각을 마감 1분 전으로 넘겨서 만든다
     GroupOrder givenLateRoom(long memberMenuPrice) {
         Instant deadline = Instant.now().minus(30, ChronoUnit.MINUTES);

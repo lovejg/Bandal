@@ -227,6 +227,33 @@ class SignUpApiTest {
     }
 
     @Test
+    @DisplayName("이메일은 소문자로 저장한다")
+    void storesEmailInLowerCase() throws Exception {
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("Lee@HANKUK.ac.kr", "password1234", "마라탕러버"))))
+                .andExpect(status().isAccepted());
+
+        assertThat(userRepository.findByEmail("lee@hankuk.ac.kr")).isPresent();
+    }
+
+    @Test
+    @DisplayName("대소문자만 다른 이메일은 이미 가입된 주소로 본다")
+    void treatsCaseVariantAsDuplicate() throws Exception {
+        // 대소문자를 가리면 같은 사람이 계정을 두 개 만들 수 있다 (ADR-055)
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))));
+        org.mockito.Mockito.clearInvocations(mailSender);
+
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("LEE@hankuk.ac.kr", "password1234", "다른닉네임"))))
+                .andExpect(status().isAccepted());
+
+        assertThat(userRepository.count()).isEqualTo(1);
+        // 새 인증 메일이 아니라 "이미 가입된 계정" 안내가 간다
+        assertThat(sentMail().getText()).doesNotContain("token=");
+    }
+
+    @Test
     @DisplayName("이미 가입된 이메일이어도 가입 성공과 똑같이 답한다")
     void hidesDuplicateEmail() throws Exception {
         String first = mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)

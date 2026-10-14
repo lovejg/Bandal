@@ -1,5 +1,6 @@
 package com.bandal.participation;
 
+import com.bandal.common.ForbiddenException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderStatus;
 import com.bandal.user.User;
@@ -44,11 +45,11 @@ public class Participation {
     }
 
     public void checkLeavable(Long requesterId, Instant now) {
-        if(!Objects.equals(requesterId, this.user.getId())) throw new IllegalStateException("다른 사용자의 참여입니다");
+        if(!Objects.equals(requesterId, this.user.getId())) throw new ForbiddenException("다른 사용자의 참여입니다");
         if(this.groupOrder.getStatus() != GroupOrderStatus.RECRUITING || !now.isBefore(this.groupOrder.getDeadlineAt())) {
             throw new IllegalStateException("방이 마감됐습니다");
         }
-        if(Objects.equals(requesterId, this.groupOrder.getHost().getId())) {
+        if(this.groupOrder.isHost(requesterId)) {
             throw new IllegalStateException("방장은 나갈 수 없습니다. 방을 취소해주세요");
         }
     }
@@ -59,7 +60,7 @@ public class Participation {
             throw new IllegalStateException("모집중인 방에만 메뉴를 담을 수 있습니다");
         }
         if(!Objects.equals(requesterId, this.user.getId())) {
-            throw new IllegalStateException("자기 메뉴만 담을 수 있습니다");
+            throw new ForbiddenException("자기 메뉴만 담을 수 있습니다");
         }
         if(!now.isBefore(this.groupOrder.getDeadlineAt())) throw new IllegalStateException("이미 마감되었습니다");
         return new OrderItem(this, menuName, options, unitPrice, quantity);
@@ -67,8 +68,8 @@ public class Participation {
 
     public void checkItemsViewable(Long requesterId) {
         if(!Objects.equals(requesterId, this.user.getId())
-            && !Objects.equals(requesterId, this.groupOrder.getHost().getId())) {
-            throw new IllegalStateException("다른 사람의 메뉴는 볼 수 없습니다");
+            && !this.groupOrder.isHost(requesterId)) {
+            throw new ForbiddenException("다른 사람의 메뉴는 볼 수 없습니다");
         }
     }
 
@@ -77,7 +78,7 @@ public class Participation {
             throw new IllegalStateException("모집중인 방에서만 메뉴를 뺄 수 있습니다");
         }
         if(!Objects.equals(requesterId, this.user.getId())) {
-            throw new IllegalStateException("자기 메뉴만 뺄 수 있습니다");
+            throw new ForbiddenException("자기 메뉴만 뺄 수 있습니다");
         }
         // 지연로딩 프록시일 수 있어서 객체가 아니라 id로 비교한다
         if(!Objects.equals(item.getParticipation().getId(), this.id)) {

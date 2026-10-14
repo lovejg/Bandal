@@ -1,5 +1,6 @@
 package com.bandal.participation;
 
+import com.bandal.common.ForbiddenException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.pickupspot.PickupSpot;
 import com.bandal.university.University;
@@ -64,7 +65,7 @@ class ParticipationTest {
         void rejectsOtherUser() {
             // 참여 id만 알면 남을 방에서 내보낼 수 있으면 안 된다
             assertThatThrownBy(() -> memberParticipation.checkLeavable(OTHER_ID, BEFORE_DEADLINE))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
         }
 
         @Test
@@ -96,7 +97,7 @@ class ParticipationTest {
         @DisplayName("취소된 방에서는 나갈 수 없다")
         void rejectsCanceledRoom() {
             // 취소된 방의 명단은 취소 기록의 일부다. 나중에 지우지 않는다
-            groupOrder.cancelByHost(HOST_ID, null);
+            groupOrder.cancelByHost(HOST_ID, null, DEADLINE);
 
             assertThatThrownBy(() -> memberParticipation.checkLeavable(MEMBER_ID, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
@@ -126,7 +127,7 @@ class ParticipationTest {
         @DisplayName("주인도 방장도 아니면 볼 수 없다")
         void rejectsOtherUser() {
             assertThatThrownBy(() -> memberParticipation.checkItemsViewable(OTHER_ID))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
         }
 
         @Test
@@ -136,7 +137,7 @@ class ParticipationTest {
             assertThatCode(() -> memberParticipation.checkItemsViewable(MEMBER_ID))
                     .doesNotThrowAnyException();
 
-            groupOrder.cancelByHost(HOST_ID, "가게가 문을 닫았습니다");
+            groupOrder.cancelByHost(HOST_ID, "가게가 문을 닫았습니다", DEADLINE);
             assertThatCode(() -> memberParticipation.checkItemsViewable(MEMBER_ID))
                     .doesNotThrowAnyException();
         }

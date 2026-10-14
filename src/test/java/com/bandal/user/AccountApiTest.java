@@ -121,7 +121,7 @@ class AccountApiTest {
                 .content(body));
     }
 
-    // 방장의 방을 원하는 상태로 만든다. 정산 API는 아직 없어서 상태를 바로 넣는다
+    // 방장의 방을 원하는 상태로 만든다. 계좌 규칙만 보는 테스트라 전이를 거치지 않고 상태를 바로 넣는다
     GroupOrder roomOf(User roomHost, GroupOrderStatus status) {
         GroupOrder groupOrder = new GroupOrder(roomHost, pickupSpot, "○○마라탕", 15_000,
                 Instant.now().plus(2, ChronoUnit.HOURS), 4);

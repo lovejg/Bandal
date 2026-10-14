@@ -1,5 +1,6 @@
 package com.bandal.participation;
 
+import com.bandal.common.ForbiddenException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderStatus;
 import com.bandal.pickupspot.PickupSpot;
@@ -28,7 +29,7 @@ class OrderItemTest {
     static final Instant JOINED_AT = Instant.parse("2026-09-22T09:00:00Z");
     // 마감 1분 전. 담기와 고치기가 열려 있는 때
     static final Instant OPEN = DEADLINE.minusSeconds(60);
-    // 마감 1분 뒤. 스케줄러가 없어서 상태는 아직 모집중일 수 있다
+    // 마감 1분 뒤. 스케줄러가 돌기 전(최대 1분)이라 상태는 아직 모집중일 수 있다
     static final Instant LATE = DEADLINE.plusSeconds(60);
 
     GroupOrder groupOrder;
@@ -111,14 +112,14 @@ class OrderItemTest {
         @DisplayName("남의 참여에는 메뉴를 담을 수 없다")
         void rejectsOtherUser() {
             assertThatThrownBy(() -> participation.addItem(OTHER_ID, "마라탕", null, 9_000, 1, OPEN))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
         }
 
         @Test
         @DisplayName("방장이어도 남의 참여에는 메뉴를 담을 수 없다")
         void rejectsHostOfOtherParticipation() {
             assertThatThrownBy(() -> participation.addItem(HOST_ID, "마라탕", null, 9_000, 1, OPEN))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
         }
 
         @Test
@@ -160,7 +161,7 @@ class OrderItemTest {
         @Test
         @DisplayName("취소된 방에는 메뉴를 담을 수 없다")
         void rejectsWhenCanceled() {
-            groupOrder.cancelByHost(HOST_ID, null);
+            groupOrder.cancelByHost(HOST_ID, null, DEADLINE);
 
             assertThatThrownBy(() -> participation.addItem(MEMBER_ID, "마라탕", null, 9_000, 1, OPEN))
                     .isInstanceOf(IllegalStateException.class);
@@ -253,7 +254,7 @@ class OrderItemTest {
         void hostCannotUpdateWhileRecruiting() {
             // 모집중에는 주인이 직접 고칠 수 있다. 방장이 끼어들 이유가 없다
             assertThatThrownBy(() -> item.update(HOST_ID, "공기밥", null, 1_000, 1, OPEN))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
             assertUnchanged();
         }
 
@@ -261,7 +262,7 @@ class OrderItemTest {
         @DisplayName("다른 참여자는 내 메뉴를 고칠 수 없다")
         void otherCannotUpdate() {
             assertThatThrownBy(() -> item.update(OTHER_ID, "공기밥", null, 1_000, 1, OPEN))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
             assertUnchanged();
         }
 
@@ -301,7 +302,7 @@ class OrderItemTest {
             groupOrder.closeByHost(HOST_ID, 3, 20_000, OPEN);
 
             assertThatThrownBy(() -> item.update(MEMBER_ID, "공기밥", null, 1_000, 1, OPEN))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
             assertUnchanged();
 
             item.update(HOST_ID, "공기밥", null, 1_000, 1, OPEN);
@@ -327,7 +328,7 @@ class OrderItemTest {
             groupOrder.closeByHost(HOST_ID, 3, 20_000, OPEN);
 
             assertThatThrownBy(() -> item.update(MEMBER_ID, "공기밥", null, 1_000, 1, LATE))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
             assertUnchanged();
         }
 
@@ -337,15 +338,14 @@ class OrderItemTest {
             groupOrder.closeByHost(HOST_ID, 3, 20_000, OPEN);
 
             assertThatThrownBy(() -> item.update(OTHER_ID, "공기밥", null, 1_000, 1, LATE))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
             assertUnchanged();
         }
 
         @Test
         @DisplayName("정산중에는 방장도 고칠 수 없다")
         void hostCannotUpdateWhileSettling() {
-            // 정산표가 이미 그 금액으로 만들어졌다.
-            // 정산 시작 메서드가 아직 없어서 상태만 직접 넣는다
+            // 정산표가 이미 그 금액으로 만들어졌다. 상태만 필요해서 바로 넣는다
             ReflectionTestUtils.setField(groupOrder, "status", GroupOrderStatus.SETTLING);
 
             assertThatThrownBy(() -> item.update(HOST_ID, "공기밥", null, 1_000, 1, LATE))
@@ -356,7 +356,7 @@ class OrderItemTest {
         @Test
         @DisplayName("취소된 방에서는 아무도 고칠 수 없다")
         void nobodyUpdatesWhenCanceled() {
-            groupOrder.cancelByHost(HOST_ID, null);
+            groupOrder.cancelByHost(HOST_ID, null, DEADLINE);
 
             assertThatThrownBy(() -> item.update(MEMBER_ID, "공기밥", null, 1_000, 1, OPEN))
                     .isInstanceOf(IllegalStateException.class);
@@ -400,7 +400,7 @@ class OrderItemTest {
         @DisplayName("남이 내 메뉴를 뺄 수 없다")
         void rejectsOtherUser() {
             assertThatThrownBy(() -> participation.removeItem(OTHER_ID, item, OPEN))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(ForbiddenException.class);
         }
 
         @Test

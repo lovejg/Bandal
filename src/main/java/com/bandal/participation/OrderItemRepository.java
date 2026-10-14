@@ -1,18 +1,18 @@
 package com.bandal.participation;
 
+import com.bandal.common.NotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.Optional;
 
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
-    Optional<OrderItem> findById(Long id);
-
-    void deleteById(Long id);
+    default OrderItem findByIdOrThrow(Long id) {
+        return findById(id).orElseThrow(() -> new NotFoundException("없는 메뉴입니다"));
+    }
 
     // 한 참여자가 담은 메뉴들
     List<OrderItem> findByParticipationId(Long participationId);

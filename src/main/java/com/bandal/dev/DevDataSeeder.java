@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 
 // 로컬에서 손으로 호출해보려면 대학, 거점, 사용자가 먼저 있어야 한다.
-// 아직 가입 API가 없어서 앱이 뜰 때 심어준다. dev 프로필에서만 돈다.
+// 대학은 가입 API로 만들 수 없고, 메일 인증과 계좌 등록까지 손으로 하기 번거로워서 앱이 뜰 때 심어준다.
+// dev 프로필에서만 돈다.
 @Component
 @Profile("dev")
 @RequiredArgsConstructor
@@ -46,7 +47,10 @@ public class DevDataSeeder implements ApplicationRunner {
 
         // 로그인해서 토큰을 받아야 하므로 진짜 해시로 넣는다. 셋 다 비밀번호가 같다
         String password = passwordEncoder.encode(DEV_PASSWORD);
-        User host = userRepository.save(verified(new User(hankuk, "kim@hankuk.ac.kr", password, "배고파")));
+        User host = new User(hankuk, "kim@hankuk.ac.kr", password, "배고파");
+        // 방장이 되려면 계좌가 있어야 한다 (ADR-031)
+        host.registerAccount("한국은행", "110-123-456789", "김민수");
+        host = userRepository.save(verified(host));
         User member = userRepository.save(verified(new User(hankuk, "lee@hankuk.ac.kr", password, "마라탕러버")));
         User outsider = userRepository.save(verified(new User(minguk, "park@minguk.ac.kr", password, "외부인")));
 
@@ -54,7 +58,7 @@ public class DevDataSeeder implements ApplicationRunner {
 
                 ===== 개발용 데이터 (비밀번호는 모두 {}) =====
                 거점(pickupSpotId) : {}  한국대학교 제1기숙사 로비
-                방장   : id {}  kim@hankuk.ac.kr   배고파
+                방장   : id {}  kim@hankuk.ac.kr   배고파 (계좌 등록됨)
                 참여자 : id {}  lee@hankuk.ac.kr   마라탕러버
                 외부인 : id {}  park@minguk.ac.kr  민국대학교라 참여하면 409
                 POST /api/auth/login 으로 토큰을 받아 Authorization: Bearer 로 보낸다

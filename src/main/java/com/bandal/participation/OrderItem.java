@@ -1,5 +1,6 @@
 package com.bandal.participation;
 
+import com.bandal.common.ForbiddenException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderStatus;
 import jakarta.persistence.*;
@@ -58,17 +59,16 @@ public class OrderItem {
 
         // 시각이 아니라 상태로 먼저 나눈다. 방장이 마감 시각 전에 손으로 마감하는 경우가 있다
         if(groupOrder.getStatus() == GroupOrderStatus.RECRUITING) {
-            // 스케줄러가 없어서 마감 시각이 지나도 모집중으로 남을 수 있다. 그때는 아무도 못 고친다
             if(!now.isBefore(groupOrder.getDeadlineAt())) {
                 throw new IllegalStateException("이미 마감되었습니다");
             }
             if(!Objects.equals(requesterId, ownerId)) {
-                throw new IllegalStateException("본인 메뉴만 변경 가능합니다");
+                throw new ForbiddenException("본인 메뉴만 변경 가능합니다");
             }
         }
         else if(groupOrder.getStatus() == GroupOrderStatus.CLOSED) {
             if(!Objects.equals(requesterId, hostId)) {
-                throw new IllegalStateException("마감 이후에는 방장만 메뉴 변경이 가능합니다");
+                throw new ForbiddenException("마감 이후에는 방장만 메뉴 변경이 가능합니다");
             }
         }
         // 정산중부터, 취소된 방
@@ -84,7 +84,7 @@ public class OrderItem {
         }
     }
 
-
+    // 생성과 수정이 같이 쓰는 값 검사. 빈 옵션은 null로 맞춘다
     private void applyValues(String menuName, String options, long unitPrice, int quantity) {
         if(menuName == null || menuName.isBlank()) {
             throw new IllegalArgumentException("메뉴 이름을 적어주세요");

@@ -1,5 +1,6 @@
 package com.bandal.participation;
 
+import com.bandal.common.NotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -9,10 +10,9 @@ import java.util.Optional;
 
 public interface ParticipationRepository extends JpaRepository<Participation, Long> {
 
-    Optional<Participation> findById(Long id);
-
-    // 정산표를 만들 때 방의 명단을 가져온다
-    List<Participation> findByGroupOrderId(Long groupOrderId);
+    default Participation findByIdOrThrow(Long id) {
+        return findById(id).orElseThrow(() -> new NotFoundException("없는 참여입니다"));
+    }
 
     // 방의 현재 인원(방장 포함)
     long countByGroupOrderId(Long groupOrderId);
@@ -21,7 +21,6 @@ public interface ParticipationRepository extends JpaRepository<Participation, Lo
     boolean existsByGroupOrderIdAndUserId(Long groupOrderId, Long userId);
 
     // 방 상세에서 "보는 사람의 참여 행"을 찾는다. (방, 사용자) 유니크라 많아야 하나다
-    // 그냥 쉽게 생각해서 해당 방에서 이 사람의 참여 행 찾아달라 쿼리
     Optional<Participation> findByGroupOrderIdAndUserId(Long groupOrderId, Long userId);
 
     // 검수 목록의 명단을 사용자까지 한 번에 가져온다(nickname으로 인한 N+1 문제 해결)

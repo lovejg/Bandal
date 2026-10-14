@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED) // 기본 생성자(protected)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 // 같은 학교 안에서 비교용 이름이 겹치면 DB가 거부한다. 서비스 확인을 동시에 빠져나간 경우의 마지막 방어선 (ADR-036)
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"university_id", "normalized_name"}))
 public class PickupSpot {
@@ -20,8 +20,7 @@ public class PickupSpot {
     @JoinColumn(name = "university_id", nullable = false)
     private University university;
 
-    // 위치는 일단은 실제 좌표 말고 String(어차피 캠퍼스 내 혹은 근처 장소니까 꼭 좌표가 아니라 String으로 표현해도 된다)
-    // 다만 정보가 부족한 인원이 있을 수 있기 때문에 추가적으로 아래 description 필드가 같이 있다
+    // 좌표가 아니라 이름이다. 캠퍼스 안의 장소라 이름으로 충분하다 (ADR-013). 모자란 설명은 description에 적는다
     @Column(nullable = false, length = 30)
     private String name;
 

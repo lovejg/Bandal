@@ -349,12 +349,12 @@ class ParticipationApiTest {
         }
 
         @Test
-        @DisplayName("남의 참여로 나가려 하면 409이고 그 사람은 방에 남는다")
+        @DisplayName("남의 참여로 나가려 하면 403이고 그 사람은 방에 남는다")
         void rejectsOtherUsersParticipation() throws Exception {
             User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
 
             leave(memberParticipation.getId(), third)
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
 
             assertThat(participationRepository.findById(memberParticipation.getId())).isPresent();
         }
@@ -383,7 +383,7 @@ class ParticipationApiTest {
         @Test
         @DisplayName("마감 시각이 지났으면 아직 모집중으로 남아 있어도 나갈 수 없다")
         void rejectsAfterDeadline() throws Exception {
-            // 마감 시각에 상태를 바꿔줄 스케줄러가 아직 없어서 이런 방이 실제로 남는다
+            // 스케줄러는 1분마다 돌아서, 그 사이에는 마감 시각이 지난 모집중 방이 실제로 남는다
             GroupOrder late = groupOrderRepository.save(new GroupOrder(
                     host, pickupSpot, "△△치킨", 20_000, Instant.now().minusSeconds(60), 4));
             participationRepository.save(new Participation(late, host, Instant.now()));
@@ -505,11 +505,11 @@ class ParticipationApiTest {
         }
 
         @Test
-        @DisplayName("남의 참여에 담으려 하면 409이고 아무것도 담기지 않는다")
+        @DisplayName("남의 참여에 담으려 하면 403이고 아무것도 담기지 않는다")
         void rejectsOtherUsersParticipation() throws Exception {
             // 주소의 참여 id는 누구나 바꿔 칠 수 있다. 막지 않으면 남의 정산 금액이 늘어난다
             add(memberParticipation.getId(), host, valid())
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
 
             assertThat(orderItemRepository.count()).isZero();
         }
@@ -648,13 +648,13 @@ class ParticipationApiTest {
         }
 
         @Test
-        @DisplayName("다른 참여자가 고치려 하면 409이고 값은 그대로다")
+        @DisplayName("다른 참여자가 고치려 하면 403이고 값은 그대로다")
         void rejectsOtherUser() throws Exception {
             User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
             participationRepository.save(new Participation(groupOrder, third, Instant.now()));
 
             update(item.getId(), third, fixed())
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
             assertUnchanged();
         }
 
@@ -662,7 +662,7 @@ class ParticipationApiTest {
         @DisplayName("모집중에는 방장도 남의 메뉴를 고칠 수 없다")
         void hostCannotUpdateWhileRecruiting() throws Exception {
             update(item.getId(), host, fixed())
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
             assertUnchanged();
         }
 
@@ -691,7 +691,7 @@ class ParticipationApiTest {
             closeRoom();
 
             update(item.getId(), member, fixed())
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
             assertUnchanged();
         }
 
@@ -783,10 +783,10 @@ class ParticipationApiTest {
         }
 
         @Test
-        @DisplayName("남의 메뉴를 빼려 하면 409이고 메뉴는 남는다")
+        @DisplayName("남의 메뉴를 빼려 하면 403이고 메뉴는 남는다")
         void rejectsOtherUser() throws Exception {
             remove(item.getId(), host)
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
 
             assertThat(orderItemRepository.findById(item.getId())).isPresent();
         }
@@ -885,7 +885,7 @@ class ParticipationApiTest {
             participationRepository.save(new Participation(groupOrder, third, Instant.now()));
 
             myItems(memberParticipation.getId(), third)
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
         }
 
         @Test
@@ -1008,10 +1008,10 @@ class ParticipationApiTest {
         }
 
         @Test
-        @DisplayName("방장이 아닌 참여자가 보려 하면 409다")
+        @DisplayName("방장이 아닌 참여자가 보려 하면 403다")
         void rejectsNonHost() throws Exception {
             review(groupOrder.getId(), member)
-                    .andExpect(status().isConflict());
+                    .andExpect(status().isForbidden());
         }
 
         @Test

@@ -126,6 +126,15 @@ class LoginApiTest {
     }
 
     @Test
+    @DisplayName("이메일 대소문자가 가입 때와 달라도 로그인된다")
+    void ignoresEmailCase() throws Exception {
+        // 휴대폰 자판이 첫 글자를 대문자로 바꿔 넣는 일이 흔하다 (ADR-055)
+        String accessToken = field(login("Lee@Hankuk.ac.kr", PASSWORD), "accessToken");
+
+        assertThat(jwtProvider.parseUserId(accessToken)).isEqualTo(member.getId());
+    }
+
+    @Test
     @DisplayName("액세스 토큰에는 사용자 id가 들어 있다")
     void accessTokenCarriesUserId() throws Exception {
         String accessToken = field(login("lee@hankuk.ac.kr", PASSWORD), "accessToken");

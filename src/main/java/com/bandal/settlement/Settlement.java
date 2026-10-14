@@ -1,5 +1,6 @@
 package com.bandal.settlement;
 
+import com.bandal.common.ForbiddenException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderStatus;
 import com.bandal.user.User;
@@ -61,16 +62,17 @@ public class Settlement {
 
     Settlement(GroupOrder groupOrder, User user, long menuTotalAmount, long feeShare,
                boolean host, Instant now) {
-            if(host) {
-                markedPaidAt = now;
-                confirmedPaidAt = now;
-            }
-            this.groupOrder = groupOrder;
-            this.user = user;
-            this.menuTotalAmount = menuTotalAmount;
-            this.feeShare = feeShare;
-            this.totalAmount = menuTotalAmount + feeShare;
-            this.host = host;
+        this.groupOrder = groupOrder;
+        this.user = user;
+        this.menuTotalAmount = menuTotalAmount;
+        this.feeShare = feeShare;
+        this.totalAmount = menuTotalAmount + feeShare;
+        this.host = host;
+        // 방장 몫은 방장 자신에게 내는 돈이라 처음부터 보냄, 확인됨으로 둔다 (ADR-030)
+        if(host) {
+            this.markedPaidAt = now;
+            this.confirmedPaidAt = now;
+        }
     }
 
     // 참여자가 송금하고 "보냈어요"를 누른다
@@ -80,7 +82,7 @@ public class Settlement {
             throw new IllegalStateException("정산중이거나 정산중에 취소된 방에서만 할 수 있습니다");
         }
         if(!Objects.equals(this.user.getId(), requesterId)) {
-            throw new IllegalStateException("자기 몫만 표시할 수 있습니다");
+            throw new ForbiddenException("자기 몫만 표시할 수 있습니다");
         }
 
         if(confirmedPaidAt != null) {
@@ -98,8 +100,8 @@ public class Settlement {
         if(this.groupOrder.getStatus() != GroupOrderStatus.SETTLING) {
             throw new IllegalStateException("정산중인 방에서만 할 수 있습니다");
         }
-        if (!Objects.equals(groupOrder.getHost().getId(), requesterId)) {
-            throw new IllegalStateException("방장만 입금을 확인할 수 있습니다");
+        if (!groupOrder.isHost(requesterId)) {
+            throw new ForbiddenException("방장만 입금을 확인할 수 있습니다");
         }
         if (confirmedPaidAt != null) {
             throw new IllegalStateException("이미 입금 확인이 완료됐습니다");
@@ -113,8 +115,8 @@ public class Settlement {
         if(this.groupOrder.getStatus() != GroupOrderStatus.SETTLING) {
             throw new IllegalStateException("정산중인 방에서만 할 수 있습니다");
         }
-        if(!Objects.equals(this.groupOrder.getHost().getId(), requesterId)) {
-            throw new IllegalStateException("방장만 확인을 취소할 수 있습니다");
+        if(!this.groupOrder.isHost(requesterId)) {
+            throw new ForbiddenException("방장만 확인을 취소할 수 있습니다");
         }
         if(host) {
             throw new IllegalStateException("방장 줄은 확인을 취소할 수 없습니다");
@@ -129,18 +131,13 @@ public class Settlement {
 
     // 이 줄에 입금과 관련된 흔적이 하나라도 있는가. 있으면 배달비를 고칠 수 없다
     public boolean hasPaymentRecord() {
-        if(host) return false; // 방장 줄은 있을리가 없음
+        if(host) return false; // 방장 줄은 만들 때부터 채워져 있어서 흔적으로 치지 않는다
         return markedPaidAt != null || confirmedPaidAt != null || confirmRevokedAt != null;
     }
 
     // 입금이 정리됐는가
     public boolean isConfirmed() {
         return confirmedPaidAt != null;
-    }
-
-    // 보냈다는데 확인이 안 된 상태. 분쟁의 신호다
-    public boolean isDisputed() {
-        return markedPaidAt != null && confirmedPaidAt == null;
     }
 
     // 이 줄이 환불 대상인가
@@ -155,8 +152,8 @@ public class Settlement {
         if(!this.groupOrder.isCanceledWhileSettling()) {
             throw new IllegalStateException("정산중에 취소된 방에서만 할 수 있습니다");
         }
-        if(!Objects.equals(this.groupOrder.getHost().getId(), requesterId)) {
-            throw new IllegalStateException("방장만 돌려줬다고 표시할 수 있습니다");
+        if(!this.groupOrder.isHost(requesterId)) {
+            throw new ForbiddenException("방장만 돌려줬다고 표시할 수 있습니다");
         }
         if(!this.isRefundTarget()) {
             throw new IllegalStateException("환불 대상이 아닙니다");
@@ -164,7 +161,7 @@ public class Settlement {
         if(this.refundReceivedAt != null) {
             throw new IllegalStateException("이미 환불이 완료됐습니다");
         }
-         if(this.refundSentAt != null) return;
+        if(this.refundSentAt != null) return;
         this.refundSentAt = now;
     }
 
@@ -173,8 +170,8 @@ public class Settlement {
         if(!this.groupOrder.isCanceledWhileSettling()) {
             throw new IllegalStateException("정산중에 취소된 방에서만 할 수 있습니다");
         }
-        if(!Objects.equals(this.groupOrder.getHost().getId(), requesterId)) {
-            throw new IllegalStateException("방장만 돌려줬다고 표시할 수 있습니다");
+        if(!this.groupOrder.isHost(requesterId)) {
+            throw new ForbiddenException("방장만 입금 안 됨을 표시할 수 있습니다");
         }
         if(!this.isRefundTarget()) {
             throw new IllegalStateException("환불 대상이 아닙니다");
@@ -198,7 +195,7 @@ public class Settlement {
             throw new IllegalStateException("정산중에 취소된 방에서만 할 수 있습니다");
         }
         if(!Objects.equals(this.user.getId(), requesterId)) {
-            throw new IllegalStateException("자기 몫만 표시할 수 있습니다");
+            throw new ForbiddenException("자기 몫만 표시할 수 있습니다");
         }
         if(!this.isRefundTarget()) {
             throw new IllegalStateException("환불 대상이 아닙니다");

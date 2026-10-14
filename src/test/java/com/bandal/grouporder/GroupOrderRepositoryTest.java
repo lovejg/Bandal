@@ -115,7 +115,7 @@ class GroupOrderRepositoryTest {
     @DisplayName("취소 종류도 DB에 이름으로 저장되고, 다시 꺼내면 그대로다")
     void cancelTypeIsStoredAsName() {
         GroupOrder groupOrder = new GroupOrder(host, pickupSpot, "○○마라탕", 15_000, DEADLINE, 4);
-        groupOrder.cancelByHost(host.getId(), null);
+        groupOrder.cancelByHost(host.getId(), null, DEADLINE);
         GroupOrder saved = groupOrderRepository.saveAndFlush(groupOrder);
 
         Object stored = entityManager

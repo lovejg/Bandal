@@ -1,5 +1,6 @@
 package com.bandal.settlement;
 
+import com.bandal.participation.GroupOrderStat;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -22,4 +23,25 @@ public interface SettlementRepository extends JpaRepository<Settlement, Long> {
     @Modifying(flushAutomatically = true)
     @Query("DELETE FROM Settlement s WHERE s.groupOrder.id = :groupOrderId")
     int deleteByGroupOrderId(@Param("groupOrderId") Long groupOrderId);
+
+    // 내 방 목록에서 쓴다. 여러 방에 걸친 내 줄을 한 번에 가져온다
+    @Query("""
+        SELECT s FROM Settlement s
+        WHERE s.user.id = :userId
+        AND s.groupOrder.id IN :groupOrderIds
+        """)
+    List<Settlement> findMineByGroupOrderIds(@Param("userId") Long userId,
+                                             @Param("groupOrderIds") List<Long> groupOrderIds);
+
+    // 내 방 목록의 방장 칸. 방마다 확인을 기다리는 참여자 수
+    @Query("""
+        SELECT new com.bandal.participation.GroupOrderStat(s.groupOrder.id, COUNT(s)) FROM Settlement s
+        WHERE s.groupOrder.id IN :groupOrderIds
+        AND s.groupOrder.status = com.bandal.grouporder.GroupOrderStatus.SETTLING
+        AND s.host = false
+        AND s.markedPaidAt IS NOT NULL
+        AND s.confirmedPaidAt IS NULL
+        GROUP BY s.groupOrder.id
+        """)
+    List<GroupOrderStat> countAwaitingConfirmByGroupOrderIds(@Param("groupOrderIds") List<Long> groupOrderIds);
 }

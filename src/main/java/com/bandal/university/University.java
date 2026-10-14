@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED) // 기본 생성자(protected)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class University {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

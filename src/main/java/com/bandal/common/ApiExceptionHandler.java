@@ -29,6 +29,12 @@ public class ApiExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
+    // 누구인지는 알지만 할 자격이 없다. 참여자가 방장 버튼을 누른 것 같은 것 (ADR-050)
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException e) {
+        return build(HttpStatus.FORBIDDEN, e.getMessage());
+    }
+
     // 값 자체가 틀렸다. 음수 가격, 빈 메뉴 이름 같은 것
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {

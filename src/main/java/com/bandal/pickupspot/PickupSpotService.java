@@ -1,6 +1,5 @@
 package com.bandal.pickupspot;
 
-import com.bandal.common.NotFoundException;
 import com.bandal.pickupspot.dto.CreatePickupSpotRequest;
 import com.bandal.pickupspot.dto.PickupSpotListResponse;
 import com.bandal.pickupspot.dto.PickupSpotResponse;
@@ -27,7 +26,7 @@ public class PickupSpotService {
     // 내 학교 거점 목록 조회
     @Transactional(readOnly = true)
     public PickupSpotListResponse findList(Long userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new NotFoundException("없는 사용자입니다"));
+        User user = userRepository.findByIdOrThrow(userId);
         Long universityId = user.getUniversity().getId();
 
         Collator collator = Collator.getInstance(Locale.KOREAN);
@@ -39,11 +38,10 @@ public class PickupSpotService {
         return new PickupSpotListResponse(list);
     }
 
-
     // 내 학교 거점 생성
     @Transactional
     public PickupSpotResponse create(Long userId, CreatePickupSpotRequest request) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new NotFoundException("없는 사용자입니다"));
+        User user = userRepository.findByIdOrThrow(userId);
         University university = user.getUniversity();
 
         PickupSpot pickupSpot = new PickupSpot(university, request.name(), request.description());
