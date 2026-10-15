@@ -84,6 +84,8 @@
 ## 환경
 
 프로젝트가 WSL 경로에 있는데 Windows PowerShell에는 git이 없다. git은 WSL 쪽에서 실행.
+git add, commit, push, PR은 사용자가 한다. 작업은 브랜치에서 하고 main으로 PR을 연다. main은 CI가 초록이어야
+merge된다. (ADR-057)
 
 백엔드는 `backend/`(Gradle 명령은 여기서), 화면은 `frontend/`에 있다. 맨 위에는 둘이 함께 쓰는
 `docker-compose.yml`과 문서만 둔다. (ADR-056) 화면은 학습 축 밖이라 Claude가 전부 짜고, 사용자는 관여하지 않는다.
