@@ -17,14 +17,15 @@ jobs:
   # 어느 폴더가 바뀌었는지 본다.
   # on.paths로 거르면 워크플로가 아예 안 떠서, 필수 검사로 걸어둔 PR이 "대기 중"에서 멈춘다.
   # 그래서 워크플로는 늘 띄우고 job을 건너뛴다. 건너뛴 job은 통과로 친다
+  # 서버 OS도 버전을 고정한다. ubuntu-latest는 어느 날 다음 버전으로 바뀐다 (postgres:17을 고정한 것과 같은 이유)
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -38,27 +39,27 @@ jobs:
   backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
 
       # 의존성과 빌드 결과를 캐시한다. 두 번째부터는 내려받는 시간이 빠진다
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # Testcontainers가 GitHub 서버의 Docker로 Postgres와 Redis를 띄운다. 로컬과 같은 방식이다
       - run: ./gradlew test
 
       # 실패하면 어느 테스트가 왜 깨졌는지 보고서를 내려받을 수 있게 남긴다
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-report
           path: backend/build/reports/tests/test
@@ -67,16 +68,16 @@ jobs:
   frontend:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
