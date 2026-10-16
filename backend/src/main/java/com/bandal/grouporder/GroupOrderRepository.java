@@ -1,14 +1,17 @@
 package com.bandal.grouporder;
 
 import com.bandal.common.NotFoundException;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 public interface GroupOrderRepository extends JpaRepository<GroupOrder, Long> {
 
@@ -17,6 +20,11 @@ public interface GroupOrderRepository extends JpaRepository<GroupOrder, Long> {
     default GroupOrder findByIdOrThrow(Long id) {
         return findById(id).orElseThrow(() -> new NotFoundException("없는 방입니다"));
     }
+
+    // 비관적 락
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT go FROM GroupOrder go WHERE go.id = :id")
+    Optional<GroupOrder> findByIdForUpdate(@Param("id") Long id);
 
     // 이 사람이 방장인 방 중에 이 상태인 방이 하나라도 있는지. 정산중인 방장의 계좌 변경을 막을 때 쓴다
     // 메서드 이름으로 만드는 쿼리다. host.id와 status로 찾고, exists라 하나만 찾으면 멈춘다
@@ -37,8 +45,8 @@ public interface GroupOrderRepository extends JpaRepository<GroupOrder, Long> {
                                      @Param("now") Instant now,
                                      Pageable pageable);
 
-    // 스케줄러가 넘길 후보의 id. 모집중은 마감 시각으로, 나머지는 그 상태가 된 시각으로 고른다 (ADR-051)
-    // 기준 시각(~Before)은 서비스 쪽에서 now에서 기간을 빼서 넘긴다. 최종 판단은 엔티티가 다시 한다 (ADR-052)
+    // 스케줄러가 넘길 후보의 id. 모집중은 마감 시각으로, 나머지는 그 상태가 된 시각으로 고른다
+    // 기준 시각(~Before)은 서비스 쪽에서 now에서 기간을 빼서 넘긴다. 최종 판단은 엔티티가 다시 한다
     // 엔티티 대신 id만 받는 건 방마다 따로 읽어서 따로 처리하기 위해서다
     @Query("""
         SELECT go.id FROM GroupOrder go

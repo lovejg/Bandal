@@ -135,7 +135,7 @@ class SignUpApiTest {
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
 
-        // id나 닉네임이 있으면 그 존재만으로 새 계정이 생겼는지가 드러난다 (ADR-028)
+        // id나 닉네임이 있으면 그 존재만으로 새 계정이 생겼는지가 드러난다
         assertThat(body).doesNotContain("마라탕러버");
         assertThat(body).doesNotContain("lee@hankuk.ac.kr");
         assertThat(body).doesNotContain("password1234");
@@ -156,7 +156,7 @@ class SignUpApiTest {
     @Test
     @DisplayName("메일 서버가 죽어 있어도 가입은 성공한다")
     void survivesMailFailure() throws Exception {
-        // 메일 발송이 가입 트랜잭션 안에 있으면 여기서 롤백이 나서 계정이 사라진다 (ADR-027)
+        // 메일 발송이 가입 트랜잭션 안에 있으면 여기서 롤백이 나서 계정이 사라진다
         doThrow(new MailSendException("메일 서버가 죽었다"))
                 .when(mailSender).send(org.mockito.ArgumentMatchers.any(SimpleMailMessage.class));
 
@@ -239,7 +239,7 @@ class SignUpApiTest {
     @Test
     @DisplayName("대소문자만 다른 이메일은 이미 가입된 주소로 본다")
     void treatsCaseVariantAsDuplicate() throws Exception {
-        // 대소문자를 가리면 같은 사람이 계정을 두 개 만들 수 있다 (ADR-055)
+        // 대소문자를 가리면 같은 사람이 계정을 두 개 만들 수 있다
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
                 .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))));
         org.mockito.Mockito.clearInvocations(mailSender);
@@ -266,7 +266,7 @@ class SignUpApiTest {
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
 
-        // 한 글자라도 다르면 계정 존재 여부가 샌다 (ADR-028)
+        // 한 글자라도 다르면 계정 존재 여부가 샌다
         assertThat(second).isEqualTo(first);
         // 계정이 늘지도, 비밀번호가 덮이지도 않는다
         assertThat(userRepository.count()).isEqualTo(1);
@@ -300,7 +300,7 @@ class SignUpApiTest {
                         .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))))
                 .andExpect(status().isAccepted());
 
-        // 닉네임은 방 목록에 그대로 보이는 공개 정보라 감추지 않는다 (ADR-028)
+        // 닉네임은 방 목록에 그대로 보이는 공개 정보라 감추지 않는다
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
                         .content(json(new SignUpRequest("kim@hankuk.ac.kr", "password1234", "마라탕러버"))))
                 .andExpect(status().isConflict());

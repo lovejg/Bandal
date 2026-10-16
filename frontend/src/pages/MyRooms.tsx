@@ -6,7 +6,7 @@ import { nextStep } from '../format'
 
 const PAGE_SIZE = 20
 
-// 내가 만들었거나 참여한 방. 할 일이 남은 방(진행 중)과 끝난 방으로 나뉜다 (ADR-053)
+// 내가 만들었거나 참여한 방. 할 일이 남은 방(진행 중)과 끝난 방으로 나뉜다
 export default function MyRooms() {
   const [tab, setTab] = useState<'active' | 'done'>('active')
   const [rooms, setRooms] = useState<MyRoom[]>([])

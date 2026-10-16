@@ -11,7 +11,7 @@ public interface PickupSpotRepository extends JpaRepository<PickupSpot, Long> {
         return findById(id).orElseThrow(() -> new NotFoundException("없는 수령지입니다"));
     }
 
-    // 한 학교의 거점 전부. 페이징은 하지 않는다 (ADR-036)
+    // 한 학교의 거점 전부. 페이징은 하지 않는다
     // 정렬은 여기서 하지 않는다. DB 기본 정렬 규칙(en_US)이 한글을 가나다 반대로 세워서, 서비스가 자바에서 한다
     List<PickupSpot> findByUniversityId(Long universityId);
 

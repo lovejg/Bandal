@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 송금받을 계좌의 등록과 변경 (ADR-031, 041)
+// 송금받을 계좌의 등록과 변경
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -194,7 +194,7 @@ class AccountApiTest {
         }
 
         @Test
-        @DisplayName("메일 인증을 안 했으면 403이다. 쓰기는 인증한 사람만 한다 (ADR-027)")
+        @DisplayName("메일 인증을 안 했으면 403이다. 쓰기는 인증한 사람만 한다")
         void requiresVerifiedEmail() throws Exception {
             User unverified = saveUser("choi@hankuk.ac.kr", "떡볶이", false, false);
 
@@ -204,7 +204,7 @@ class AccountApiTest {
     }
 
     @Nested
-    @DisplayName("정산 중에는 바꿀 수 없다 (ADR-041)")
+    @DisplayName("정산 중에는 바꿀 수 없다")
     class LockedWhileSettling {
 
         @Test
@@ -259,7 +259,7 @@ class AccountApiTest {
     }
 
     @Nested
-    @DisplayName("방 만들기와의 관계 (ADR-031)")
+    @DisplayName("방 만들기와의 관계")
     class CreatingRoom {
 
         String roomBody() {

@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 내 방 목록. 마감된 방에 다시 들어가는 입구다 (ADR-053)
+// 내 방 목록. 마감된 방에 다시 들어가는 입구다
 // 진행 중 탭, 끝난 방 탭, 참여자 칸, 방장 칸으로 묶었다
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -449,7 +449,7 @@ class MyGroupOrderApiTest {
         @Test
         @DisplayName("방장에게는 참여자 칸이 비어 있다")
         void hostHasNoMemberColumns() throws Exception {
-            // 방장 줄은 만들 때 보낸 시각과 확인 시각이 채워져 있다 (ADR-030). 그대로 내보내면 "다 냈음"으로 보인다
+            // 방장 줄은 만들 때 보낸 시각과 확인 시각이 채워져 있다. 그대로 내보내면 "다 냈음"으로 보인다
             settle(room(me, "내 방", other));
 
             fetch(ACTIVE, me)

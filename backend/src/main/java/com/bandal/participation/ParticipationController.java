@@ -32,7 +32,7 @@ public class ParticipationController {
         return participationService.join(groupOrderId, userId);
     }
 
-    // 방 나가기. 지우는 대상이 참여 행이라 참여 id를 받는다 (ADR-037)
+    // 방 나가기. 지우는 대상이 참여 행이라 참여 id를 받는다
     // 돌려줄 게 없어서 204(성공, 본문 없음)
     @DeleteMapping("/api/participations/{participationId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -41,7 +41,7 @@ public class ParticipationController {
         participationService.leave(participationId, userId);
     }
 
-    // 메뉴 담기. "이 참여의 메뉴 목록에 한 줄을 추가한다" (ADR-038)
+    // 메뉴 담기. "이 참여의 메뉴 목록에 한 줄을 추가한다"
     // @Valid가 DTO의 @NotBlank, @Max 같은 검사를 돌린다. 걸리면 서비스까지 안 가고 400
     @PostMapping("/api/participations/{participationId}/order-items")
     @ResponseStatus(HttpStatus.CREATED)
@@ -51,7 +51,7 @@ public class ParticipationController {
         return participationService.addItem(participationId, userId, request);
     }
 
-    // 내 메뉴 조회. 담기 응답과 같은 모양이라 프론트가 같은 코드로 그린다 (ADR-039)
+    // 내 메뉴 조회. 담기 응답과 같은 모양이라 프론트가 같은 코드로 그린다
     // 주인과 방장만 볼 수 있다
     @GetMapping("/api/participations/{participationId}/order-items")
     public ParticipationItemsResponse findItems(@PathVariable Long participationId,
@@ -59,7 +59,7 @@ public class ParticipationController {
         return participationService.findItems(participationId, userId);
     }
 
-    // 방장 검수 목록. 참여자마다 메뉴와 합계를 붙여서 돌려준다 (ADR-039)
+    // 방장 검수 목록. 참여자마다 메뉴와 합계를 붙여서 돌려준다
     // 주소는 방 아래지만 메뉴를 다루는 일이라 이 컨트롤러에 둔다. 방장만 볼 수 있다
     @GetMapping("/api/group-orders/{groupOrderId}/order-items")
     public GroupOrderItemsResponse findReviewList(@PathVariable Long groupOrderId,

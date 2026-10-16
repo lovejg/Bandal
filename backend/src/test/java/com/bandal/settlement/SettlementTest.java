@@ -18,7 +18,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// DB 없이 정산표 한 줄의 규칙만 확인한다 (ADR-030, 032)
+// DB 없이 정산표 한 줄의 규칙만 확인한다
 class SettlementTest {
 
     static final Long HOST_ID = 2_000L;
@@ -37,7 +37,7 @@ class SettlementTest {
         PickupSpot pickupSpot = new PickupSpot(university, "제1기숙사 로비", null);
 
         host = new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파");
-        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        // 계좌가 없으면 방을 만들 수 없다
         host.registerAccount("한국은행", "110-123-456789", "김민수");
         member = new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버");
         // 저장하지 않은 엔티티라 id가 null이다. 값은 같지만 다른 Long 객체를 넣어서
@@ -47,7 +47,7 @@ class SettlementTest {
 
         groupOrder = new GroupOrder(host, pickupSpot, "○○마라탕", 15_000,
                 Instant.parse("2026-09-26T10:30:00Z"), 4);
-        // 표시와 확인은 정산중에만 받는다 (ADR-044). 줄은 정산을 시작할 때 생기므로 여기까지 보내 둔다
+        // 표시와 확인은 정산중에만 받는다. 줄은 정산을 시작할 때 생기므로 여기까지 보내 둔다
         groupOrder.closeByHost(HOST_ID, 2, 17_000, Instant.parse("2026-09-26T10:00:00Z"));
         groupOrder.startSettlement(HOST_ID, 2_334, NOW);
     }
@@ -62,7 +62,7 @@ class SettlementTest {
         return new Settlement(groupOrder, member, 9_000, 1_166, false, NOW);
     }
 
-    // 방장 줄. 나누어떨어지지 않는 나머지를 방장이 떠안는다 (ADR-001)
+    // 방장 줄. 나누어떨어지지 않는 나머지를 방장이 떠안는다
     Settlement hostLine() {
         return new Settlement(groupOrder, host, 8_000, 1_168, true, NOW);
     }
@@ -96,7 +96,7 @@ class SettlementTest {
         @DisplayName("방장 줄은 만들 때부터 입금이 정리된 상태다")
         void hostStartsConfirmed() {
             // 방장은 자기에게 송금하지 않는다. 비워두면 "전원 확인" 조건마다
-            // 방장 예외 분기가 생긴다 (ADR-030)
+            // 방장 예외 분기가 생긴다
             Settlement line = hostLine();
 
             assertThat(line.getMarkedPaidAt()).isEqualTo(NOW);
@@ -185,7 +185,7 @@ class SettlementTest {
         @Test
         @DisplayName("참여자가 스스로 확인할 수는 없다")
         void rejectsMember() {
-            // 이걸 허용하면 이체도 안 하고 방장 돈으로 주문을 시킬 수 있다 (ADR-032)
+            // 이걸 허용하면 이체도 안 하고 방장 돈으로 주문을 시킬 수 있다
             Settlement line = memberLine();
 
             assertThatThrownBy(() -> line.confirm(MEMBER_ID, NOW))
@@ -197,7 +197,7 @@ class SettlementTest {
         @Test
         @DisplayName("참여자가 보냈다고 안 눌렀어도 방장은 확인할 수 있다")
         void confirmsWithoutMark() {
-            // 참여자가 이체만 하고 누르는 걸 잊었을 수 있다 (ADR-044)
+            // 참여자가 이체만 하고 누르는 걸 잊었을 수 있다
             Settlement line = memberLine();
 
             line.confirm(HOST_ID, NOW);
@@ -219,7 +219,7 @@ class SettlementTest {
         }
     }
 
-    // 방장의 확인 취소 (ADR-045)
+    // 방장의 확인 취소
     @Nested
     @DisplayName("확인 취소")
     class RevokeConfirm {
@@ -251,7 +251,7 @@ class SettlementTest {
             line.revokeConfirm(HOST_ID, REVOKED_AT);
 
             assertThat(line.getMarkedPaidAt()).isEqualTo(NOW);
-            // "보냈다는데 확인 안 됨"으로 돌아간다 (ADR-032)
+            // "보냈다는데 확인 안 됨"으로 돌아간다
             assertThat(line.getConfirmedPaidAt()).isNull();
         }
 
@@ -293,7 +293,7 @@ class SettlementTest {
         @Test
         @DisplayName("방장 줄은 확인을 취소할 수 없다")
         void rejectsHostLine() {
-            // 방장 줄이 비면 전원 확인이 영영 안 채워진다 (ADR-030)
+            // 방장 줄이 비면 전원 확인이 영영 안 채워진다
             Settlement line = hostLine();
 
             assertThatThrownBy(() -> line.revokeConfirm(HOST_ID, REVOKED_AT))
@@ -330,7 +330,7 @@ class SettlementTest {
         }
     }
 
-    // 배달비를 고쳐도 되는지 판단하는 재료 (ADR-046)
+    // 배달비를 고쳐도 되는지 판단하는 재료
     @Nested
     @DisplayName("입금 흔적")
     class PaymentRecord {
@@ -353,7 +353,7 @@ class SettlementTest {
         @Test
         @DisplayName("표시 없이 방장이 확인했어도 흔적이 있다")
         void confirmedWithoutMark() {
-            // 이체만 하고 누르는 걸 잊은 경우. 이미 돈이 갔다 (ADR-044)
+            // 이체만 하고 누르는 걸 잊은 경우. 이미 돈이 갔다
             Settlement line = memberLine();
             line.confirm(HOST_ID, NOW);
 
@@ -363,7 +363,7 @@ class SettlementTest {
         @Test
         @DisplayName("확인했다가 취소했어도 흔적이 있다")
         void revoked() {
-            // 정산표를 지우면 취소한 흔적도 사라진다 (ADR-045)
+            // 정산표를 지우면 취소한 흔적도 사라진다
             Settlement line = memberLine();
             line.confirm(HOST_ID, NOW);
             line.revokeConfirm(HOST_ID, NOW.plusSeconds(60));
@@ -376,12 +376,12 @@ class SettlementTest {
         @Test
         @DisplayName("방장 줄은 처음부터 채워진 시각이 있어도 흔적이 아니다")
         void ignoresHostLine() {
-            // 방장 줄의 시각은 만들 때 채운 것이지 누가 누른 게 아니다 (ADR-030)
+            // 방장 줄의 시각은 만들 때 채운 것이지 누가 누른 게 아니다
             assertThat(hostLine().hasPaymentRecord()).isFalse();
         }
     }
 
-    // 표시와 확인은 정산중에만 받는다 (ADR-044)
+    // 표시와 확인은 정산중에만 받는다
     @Nested
     @DisplayName("방 상태")
     class RoomState {
@@ -401,7 +401,7 @@ class SettlementTest {
         @Test
         @DisplayName("정산중 취소가 아닌 취소 방에서는 보냈다고 표시할 수 없다")
         void rejectsMarkAfterCanceled() {
-            // 정산중에 취소된 방의 늦은 표시는 LateMark에서 본다 (ADR-049)
+            // 정산중에 취소된 방의 늦은 표시는 LateMark에서 본다
             Settlement line = memberLine();
             forceStatus(GroupOrderStatus.CANCELED);
             ReflectionTestUtils.setField(groupOrder, "cancelType", CancelType.HOST_WHILE_CLOSED);
@@ -427,7 +427,7 @@ class SettlementTest {
         @Test
         @DisplayName("취소된 방에서는 확인할 수 없다")
         void rejectsConfirmAfterCanceled() {
-            // 취소된 방의 정산표는 환불 근거다. 취소 뒤에 바뀌면 안 된다 (ADR-030)
+            // 취소된 방의 정산표는 환불 근거다. 취소 뒤에 바뀌면 안 된다
             Settlement line = memberLine();
             forceStatus(GroupOrderStatus.CANCELED);
 
@@ -448,7 +448,7 @@ class SettlementTest {
         }
     }
 
-    // ===== 여기부터 환불 (ADR-048, 049) =====
+    // ===== 여기부터 환불 =====
 
     static final String CANCEL_REASON = "가게가 문을 닫았어요";
     static final Instant LATER = NOW.plusSeconds(3_600);
@@ -505,7 +505,7 @@ class SettlementTest {
         @Test
         @DisplayName("보냈어요만 있는 줄도 대상이다")
         void markedOnly() {
-            // 돈이 왔는데 방장이 확인을 안 눌렀을 수 있다 (ADR-048)
+            // 돈이 왔는데 방장이 확인을 안 눌렀을 수 있다
             assertThat(markedThenCanceled().isRefundTarget()).isTrue();
         }
 
@@ -571,7 +571,7 @@ class SettlementTest {
         @Test
         @DisplayName("정산중에 취소된 방에서는 늦게라도 보냈어요를 누를 수 있고 대상이 된다")
         void marksAfterCancel() {
-            // 취소 20초 전에 이체해서 버튼을 누를 틈이 없었던 경우 (ADR-049)
+            // 취소 20초 전에 이체해서 버튼을 누를 틈이 없었던 경우
             Settlement line = memberLine();
             cancelWhileSettling();
 
@@ -681,7 +681,7 @@ class SettlementTest {
         @Test
         @DisplayName("반박한 줄에도 누를 수 있다")
         void sendsAfterDenial() {
-            // 반박한 뒤 통장을 다시 보니 돈이 있었다 (ADR-049)
+            // 반박한 뒤 통장을 다시 보니 돈이 있었다
             Settlement line = markedThenCanceled();
             line.denyPayment(HOST_ID, LATER);
 
@@ -778,7 +778,7 @@ class SettlementTest {
         @Test
         @DisplayName("확인된 줄은 반박할 수 없다")
         void rejectsConfirmed() {
-            // 확인해놓고 안 왔다고 하면 확인이 무의미해진다 (ADR-049)
+            // 확인해놓고 안 왔다고 하면 확인이 무의미해진다
             Settlement line = confirmedThenCanceled();
 
             assertThatThrownBy(() -> line.denyPayment(HOST_ID, LATER))
@@ -861,7 +861,7 @@ class SettlementTest {
         @Test
         @DisplayName("방장이 돌려줬어요를 안 눌렀어도 누를 수 있다")
         void receivesWithoutSent() {
-            // 방장이 이체만 하고 버튼을 잊었다 (ADR-049)
+            // 방장이 이체만 하고 버튼을 잊었다
             Settlement line = confirmedThenCanceled();
 
             line.receiveRefund(MEMBER_ID, LATER);
@@ -998,7 +998,7 @@ class SettlementTest {
         @Test
         @DisplayName("반박한 뒤 돌려줬다고 하면 돌려줌이다")
         void sentAfterDenial() {
-            // 두 칸이 같이 있으면 돌려줬어요가 늘 나중이다. 방장이 생각을 바꿨다 (ADR-049)
+            // 두 칸이 같이 있으면 돌려줬어요가 늘 나중이다. 방장이 생각을 바꿨다
             Settlement line = markedThenCanceled();
             line.denyPayment(HOST_ID, LATER);
             line.sendRefund(HOST_ID, LATER.plusSeconds(60));
@@ -1027,7 +1027,7 @@ class SettlementTest {
         }
     }
 
-    // 방장이 24시간 주문하지 않아 스케줄러가 취소한 방 (ADR-051)
+    // 방장이 24시간 주문하지 않아 스케줄러가 취소한 방
     @Nested
     @DisplayName("자동 취소된 정산중 방의 환불")
     class RefundAfterTimeout {

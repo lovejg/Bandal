@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-// 같은 학교 안에서 비교용 이름이 겹치면 DB가 거부한다. 서비스 확인을 동시에 빠져나간 경우의 마지막 방어선 (ADR-036)
+// 같은 학교 안에서 비교용 이름이 겹치면 DB가 거부한다. 서비스 확인을 동시에 빠져나간 경우의 마지막 방어선
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"university_id", "normalized_name"}))
 public class PickupSpot {
     @Id
@@ -20,7 +20,7 @@ public class PickupSpot {
     @JoinColumn(name = "university_id", nullable = false)
     private University university;
 
-    // 좌표가 아니라 이름이다. 캠퍼스 안의 장소라 이름으로 충분하다 (ADR-013). 모자란 설명은 description에 적는다
+    // 좌표가 아니라 이름이다. 캠퍼스 안의 장소라 이름으로 충분하다. 모자란 설명은 description에 적는다
     @Column(nullable = false, length = 30)
     private String name;
 

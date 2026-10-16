@@ -42,7 +42,7 @@ class OrderItemTest {
         University university = new University("한국대학교", "hankuk.ac.kr");
         PickupSpot pickupSpot = new PickupSpot(university, "제1기숙사 로비", null);
         User host = new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파");
-        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        // 계좌가 없으면 방을 만들 수 없다
         host.registerAccount("한국은행", "110-123-456789", "김민수");
         User member = new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버");
         User other = new User(university, "park@hankuk.ac.kr", "hashed-password", "꿔바로우");
@@ -422,7 +422,7 @@ class OrderItemTest {
         @Test
         @DisplayName("마감 후 방장도 남의 메뉴를 뺄 수는 없다")
         void hostCannotRemoveAfterClose() {
-            // 방장에게 열린 건 고치기뿐이다 (ADR-038)
+            // 방장에게 열린 건 고치기뿐이다
             groupOrder.closeByHost(HOST_ID, 2, 20_000, OPEN);
 
             assertThatThrownBy(() -> participation.removeItem(HOST_ID, item, LATE))

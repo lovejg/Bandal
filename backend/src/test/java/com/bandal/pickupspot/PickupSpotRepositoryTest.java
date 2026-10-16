@@ -121,7 +121,7 @@ class PickupSpotRepositoryTest {
     @Test
     @DisplayName("같은 학교에 띄어쓰기만 다른 이름을 저장하면 DB가 거부한다")
     void uniqueConstraintRejectsDuplicate() {
-        // 서비스 확인을 건너뛴 상황이다. 두 사람이 동시에 만들면 실제로 이렇게 된다 (ADR-036)
+        // 서비스 확인을 건너뛴 상황이다. 두 사람이 동시에 만들면 실제로 이렇게 된다
         University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpotRepository.saveAndFlush(new PickupSpot(university, "공대 7호관 앞", null));
 

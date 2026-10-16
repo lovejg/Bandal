@@ -24,7 +24,7 @@ public class GroupOrderController {
 
     private final GroupOrderService groupOrderService;
 
-    // 요청자 id는 토큰에서 나온다. 본문으로 받으면 남을 방장으로 만들 수 있다 (ADR-024)
+    // 요청자 id는 토큰에서 나온다. 본문으로 받으면 남을 방장으로 만들 수 있다
     // @Valid가 형식을 먼저 거른다. 여기서 막히면 서비스까지 가지도 않는다
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -42,24 +42,24 @@ public class GroupOrderController {
         return groupOrderService.findList(userId, page, size);
     }
 
-    // 단건. 로그인은 필터가 확인한다(ADR-034)
-    // 보는 사람의 참여 id(myParticipationId)가 사람마다 달라서 요청자 id를 받는다 (ADR-039)
+    // 단건. 로그인은 필터가 확인한다
+    // 보는 사람의 참여 id(myParticipationId)가 사람마다 달라서 요청자 id를 받는다
     @GetMapping("/{groupOrderId}")
     public GroupOrderResponse find(@PathVariable Long groupOrderId,
                                    @AuthenticationPrincipal Long userId) {
         return groupOrderService.find(groupOrderId, userId);
     }
 
-    // 방장의 마감. 상태 전이라 자원 이름 대신 동사 주소를 쓴다 (ADR-023)
+    // 방장의 마감. 상태 전이라 자원 이름 대신 동사 주소를 쓴다
     // 만드는 게 아니라 있는 방의 상태를 바꾸는 거라 201이 아니라 200이다
-    // 마감 시각이 지난 방은 조건 미달이면 취소로 끝나고, 그때도 200에 status CANCELED가 나간다 (ADR-040)
+    // 마감 시각이 지난 방은 조건 미달이면 취소로 끝나고, 그때도 200에 status CANCELED가 나간다
     @PostMapping("/{groupOrderId}/close")
     public GroupOrderResponse close(@PathVariable Long groupOrderId,
                                     @AuthenticationPrincipal Long userId) {
         return groupOrderService.close(groupOrderId, userId);
     }
 
-    // 방장의 취소. 모집중, 마감, 정산중을 한 주소로 받고 무엇이 되는지는 방 상태가 정한다 (ADR-021, 048)
+    // 방장의 취소. 모집중, 마감, 정산중을 한 주소로 받고 무엇이 되는지는 방 상태가 정한다
     // 사유는 비워도 되는 상태가 있어서 본문은 늘 받고 비울 때는 {}를 보낸다
     @PostMapping("/{groupOrderId}/cancel")
     public GroupOrderResponse cancel(@PathVariable Long groupOrderId,

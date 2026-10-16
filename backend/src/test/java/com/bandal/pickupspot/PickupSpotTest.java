@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// DB 없이 PickupSpot 생성자의 규칙만 확인한다 (ADR-036)
+// DB 없이 PickupSpot 생성자의 규칙만 확인한다
 class PickupSpotTest {
 
     University university;

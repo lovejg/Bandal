@@ -32,13 +32,14 @@ public class SettlementService {
     private final SettlementRepository settlementRepository;
     private final SettlementCalculator calculator = new SettlementCalculator();
 
-    // 배달비를 고치면 정산표를 지우고 다시 만들어서 줄 id가 바뀐다(ADR-046). 옛 화면에서 누르면 여기 걸린다 (ADR-050)
+    // 배달비를 고치면 정산표를 지우고 다시 만들어서 줄 id가 바뀐다. 옛 화면에서 누르면 여기 걸린다
     private static final String STALE_LINE_MESSAGE = "없는 정산입니다. 배달비가 바뀌어 정산표가 새로 만들어졌을 수 있으니 정산 정보를 다시 불러와 주세요";
 
     // 방장의 정산(배달비 입력 및 정산표)
     @Transactional
     public SettlementResponse start(Long groupOrderId, Long requesterId, DeliveryFeeRequest request) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(groupOrderId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+                .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.startSettlement(requesterId, request.deliveryFee(), Instant.now());
 
@@ -104,11 +105,12 @@ public class SettlementService {
     // 방장의 배달비 수정
     @Transactional
     public SettlementResponse changeDeliveryFee(Long groupOrderId, Long requesterId, DeliveryFeeRequest request) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(groupOrderId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.changeDeliveryFee(requesterId, request.deliveryFee());
 
-        List<Settlement> lines = settlementRepository.findByGroupOrderId(groupOrderId);
+        List<Settlement> lines = settlementRepository.findByGroupOrderIdForUpdate(groupOrderId);
         if(lines.stream().anyMatch(Settlement::hasPaymentRecord)) {
             throw new IllegalStateException("입금 기록이 있어 배달비를 수정할 수 없습니다");
         }
@@ -120,7 +122,7 @@ public class SettlementService {
 
     // 정산 줄 하나. 없으면 배달비 수정으로 정산표가 새로 만들어졌을 수 있다고 알려준다
     private Settlement findLine(Long settlementId) {
-        return settlementRepository.findById(settlementId)
+        return settlementRepository.findByIdForUpdate(settlementId)
             .orElseThrow(() -> new NotFoundException(STALE_LINE_MESSAGE));
     }
 
@@ -156,7 +158,8 @@ public class SettlementService {
     // 방장의 주문 완료 버튼(전원 입금 확인됐을 때)
     @Transactional
     public SettlementResponse order(Long groupOrderId, Long requesterId, OrderRequest orderRequest) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(groupOrderId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.order(requesterId, orderRequest.totalPaidAmount(), Instant.now());
 
@@ -171,7 +174,8 @@ public class SettlementService {
     // 방장의 배달 완료 버튼(배달 앱을 통해 도착했는지 직접 확인)
     @Transactional
     public SettlementResponse deliver(Long groupOrderId, Long requesterId) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(groupOrderId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.deliver(requesterId, Instant.now());
 

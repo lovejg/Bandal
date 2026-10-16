@@ -92,10 +92,10 @@ class LoginApiTest {
         University hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpot = pickupSpotRepository.save(new PickupSpot(hankuk, "제1기숙사 로비", null));
         // 이 테스트가 보려는 건 로그인이다. 메일 인증을 마친 상태로 만들어 둔다.
-        // 안 그러면 쓰기 요청이 403이 된다 (ADR-027). 인증 자체는 EmailVerificationApiTest에서 본다
+        // 안 그러면 쓰기 요청이 403이 된다. 인증 자체는 EmailVerificationApiTest에서 본다
         User user = new User(hankuk, "lee@hankuk.ac.kr", passwordEncoder.encode(PASSWORD), "마라탕러버");
         ReflectionTestUtils.setField(user, "emailVerifiedAt", Instant.now());
-        // 방을 만들려면 계좌도 있어야 한다 (ADR-031)
+        // 방을 만들려면 계좌도 있어야 한다
         ReflectionTestUtils.setField(user, "bankName", "한국은행");
         ReflectionTestUtils.setField(user, "accountNumber", "110-123-456789");
         ReflectionTestUtils.setField(user, "accountHolder", "김민수");
@@ -128,7 +128,7 @@ class LoginApiTest {
     @Test
     @DisplayName("이메일 대소문자가 가입 때와 달라도 로그인된다")
     void ignoresEmailCase() throws Exception {
-        // 휴대폰 자판이 첫 글자를 대문자로 바꿔 넣는 일이 흔하다 (ADR-055)
+        // 휴대폰 자판이 첫 글자를 대문자로 바꿔 넣는 일이 흔하다
         String accessToken = field(login("Lee@Hankuk.ac.kr", PASSWORD), "accessToken");
 
         assertThat(jwtProvider.parseUserId(accessToken)).isEqualTo(member.getId());
@@ -188,7 +188,7 @@ class LoginApiTest {
                 .andExpect(status().isUnauthorized())
                 .andReturn().getResponse().getContentAsString();
 
-        // 메시지가 같아야 한다. 다르면 어느 이메일이 가입돼 있는지 알아낼 수 있다 (ADR-026)
+        // 메시지가 같아야 한다. 다르면 어느 이메일이 가입돼 있는지 알아낼 수 있다
         assertThat(unknownEmail).isEqualTo(wrongPassword);
     }
 
@@ -299,7 +299,7 @@ class LoginApiTest {
         mockMvc.perform(post("/api/auth/logout").contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(new RefreshRequest(field(body, "refreshToken")))));
 
-        // 우리가 택한 구조의 한계다. 즉시 막으려면 매 요청마다 저장소를 봐야 한다 (ADR-024)
+        // 우리가 택한 구조의 한계다. 즉시 막으려면 매 요청마다 저장소를 봐야 한다
         assertThat(jwtProvider.parseUserId(accessToken)).isEqualTo(member.getId());
     }
 }

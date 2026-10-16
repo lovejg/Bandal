@@ -41,6 +41,9 @@ public class GroupOrder {
     // 정원(방장 포함)
     private int capacity;
 
+    // 현재 방에 들어와 있는 인원(방장 포함)
+    private int participantCount;
+
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private GroupOrderStatus status;
@@ -48,7 +51,7 @@ public class GroupOrder {
     // 배달비. 방장이 정산을 시작할 때 입력한다. null이면 아직 정산 전
     private Long deliveryFee;
 
-    // 방장이 배달앱에서 실제로 결제한 금액. 주문완료 때 받는다. 통계용이고 정산식에는 쓰지 않는다 (ADR-042)
+    // 방장이 배달앱에서 실제로 결제한 금액. 주문완료 때 받는다. 통계용이고 정산식에는 쓰지 않는다
     private Long totalPaidAmount;
 
     // 취소된 방에만 값이 있다. 방장이 모집중에 취소하면 사유 없이 null일 수도 있다
@@ -91,6 +94,7 @@ public class GroupOrder {
         this.deadlineAt = deadlineAt;
         this.capacity = capacity;
         this.status = GroupOrderStatus.RECRUITING;
+        this.participantCount = 1; // 방장 1명으로 시작
     }
 
     public boolean isHost(Long userId) {
@@ -111,6 +115,15 @@ public class GroupOrder {
         else if(!Objects.equals(user.getUniversity().getId(), this.pickupSpot.getUniversity().getId())) {
             throw new IllegalStateException("다른 학교의 수령 거점입니다");
         }
+    }
+
+    public void addParticipant(User user, Instant now) {
+        checkJoinable(user, participantCount, now);
+        participantCount++;
+    }
+
+    public void removeParticipant() {
+        participantCount--;
     }
 
     // 방장이 직접 마감. 조건에 안 맞으면 사유를 담아 거절한다. 마감 시각이 지나면 자동 규칙에 맡긴다

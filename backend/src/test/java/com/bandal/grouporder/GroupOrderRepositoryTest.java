@@ -54,7 +54,7 @@ class GroupOrderRepositoryTest {
         University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpot = pickupSpotRepository.save(new PickupSpot(university, "제1기숙사 로비", null));
         host = userRepository.save(new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파"));
-        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        // 계좌가 없으면 방을 만들 수 없다
         host.registerAccount("한국은행", "110-123-456789", "김민수");
     }
 
@@ -155,7 +155,7 @@ class GroupOrderRepositoryTest {
     @Test
     @DisplayName("거점 없이는 방을 만들 수조차 없다")
     void pickupSpotIsRequired() {
-        // 방장과 같은 이유로 바뀌었다. 생성자가 거점의 학교를 방장의 학교와 비교해야 해서(ADR-036)
+        // 방장과 같은 이유로 바뀌었다. 생성자가 거점의 학교를 방장의 학교와 비교해야 해서
         // 거점이 없으면 거기서 걸린다. DB 제약은 두 번째 방어선으로 남는다
         assertThatThrownBy(() -> new GroupOrder(host, null, "○○마라탕", 15_000, DEADLINE, 4))
                 .isInstanceOf(IllegalArgumentException.class);

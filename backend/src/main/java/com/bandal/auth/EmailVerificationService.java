@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 
-// 이메일 인증의 흐름을 맡는다. 토큰 저장은 EmailVerificationStore, 발송은 VerificationMailSender (ADR-027)
+// 이메일 인증의 흐름을 맡는다. 토큰 저장은 EmailVerificationStore, 발송은 VerificationMailSender
 @Service
 @RequiredArgsConstructor
 public class EmailVerificationService {

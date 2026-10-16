@@ -26,7 +26,7 @@ class GroupOrderTest {
     static final long MIN_ORDER_AMOUNT = 15_000;
     static final Instant DEADLINE = Instant.parse("2026-09-17T10:30:00Z");
     static final Instant BEFORE_DEADLINE = DEADLINE.minusSeconds(60);
-    // 마감 시각이 지났는데 스케줄러가 아직 돌기 전(최대 1분 남짓), 모집중으로 남은 방을 방장이 연 시각 (ADR-040, 051)
+    // 마감 시각이 지났는데 스케줄러가 아직 돌기 전(최대 1분 남짓), 모집중으로 남은 방을 방장이 연 시각
     static final Instant AFTER_DEADLINE = DEADLINE.plusSeconds(60 * 30);
 
     GroupOrder groupOrder;
@@ -39,7 +39,7 @@ class GroupOrderTest {
         university = new University("한국대학교", "hankuk.ac.kr");
         pickupSpot = new PickupSpot(university, "제1기숙사 로비", null);
         host = new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파");
-        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        // 계좌가 없으면 방을 만들 수 없다
         host.registerAccount("한국은행", "110-123-456789", "김민수");
         // 저장하지 않은 엔티티라 id가 null이다. 방장 확인을 테스트하려고 id만 직접 넣는다.
         // 실제로는 엔티티의 id(DB에서 읽음)와 요청자 id(요청에서 읽음)가 서로 다른 Long 객체라서,
@@ -65,7 +65,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("다른 학교 거점으로는 만들 수 없다")
         void rejectsOtherUniversitySpot() {
-            // 한국대 방장이 민국대 거점 id를 보낸 상황. 막지 않으면 이 방은 민국대 목록에 뜬다 (ADR-036)
+            // 한국대 방장이 민국대 거점 id를 보낸 상황. 막지 않으면 이 방은 민국대 목록에 뜬다
             University otherUniversity = new University("민국대학교", "minguk.ac.kr");
             ReflectionTestUtils.setField(otherUniversity, "id", 11L);
             PickupSpot otherSpot = new PickupSpot(otherUniversity, "민국대 정문", null);
@@ -96,7 +96,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("다른 사람 id면 예외 없이 false다")
         void falseForOthers() {
-            // 검수 목록에서 참여자마다 묻는다. 방장이 아닌 건 에러가 아니다 (ADR-039)
+            // 검수 목록에서 참여자마다 묻는다. 방장이 아닌 건 에러가 아니다
             assertThat(groupOrder.isHost(OTHER_ID)).isFalse();
         }
 
@@ -177,6 +177,78 @@ class GroupOrderTest {
         }
     }
 
+    // 방이 자기 인원을 들고 있다. 참여와 나가기는 방을 잠그고 읽은 뒤 이 숫자를 +1/−1 한다 (Phase 3)
+    @Nested
+    @DisplayName("인원")
+    class ParticipantCount {
+
+        User member;
+
+        @BeforeEach
+        void addMember() {
+            member = new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버");
+        }
+
+        @Test
+        @DisplayName("새 방은 방장 1명으로 시작한다")
+        void startsWithHost() {
+            assertThat(groupOrder.getParticipantCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("참여하면 1명 늘어난다")
+        void addIncreases() {
+            groupOrder.addParticipant(member, BEFORE_DEADLINE);
+
+            assertThat(groupOrder.getParticipantCount()).isEqualTo(2);
+        }
+
+        @Test
+        @DisplayName("정원 4명이 다 차면 다음 사람은 막히고 인원은 4명 그대로다")
+        void rejectsWhenFullWithoutIncreasing() {
+            groupOrder.addParticipant(member, BEFORE_DEADLINE);
+            groupOrder.addParticipant(member, BEFORE_DEADLINE);
+            groupOrder.addParticipant(member, BEFORE_DEADLINE);
+
+            assertThatThrownBy(() -> groupOrder.addParticipant(member, BEFORE_DEADLINE))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("정원이 다 찼습니다");
+            assertThat(groupOrder.getParticipantCount()).isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("검사에 걸리면 인원이 늘지 않는다")
+        void doesNotIncreaseWhenRejected() {
+            assertThatThrownBy(() -> groupOrder.addParticipant(member, DEADLINE))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("마감 시각이 지났습니다");
+            assertThat(groupOrder.getParticipantCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("나가면 1명 줄어든다")
+        void removeDecreases() {
+            groupOrder.addParticipant(member, BEFORE_DEADLINE);
+
+            groupOrder.removeParticipant();
+
+            assertThat(groupOrder.getParticipantCount()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("한 명이 나가면 빈자리에 다시 들어올 수 있다")
+        void allowsJoinAfterSomeoneLeaves() {
+            groupOrder.addParticipant(member, BEFORE_DEADLINE);
+            groupOrder.addParticipant(member, BEFORE_DEADLINE);
+            groupOrder.addParticipant(member, BEFORE_DEADLINE);
+            groupOrder.removeParticipant();
+
+            assertThatCode(() -> groupOrder.addParticipant(member, BEFORE_DEADLINE))
+                    .doesNotThrowAnyException();
+            assertThat(groupOrder.getParticipantCount()).isEqualTo(4);
+        }
+    }
+
     @Nested
     @DisplayName("방장의 수동 마감")
     class CloseByHost {
@@ -245,7 +317,7 @@ class GroupOrderTest {
         }
     }
 
-    // 스케줄러가 없어서 마감 시각이 지나도 모집중인 방. 버튼이 자동 마감 규칙을 대신 일으킨다 (ADR-040)
+    // 스케줄러가 없어서 마감 시각이 지나도 모집중인 방. 버튼이 자동 마감 규칙을 대신 일으킨다
     @Nested
     @DisplayName("마감 시각이 지난 뒤 방장의 마감")
     class CloseByHostAfterDeadline {
@@ -482,7 +554,7 @@ class GroupOrderTest {
             assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.DEADLINE_UNMET);
         }
 
-        // 정산중 취소 (ADR-021 2026-09-26 수정, ADR-048)
+        // 정산중 취소
         void startSettlement() {
             groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
             groupOrder.startSettlement(HOST_ID, 3_500, DEADLINE);
@@ -582,7 +654,7 @@ class GroupOrderTest {
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
             assertThat(groupOrder.getDeliveryFee()).isEqualTo(DELIVERY_FEE);
-            // 실제 결제금액은 주문완료 때 받는다 (ADR-042)
+            // 실제 결제금액은 주문완료 때 받는다
             assertThat(groupOrder.getTotalPaidAmount()).isNull();
         }
 
@@ -656,7 +728,7 @@ class GroupOrderTest {
         }
     }
 
-    // 정산 정보 조회 (ADR-043)
+    // 정산 정보 조회
     @Nested
     @DisplayName("정산 정보를 보여줄 수 있는 상태")
     class SettlementVisible {
@@ -740,7 +812,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("정산중에 취소된 방은 보여준다. 누가 보냈는지가 환불의 근거다")
         void allowsCanceledWhileSettling() {
-            // 상태는 같은 CANCELED라도 취소 종류가 정산표가 있었는지를 알려준다 (ADR-048)
+            // 상태는 같은 CANCELED라도 취소 종류가 정산표가 있었는지를 알려준다
             startSettlement();
             groupOrder.cancelByHost(HOST_ID, "가게가 문을 닫았어요", DEADLINE);
 
@@ -748,7 +820,7 @@ class GroupOrderTest {
         }
     }
 
-    // 배달비 수정 (ADR-046)
+    // 배달비 수정
     @Nested
     @DisplayName("배달비 수정")
     class ChangeDeliveryFee {
@@ -834,7 +906,7 @@ class GroupOrderTest {
         }
     }
 
-    // 주문완료 전이 (ADR-047). 전원 확인 여부는 줄을 모아야 알 수 있어 서비스가 본다
+    // 주문완료 전이. 전원 확인 여부는 줄을 모아야 알 수 있어 서비스가 본다
     @Nested
     @DisplayName("주문완료")
     class Order {
@@ -924,7 +996,7 @@ class GroupOrderTest {
         }
     }
 
-    // 배달완료 전이 (ADR-047)
+    // 배달완료 전이
     @Nested
     @DisplayName("배달완료")
     class Deliver {
@@ -986,7 +1058,7 @@ class GroupOrderTest {
         }
     }
 
-    // 상태가 바뀐 시각. 스케줄러가 멈춘 방을 이걸로 잰다 (ADR-051)
+    // 상태가 바뀐 시각. 스케줄러가 멈춘 방을 이걸로 잰다
     @Nested
     @DisplayName("전이 시각")
     class TransitionTimes {
@@ -1036,7 +1108,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("방장이 지난 마감 시각에 눌러 마감되면 누른 시각이 남는다")
         void closeByHostAfterDeadline() {
-            // 방장의 마감이 closeAtDeadline으로 넘어가는 길 (ADR-040)
+            // 방장의 마감이 closeAtDeadline으로 넘어가는 길
             groupOrder.closeByHost(HOST_ID, 2, 20_000, AFTER_DEADLINE);
 
             assertThat(groupOrder.getClosedAt()).isEqualTo(AFTER_DEADLINE);
@@ -1079,7 +1151,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("방장이 정산중에 취소하면 취소 시각이 남고 정산 시작 시각도 남는다")
         void cancelWhileSettling() {
-            // 환불을 언제부터 기다렸는지 보여줄 근거다 (ADR-049)
+            // 환불을 언제부터 기다렸는지 보여줄 근거다
             groupOrder.closeByHost(HOST_ID, 2, 20_000, CLOSED_AT);
             groupOrder.startSettlement(HOST_ID, 3_500, SETTLED_AT);
 
@@ -1105,7 +1177,7 @@ class GroupOrderTest {
         }
     }
 
-    // 스케줄러가 부르는 자동 만료 (ADR-051, 052)
+    // 스케줄러가 부르는 자동 만료
     @Nested
     @DisplayName("자동 만료")
     class ExpireIfStale {
@@ -1166,7 +1238,7 @@ class GroupOrderTest {
             assertThat(groupOrder.getCancelType()).isEqualTo(CancelType.SETTLING_TIMEOUT);
             assertThat(groupOrder.getCanceledAt()).isEqualTo(now);
             assertThat(groupOrder.getCancelReason()).isNotBlank();
-            // 환불 흐름이 열려야 한다 (ADR-051)
+            // 환불 흐름이 열려야 한다
             assertThat(groupOrder.isCanceledWhileSettling()).isTrue();
         }
 
@@ -1183,7 +1255,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("마감된 지 오래됐어도 방금 정산중이 됐으면 그대로다")
         void keepsJustSettled() {
-            // 스케줄러가 "마감된 지 3시간"으로 골라 온 사이에 방장이 배달비를 넣었다 (ADR-052)
+            // 스케줄러가 "마감된 지 3시간"으로 골라 온 사이에 방장이 배달비를 넣었다
             close();
             Instant justNow = CLOSED_AT.plus(GroupOrder.CLOSED_EXPIRY).plusSeconds(10);
             groupOrder.startSettlement(HOST_ID, 3_500, justNow);

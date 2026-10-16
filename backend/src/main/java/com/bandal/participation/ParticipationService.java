@@ -1,6 +1,7 @@
 package com.bandal.participation;
 
 import com.bandal.common.ForbiddenException;
+import com.bandal.common.NotFoundException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
 import com.bandal.participation.dto.*;
@@ -28,7 +29,8 @@ public class ParticipationService {
     // 방 참여
     @Transactional
     public ParticipationResponse join(Long groupOrderId, Long requesterId) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(groupOrderId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
         User user = userRepository.findByIdOrThrow(requesterId);
 
         if(participationRepository.existsByGroupOrderIdAndUserId(groupOrderId, requesterId)) {
@@ -36,8 +38,8 @@ public class ParticipationService {
         }
 
         Instant now = Instant.now();
-        groupOrder.checkJoinable(user, participationRepository.countByGroupOrderId(groupOrderId), now);
 
+        groupOrder.addParticipant(user, now);
         Participation participation = new Participation(groupOrder, user, now);
         participationRepository.save(participation);
         return ParticipationResponse.of(participation);
@@ -47,9 +49,12 @@ public class ParticipationService {
     @Transactional
     public void leave(Long participationId, Long requesterId) {
         Participation participation = participationRepository.findByIdOrThrow(participationId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(participation.getGroupOrder().getId())
+                .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         participation.checkLeavable(requesterId, Instant.now());
 
+        groupOrder.removeParticipant();
         orderItemRepository.deleteByParticipationId(participationId);
         participationRepository.delete(participation);
     }

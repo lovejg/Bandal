@@ -40,7 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 정산 한 바퀴. 배달비 입력 -> 송금 표시 -> 방장 확인 -> 주문완료 -> 배달완료 (ADR-029~032)
+// 정산 한 바퀴. 배달비 입력 -> 송금 표시 -> 방장 확인 -> 주문완료 -> 배달완료
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -158,7 +158,7 @@ class SettlementApiTest {
                 .orElseThrow();
     }
 
-    // 계좌 등록 테스트는 user/AccountApiTest로 옮겼다 (ADR-041)
+    // 계좌 등록 테스트는 user/AccountApiTest로 옮겼다
 
     @Nested
     @DisplayName("배달비 입력")
@@ -370,7 +370,7 @@ class SettlementApiTest {
         return groupOrderRepository.findById(groupOrder.getId()).orElseThrow();
     }
 
-    // 배달비 수정 (ADR-030, 042, 046)
+    // 배달비 수정
     @Nested
     @DisplayName("배달비 수정")
     class ChangeFee {
@@ -382,7 +382,7 @@ class SettlementApiTest {
 
             changeFee(host, 5_000, 200);
 
-            // 지우고 다시 만든다. 줄이 쌓이지 않는다 (ADR-030)
+            // 지우고 다시 만든다. 줄이 쌓이지 않는다
             assertThat(settlementRepository.findByGroupOrderId(groupOrder.getId())).hasSize(2);
             assertThat(lineOf(member).getFeeShare()).isEqualTo(2_500);
             assertThat(lineOf(member).getTotalAmount()).isEqualTo(MEMBER_MENU + 2_500);
@@ -447,7 +447,7 @@ class SettlementApiTest {
         @Test
         @DisplayName("확인했다가 취소한 줄이 있으면 고칠 수 없다")
         void rejectsAfterRevoked() throws Exception {
-            // 지우면 취소한 흔적이 사라진다 (ADR-045)
+            // 지우면 취소한 흔적이 사라진다
             startSettlement();
             mockMvc.perform(post(confirmUrl(member))
                     .header("Authorization", bearer(host.getId())));
@@ -462,7 +462,7 @@ class SettlementApiTest {
         @Test
         @DisplayName("고치기 전 화면의 옛 줄 id로 누르면 404이고 다시 불러오라고 알려준다")
         void staleLineId() throws Exception {
-            // 지우고 다시 만들어서 줄 id가 바뀐다 (ADR-046, 050)
+            // 지우고 다시 만들어서 줄 id가 바뀐다
             startSettlement();
             String oldUrl = markPaidUrl(member);
 
@@ -529,7 +529,7 @@ class SettlementApiTest {
         return "/api/group-orders/" + groupOrder.getId() + "/settlement";
     }
 
-    // 정산 정보 조회 (ADR-043)
+    // 정산 정보 조회
     @Nested
     @DisplayName("정산 정보 조회")
     class Find {
@@ -614,7 +614,7 @@ class SettlementApiTest {
                     .andExpect(jsonPath("$.lines[0].totalAmount").value(MEMBER_MENU + 1_750));
         }
 
-        // 취소된 방의 조회는 정산중 취소(CancelWhileSettling)에서 본다 (ADR-048)
+        // 취소된 방의 조회는 정산중 취소(CancelWhileSettling)에서 본다
 
         @Test
         @DisplayName("없는 방이면 404다")
@@ -629,7 +629,7 @@ class SettlementApiTest {
         void masksAccountHolder() throws Exception {
             startSettlement();
 
-            // 은행 앱에 뜬 예금주와 대조해 계좌번호 오타를 잡을 만큼만 보여준다 (ADR-031)
+            // 은행 앱에 뜬 예금주와 대조해 계좌번호 오타를 잡을 만큼만 보여준다
             mockMvc.perform(get("/api/group-orders/" + groupOrder.getId() + "/settlement")
                             .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isOk())
@@ -675,7 +675,7 @@ class SettlementApiTest {
         return "/api/settlements/" + lineOf(user).getId() + "/confirm";
     }
 
-    // 입금 표시와 확인 (ADR-044)
+    // 입금 표시와 확인
     @Nested
     @DisplayName("입금 표시와 확인")
     class Payment {
@@ -698,7 +698,7 @@ class SettlementApiTest {
         void markPaidRespondsMemberView() throws Exception {
             startSettlement();
 
-            // 조회(ADR-043)와 같은 응답이다. 자기 줄 하나와 방장 계좌
+            // 조회와 같은 응답이다. 자기 줄 하나와 방장 계좌
             mockMvc.perform(post(markPaidUrl(member))
                             .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isOk())
@@ -818,7 +818,7 @@ class SettlementApiTest {
             startSettlement();
             forceStatus(GroupOrderStatus.CANCELED);
 
-            // 취소된 방의 정산표는 환불 근거라 바뀌면 안 된다 (ADR-030)
+            // 취소된 방의 정산표는 환불 근거라 바뀌면 안 된다
             mockMvc.perform(post(confirmUrl(member))
                             .header("Authorization", bearer(host.getId())))
                     .andExpect(status().isConflict());
@@ -853,7 +853,7 @@ class SettlementApiTest {
         return "/api/settlements/" + lineOf(user).getId() + "/unconfirm";
     }
 
-    // 방장의 확인 취소 (ADR-045)
+    // 방장의 확인 취소
     @Nested
     @DisplayName("확인 취소")
     class Unconfirm {
@@ -951,7 +951,7 @@ class SettlementApiTest {
             confirmedByHost();
             forceStatus(GroupOrderStatus.CANCELED);
 
-            // 취소된 방의 정산표는 환불 근거다 (ADR-030)
+            // 취소된 방의 정산표는 환불 근거다
             mockMvc.perform(post(unconfirmUrl(member))
                             .header("Authorization", bearer(host.getId())))
                     .andExpect(status().isConflict());
@@ -976,7 +976,7 @@ class SettlementApiTest {
         return "/api/group-orders/" + groupOrder.getId() + "/deliver";
     }
 
-    // 결제금액을 비우면 빈 객체를 보낸다. 본문 자체는 늘 있다 (ADR-047)
+    // 결제금액을 비우면 빈 객체를 보낸다. 본문 자체는 늘 있다
     String orderBody(Long totalPaidAmount) {
         if (totalPaidAmount == null) {
             return "{}";
@@ -1008,7 +1008,7 @@ class SettlementApiTest {
         order(host, 19_000L, 200);
     }
 
-    // 주문완료 (ADR-047)
+    // 주문완료
     @Nested
     @DisplayName("주문완료")
     class Order {
@@ -1142,7 +1142,7 @@ class SettlementApiTest {
         @Test
         @DisplayName("주문완료 뒤에는 입금 확인을 되돌릴 수 없다")
         void locksPaymentsAfterOrder() throws Exception {
-            // 이미 주문해서 돈이 나갔다. 되돌리면 주문완료인데 미확인 줄이 생긴다 (ADR-044, 045)
+            // 이미 주문해서 돈이 나갔다. 되돌리면 주문완료인데 미확인 줄이 생긴다
             orderedRoom();
 
             mockMvc.perform(post(unconfirmUrl(member))
@@ -1163,7 +1163,7 @@ class SettlementApiTest {
         }
     }
 
-    // 배달완료 (ADR-047)
+    // 배달완료
     @Nested
     @DisplayName("배달완료")
     class Deliver {
@@ -1185,7 +1185,7 @@ class SettlementApiTest {
         @Test
         @DisplayName("정산 시작부터 배달완료까지 전이 시각이 DB에 남는다")
         void savesTransitionTimes() throws Exception {
-            // 스케줄러는 DB의 이 시각으로 멈춘 방을 찾는다 (ADR-051)
+            // 스케줄러는 DB의 이 시각으로 멈춘 방을 찾는다
             orderedRoom();
             mockMvc.perform(post(deliverUrl())
                     .header("Authorization", bearer(host.getId())));
@@ -1258,7 +1258,7 @@ class SettlementApiTest {
                 .andExpect(status().is(expectedStatus));
     }
 
-    // 방장의 정산중 취소와 취소된 방의 정산 조회 (ADR-021, 048)
+    // 방장의 정산중 취소와 취소된 방의 정산 조회
     @Nested
     @DisplayName("정산중 취소")
     class CancelWhileSettling {
@@ -1323,7 +1323,7 @@ class SettlementApiTest {
             assertThat(savedRoom().getCancelType()).isNull();
         }
 
-        // 취소 뒤에도 보냈어요는 늦게 누를 수 있다. 환불(Refund)에서 본다 (ADR-049)
+        // 취소 뒤에도 보냈어요는 늦게 누를 수 있다. 환불(Refund)에서 본다
 
         @Test
         @DisplayName("취소 뒤에는 방장이 확인이나 확인 취소를 할 수 없다")
@@ -1439,7 +1439,7 @@ class SettlementApiTest {
         cancel(host, CANCEL_REASON, 200);
     }
 
-    // 정산중 취소 뒤 환불 (ADR-048, 049)
+    // 정산중 취소 뒤 환불
     @Nested
     @DisplayName("환불")
     class Refund {
@@ -1535,7 +1535,7 @@ class SettlementApiTest {
             press(denyPaymentUrl(member), host, 200);
 
             assertThat(lineOf(member).getPaymentDeniedAt()).isNotNull();
-            // 반박은 양쪽이 보는 기록이다 (ADR-048)
+            // 반박은 양쪽이 보는 기록이다
             mockMvc.perform(get(settlementUrl())
                             .header("Authorization", bearer(member.getId())))
                     .andExpect(status().isOk())

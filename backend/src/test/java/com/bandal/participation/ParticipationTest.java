@@ -71,7 +71,7 @@ class ParticipationTest {
         @Test
         @DisplayName("방장은 나갈 수 없다")
         void rejectsHost() {
-            // 방장이 빠지는 길은 방 취소다 (ADR-037)
+            // 방장이 빠지는 길은 방 취소다
             assertThatThrownBy(() -> hostParticipation.checkLeavable(HOST_ID, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessage("방장은 나갈 수 없습니다. 방을 취소해주세요");
@@ -118,7 +118,7 @@ class ParticipationTest {
         @Test
         @DisplayName("방장은 남의 메뉴를 볼 수 있다")
         void allowsHost() {
-            // 검수해야 한다 (ADR-039)
+            // 검수해야 한다
             assertThatCode(() -> memberParticipation.checkItemsViewable(HOST_ID))
                     .doesNotThrowAnyException();
         }

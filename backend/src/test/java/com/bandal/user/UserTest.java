@@ -21,7 +21,7 @@ class UserTest {
     }
 
     @Nested
-    @DisplayName("계좌 등록 (ADR-031, 041)")
+    @DisplayName("계좌 등록")
     class RegisterAccount {
 
         @Test

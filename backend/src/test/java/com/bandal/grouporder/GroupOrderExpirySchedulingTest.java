@@ -16,7 +16,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// 스프링이 정말 1분마다 run()을 부르게 등록됐는지 본다 (ADR-051)
+// 스프링이 정말 1분마다 run()을 부르게 등록됐는지 본다
 // 다른 테스트는 runAt을 직접 불러서, @EnableScheduling이나 @Scheduled가 빠져도 전부 통과한다. 그 구멍을 막는다
 // 1분을 기다리지 않는다. 시작할 때 만들어진 예약 작업 목록을 꺼내 본다
 @SpringBootTest(properties = "app.scheduling.enabled=true")

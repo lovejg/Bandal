@@ -46,7 +46,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 이메일 인증. 가입 -> 메일 -> 링크 클릭 -> 쓰기 가능까지 (ADR-027)
+// 이메일 인증. 가입 -> 메일 -> 링크 클릭 -> 쓰기 가능까지
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -121,7 +121,7 @@ class EmailVerificationApiTest {
         host = userRepository.save(verified);
     }
 
-    // 방을 만들려면 계좌가 있어야 한다 (ADR-031). 이 테스트가 보려는 건 메일 인증이라
+    // 방을 만들려면 계좌가 있어야 한다. 이 테스트가 보려는 건 메일 인증이라
     // 등록 과정을 거치지 않고 값을 바로 넣는다
     void giveAccount(User user) {
         ReflectionTestUtils.setField(user, "bankName", "한국은행");
@@ -277,7 +277,7 @@ class EmailVerificationApiTest {
             mockMvc.perform(get("/api/auth/verify").param("token", token))
                     .andExpect(status().isOk());
 
-            // 토큰에 인증 여부를 담았다면 여기서 403이 난다. 매 요청 DB를 읽는 이유다 (ADR-027)
+            // 토큰에 인증 여부를 담았다면 여기서 403이 난다. 매 요청 DB를 읽는 이유다
             mockMvc.perform(post("/api/group-orders")
                             .header("Authorization", "Bearer " + accessToken)
                             .contentType(MediaType.APPLICATION_JSON)
@@ -311,7 +311,7 @@ class EmailVerificationApiTest {
             String expiredBody = verifyFailure(expired);
             String madeUp = verifyFailure("이건-그냥-지어낸-값");
 
-            // 구분해서 알려주면 "이건 실재했던 토큰이구나"를 알려주는 셈이다 (ADR-027)
+            // 구분해서 알려주면 "이건 실재했던 토큰이구나"를 알려주는 셈이다
             assertThat(expiredBody).isEqualTo(usedBody);
             assertThat(madeUp).isEqualTo(usedBody);
             // 셋이 같기만 해서는 부족하다. 사용자가 읽을 수 있는 문장이어야 한다

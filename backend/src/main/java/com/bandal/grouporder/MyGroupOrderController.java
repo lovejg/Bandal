@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// 내 방 목록. 마감된 방에 다시 들어가는 입구다 (ADR-053)
+// 내 방 목록. 마감된 방에 다시 들어가는 입구다
 // 방 목록(/api/group-orders)은 참여할 방을 고르는 화면이라 주소를 나눴다. 이건 "나"의 자원이라 /users/me 아래다
 // 두 탭은 응답 모양은 같지만 고르는 방과 페이징이 달라서 주소를 둘로 나눴다
 @RestController

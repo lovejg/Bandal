@@ -94,12 +94,12 @@ class GroupOrderApiTest {
         member = verifiedUser(university, "lee@hankuk.ac.kr", "마라탕러버");
     }
 
-    // 메일 인증을 마친 사용자. 미인증이면 쓰기가 전부 403이라 방 로직을 볼 수 없다 (ADR-027).
+    // 메일 인증을 마친 사용자. 미인증이면 쓰기가 전부 403이라 방 로직을 볼 수 없다.
     // 인증 자체는 EmailVerificationApiTest에서 본다
     User verifiedUser(University university, String email, String nickname) {
         User user = new User(university, email, "hashed-password", nickname);
         ReflectionTestUtils.setField(user, "emailVerifiedAt", Instant.now());
-        // 계좌가 없으면 방을 만들 수 없다 (ADR-031). 계좌 자체는 SettlementApiTest에서 본다
+        // 계좌가 없으면 방을 만들 수 없다. 계좌 자체는 SettlementApiTest에서 본다
         ReflectionTestUtils.setField(user, "bankName", "한국은행");
         ReflectionTestUtils.setField(user, "accountNumber", "110-123-456789");
         ReflectionTestUtils.setField(user, "accountHolder", "김민수");
@@ -234,7 +234,7 @@ class GroupOrderApiTest {
     void requiresLoginToRead() throws Exception {
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
 
-        // 목록만 막고 단건을 열어두면 id를 1, 2, 3 ... 으로 훑어서 우회된다 (ADR-034)
+        // 목록만 막고 단건을 열어두면 id를 1, 2, 3 ... 으로 훑어서 우회된다
         mockMvc.perform(get("/api/group-orders/" + groupOrder.getId()))
                 .andExpect(status().isUnauthorized());
     }
@@ -309,7 +309,7 @@ class GroupOrderApiTest {
     @DisplayName("없는 사용자의 토큰이면 401이다")
     void rejectsUnknownHost() throws Exception {
         // 탈퇴한 계정의 토큰이 아직 안 만료된 상황. 컨트롤러까지 가지 못하고 필터에서 걸린다.
-        // "이메일 인증이 필요합니다"(403)는 인증할 계정조차 없는 사람에게 할 말이 아니다 (ADR-027)
+        // "이메일 인증이 필요합니다"(403)는 인증할 계정조차 없는 사람에게 할 말이 아니다
         mockMvc.perform(post("/api/group-orders")
                         .header("Authorization", bearer(999_999L))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -334,7 +334,7 @@ class GroupOrderApiTest {
     @Test
     @DisplayName("다른 학교 거점을 고르면 400이고 방이 생기지 않는다")
     void rejectsOtherUniversityPickupSpot() throws Exception {
-        // 거점은 있다. 내 학교 것이 아닐 뿐이다. 거점이 있는지만 보면 통과해 버린다 (ADR-036)
+        // 거점은 있다. 내 학교 것이 아닐 뿐이다. 거점이 있는지만 보면 통과해 버린다
         University minguk = universityRepository.save(new University("민국대학교", "minguk.ac.kr"));
         PickupSpot mingukSpot = pickupSpotRepository.save(new PickupSpot(minguk, "민국대 정문", null));
         CreateGroupOrderRequest request = new CreateGroupOrderRequest(
@@ -365,7 +365,7 @@ class GroupOrderApiTest {
     @Test
     @DisplayName("참여한 사람이 방을 보면 자기 참여 id가 같이 나온다")
     void showsMyParticipationId() throws Exception {
-        // 앱을 껐다 켜도, 다른 기기로 열어도 서버가 매번 알려준다 (ADR-039)
+        // 앱을 껐다 켜도, 다른 기기로 열어도 서버가 매번 알려준다
         GroupOrder groupOrder = givenRoomWithTwoPeopleAndMenu();
         Participation mine = participationRepository
                 .findByGroupOrderIdAndUserId(groupOrder.getId(), member.getId()).orElseThrow();
@@ -438,7 +438,7 @@ class GroupOrderApiTest {
                         .header("Authorization", bearer(host.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CLOSED"))
-                // 마감 직후 방장 화면은 방 상세와 같은 모양으로 그린다 (ADR-040)
+                // 마감 직후 방장 화면은 방 상세와 같은 모양으로 그린다
                 .andExpect(jsonPath("$.participantCount").value(2))
                 .andExpect(jsonPath("$.menuTotalAmount").value(20_000));
 
@@ -477,7 +477,7 @@ class GroupOrderApiTest {
     @Test
     @DisplayName("마감 시각이 지난 방이 금액을 못 채웠으면 200이고 자동 취소가 저장된다")
     void cancelsAfterDeadlineWhenShortAmount() throws Exception {
-        // 채울 길이 없는 금액으로 거절하면 방이 영원히 모집중이다. 자동 마감 규칙대로 취소한다 (ADR-040)
+        // 채울 길이 없는 금액으로 거절하면 방이 영원히 모집중이다. 자동 마감 규칙대로 취소한다
         GroupOrder groupOrder = givenLateRoom(12_000);
 
         mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/close")
@@ -554,7 +554,7 @@ class GroupOrderApiTest {
                 .andExpect(status().isNotFound());
     }
 
-    // 방장의 취소 (ADR-021, 048). 정산중 취소는 정산표가 얽혀 있어 SettlementApiTest에서 본다
+    // 방장의 취소. 정산중 취소는 정산표가 얽혀 있어 SettlementApiTest에서 본다
     String cancelBody(String reason) {
         if (reason == null) {
             return "{}";

@@ -27,7 +27,7 @@ public class AuthController {
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
 
-    // 응답은 "메일을 보냈다"까지만 말한다. 계정이 생겼는지는 메일함을 봐야 안다 (ADR-028)
+    // 응답은 "메일을 보냈다"까지만 말한다. 계정이 생겼는지는 메일함을 봐야 안다
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public SignUpResponse signUp(@Valid @RequestBody SignUpRequest request) {
@@ -40,7 +40,7 @@ public class AuthController {
         return authService.me(userId);
     }
 
-    // 메일 속 링크가 가리키는 곳. 메일 클라이언트는 POST를 못 해서 GET일 수밖에 없다 (ADR-027)
+    // 메일 속 링크가 가리키는 곳. 메일 클라이언트는 POST를 못 해서 GET일 수밖에 없다
     // 브라우저로 여는 주소라 JSON 대신 짧은 HTML을 돌려준다
     @GetMapping(value = "/verify", produces = MediaType.TEXT_HTML_VALUE)
     public String verify(@RequestParam String token) {

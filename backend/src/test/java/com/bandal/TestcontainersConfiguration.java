@@ -19,7 +19,7 @@ public class TestcontainersConfiguration {
         return new PostgreSQLContainer(DockerImageName.parse("postgres:17"));
     }
 
-    // 리프레시 토큰 저장소 (ADR-024). docker-compose.yml과 같은 버전으로 고정한다
+    // 리프레시 토큰 저장소. docker-compose.yml과 같은 버전으로 고정한다
     @Bean
     @ServiceConnection(name = "redis")
     GenericContainer<?> redisContainer() {
