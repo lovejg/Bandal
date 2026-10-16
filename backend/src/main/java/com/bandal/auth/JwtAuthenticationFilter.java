@@ -29,7 +29,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     // 가입은 했지만 메일 인증을 아직 안 한 사람
     public static final String ROLE_USER = "ROLE_USER";
-    // 메일 인증까지 마친 사람. 쓰기는 이쪽만 할 수 있다 (ADR-027)
+    // 메일 인증까지 마친 사람. 쓰기는 이쪽만 할 수 있다
     public static final String ROLE_VERIFIED = "ROLE_VERIFIED";
 
     private final JwtProvider jwtProvider;
@@ -58,7 +58,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     // 이 사람이 무엇을 할 수 있는지를 권한 목록으로 만든다.
-    // 인증 여부를 토큰에 담지 않고 매번 DB에서 읽는 이유는 ADR-027에 있다.
+    // 인증 여부를 토큰에 담지 않고 매번 DB에서 읽는다.
     // 토큰에 담으면 메일 인증을 마쳐도 토큰이 만료될 때까지 계속 막힌다
     private List<GrantedAuthority> authorities(User user) {
         if (user.isEmailVerified()) {

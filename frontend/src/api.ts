@@ -178,6 +178,10 @@ async function refreshTokens(): Promise<boolean> {
     body: JSON.stringify({ refreshToken: current.refreshToken }),
   })
   if (!res.ok) {
+    // 리프레시 토큰은 한 번만 쓸 수 있다. 다른 탭이 같은 토큰으로 먼저 갱신해 새 토큰을 써 뒀으면 그걸 쓴다.
+    // 여기서 지우면 다른 탭이 방금 받은 토큰까지 지워서 탭이 전부 로그아웃된다
+    const latest = tokenStore.get()
+    if (latest && latest.refreshToken !== current.refreshToken) return true
     tokenStore.clear()
     return false
   }

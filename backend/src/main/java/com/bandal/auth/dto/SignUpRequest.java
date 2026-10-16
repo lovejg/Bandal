@@ -4,7 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-// 가입 요청. 받는 정보는 셋뿐이다. 개인정보는 갖고 있으면 지킬 의무가 생긴다 (ADR-025)
+// 가입 요청. 받는 정보는 셋뿐이다. 개인정보는 갖고 있으면 지킬 의무가 생긴다
 public record SignUpRequest(
 
         @NotBlank(message = "이메일을 적어주세요")

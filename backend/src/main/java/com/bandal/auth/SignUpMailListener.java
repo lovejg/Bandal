@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-// 가입 메일을 보낸다. 가입 트랜잭션이 커밋된 뒤에만 실행된다 (ADR-027)
+// 가입 메일을 보낸다. 가입 트랜잭션이 커밋된 뒤에만 실행된다
 //
 // @TransactionalEventListener는 사건을 바로 처리하지 않고 트랜잭션이 끝나기를 기다린다.
 // AFTER_COMMIT이면 커밋에 성공했을 때만 실행되고, 롤백되면 아예 실행되지 않는다.

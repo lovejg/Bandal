@@ -48,7 +48,7 @@ public class DevDataSeeder implements ApplicationRunner {
         // 로그인해서 토큰을 받아야 하므로 진짜 해시로 넣는다. 셋 다 비밀번호가 같다
         String password = passwordEncoder.encode(DEV_PASSWORD);
         User host = new User(hankuk, "kim@hankuk.ac.kr", password, "배고파");
-        // 방장이 되려면 계좌가 있어야 한다 (ADR-031)
+        // 방장이 되려면 계좌가 있어야 한다
         host.registerAccount("한국은행", "110-123-456789", "김민수");
         host = userRepository.save(verified(host));
         User member = userRepository.save(verified(new User(hankuk, "lee@hankuk.ac.kr", password, "마라탕러버")));
@@ -66,7 +66,7 @@ public class DevDataSeeder implements ApplicationRunner {
                 """, DEV_PASSWORD, spot.getId(), host.getId(), member.getId(), outsider.getId());
     }
 
-    // 개발용 계정은 메일 인증을 마친 상태로 둔다. 안 그러면 뭘 하려 해도 403이다 (ADR-027)
+    // 개발용 계정은 메일 인증을 마친 상태로 둔다. 안 그러면 뭘 하려 해도 403이다
     private User verified(User user) {
         user.verifyEmail(Instant.now());
         return user;

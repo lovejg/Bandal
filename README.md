@@ -1,5 +1,7 @@
 # Bandal
 
+[![CI](https://github.com/lovejg/Bandal/actions/workflows/ci.yml/badge.svg)](https://github.com/lovejg/Bandal/actions/workflows/ci.yml)
+
 배달 최소주문금액을 같은 학교 사람끼리 나눠 채우는 공동구매 서비스.
 
 1인분만 먹고 싶은데 가게의 최소주문금액이 15,000원이면, 먹지도 않을 메뉴를 억지로 더 담게 된다.
@@ -51,5 +53,6 @@ cd frontend && npm install && npm run dev  # http://localhost:5173
 
 ## 진행 상황
 
-Phase 1(도메인 코어와 REST API)과 최소 화면까지 끝났다. 다음은 CI, 그다음 Phase 3(동시성 재현과 해결)이다.
+Phase 1(도메인 코어와 REST API), 최소 화면, CI까지 끝났다. main으로 가는 PR마다 GitHub Actions가 백엔드 테스트와
+화면 빌드를 돌리고, 통과해야 merge된다. 지금은 Phase 3(동시성 재현과 해결)를 하고 있다.
 전체 순서는 [DESIGN.md 7번](DESIGN.md#7-단계별로-만들-것)에 있다.

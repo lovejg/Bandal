@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // 방 목록. 참여할 방을 고르는 화면이다
-// 조건: 내 학교 / 모집중 / 마감 시각 전 / 정원 남음. 정렬: 마감 임박순 (ADR-034)
+// 조건: 내 학교 / 모집중 / 마감 시각 전 / 정원 남음. 정렬: 마감 임박순
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -102,7 +102,7 @@ class GroupOrderListApiTest {
         viewer = user(hankuk, "구경꾼", true);
     }
 
-    // 메일 인증과 계좌까지 마친 사용자. 방장이 되려면 계좌가 있어야 한다 (ADR-031)
+    // 메일 인증과 계좌까지 마친 사용자. 방장이 되려면 계좌가 있어야 한다
     User user(University university, String nickname, boolean verified) {
         userSeq++;
         String domain = university == hankuk ? "hankuk.ac.kr" : "minguk.ac.kr";
@@ -139,7 +139,7 @@ class GroupOrderListApiTest {
     @Test
     @DisplayName("로그인하지 않으면 목록을 볼 수 없다")
     void requiresLogin() throws Exception {
-        // 내 학교가 어디인지 알아야 거를 수 있다 (ADR-034)
+        // 내 학교가 어디인지 알아야 거를 수 있다
         mockMvc.perform(get("/api/group-orders"))
                 .andExpect(status().isUnauthorized());
     }
@@ -268,7 +268,7 @@ class GroupOrderListApiTest {
     @Test
     @DisplayName("메일 인증을 안 한 사용자도 목록은 볼 수 있다")
     void unverifiedCanBrowse() throws Exception {
-        // 구경은 허용한다. 막히는 건 쓰기뿐이다 (ADR-027)
+        // 구경은 허용한다. 막히는 건 쓰기뿐이다
         User unverified = user(hankuk, "신입생", false);
         room(user(hankuk, "방장", true), dorm, "○○마라탕", 8_000, inHours(2), 4);
 

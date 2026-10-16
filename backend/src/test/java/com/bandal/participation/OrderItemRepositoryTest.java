@@ -65,7 +65,7 @@ class OrderItemRepositoryTest {
         University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         PickupSpot pickupSpot = pickupSpotRepository.save(new PickupSpot(university, "제1기숙사 로비", null));
         User host = userRepository.save(new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파"));
-        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        // 계좌가 없으면 방을 만들 수 없다
         host.registerAccount("한국은행", "110-123-456789", "김민수");
         User member = userRepository.save(new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버"));
         hostId = host.getId();
@@ -235,7 +235,7 @@ class OrderItemRepositoryTest {
     @Test
     @DisplayName("방의 메뉴를 참여자와 상관없이 한 번에 가져온다")
     void findsAllItemsOfGroupOrder() {
-        // 검수 목록이 사람마다 메뉴를 묻지 않게 한다 (ADR-039)
+        // 검수 목록이 사람마다 메뉴를 묻지 않게 한다
         orderItemRepository.save(hostParticipation.addItem(hostId, "꿔바로우", "소", 12_000, 1, JOINED_AT));
         orderItemRepository.save(memberParticipation.addItem(memberId, "마라탕", "2단계", 9_000, 1, JOINED_AT));
         orderItemRepository.save(memberParticipation.addItem(memberId, "공기밥", null, 1_000, 1, JOINED_AT));

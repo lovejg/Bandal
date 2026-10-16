@@ -42,7 +42,7 @@ public class AuthService {
     }
 
     // 가입 성공이든 이미 있는 주소든 이 문장 하나로 답한다.
-    // 두 응답이 한 글자라도 다르면 계정 존재 여부가 새므로 상수로 묶어둔다 (ADR-028)
+    // 두 응답이 한 글자라도 다르면 계정 존재 여부가 새므로 상수로 묶어둔다
     private static final String SIGN_UP_MESSAGE = "가입 확인 메일을 보냈습니다. 메일함을 확인해주세요";
 
     @Transactional
@@ -67,7 +67,7 @@ public class AuthService {
         User user = new User(university, email, hashed, nickname);
         userRepository.save(user);
 
-        // 여기서 바로 보내지 않는다. 메일은 되돌릴 수 없으니 커밋된 뒤에 나가야 한다 (ADR-027)
+        // 여기서 바로 보내지 않는다. 메일은 되돌릴 수 없으니 커밋된 뒤에 나가야 한다
         // 실제 발송은 SignUpMailListener가 한다
         eventPublisher.publishEvent(new SignUpEvents.UserRegistered(user.getId(), user.getEmail()));
 
@@ -96,11 +96,10 @@ public class AuthService {
 
     // 액세스 토큰이 만료됐을 때 새로 받는다. 다시 로그인하지 않아도 된다
     public TokenResponse refresh(String refreshToken) {
-        Long userId = refreshTokenStore.findUserId(refreshToken); // 찾고
+        Long userId = refreshTokenStore.consume(refreshToken); // 꺼내면서 지우고(revoke를 따로 하지 않음)
         if(userId == null) {
             throw new UnauthorizedException("다시 로그인해주세요");
         }
-        refreshTokenStore.revoke(refreshToken); // 폐기하고
         return new TokenResponse(jwtProvider.createAccessToken(userId), refreshTokenStore.issue(userId)); // 발급하기
     }
 
@@ -112,7 +111,7 @@ public class AuthService {
     }
 
     // 이메일은 대소문자를 가리지 않는다. Kim@과 kim@이 다른 계정이 되면 같은 사람이 두 번 가입할 수 있고,
-    // 가입할 때와 다르게 쳐서 로그인이 막힌다. 저장과 조회 모두 소문자로 맞춘다 (ADR-055)
+    // 가입할 때와 다르게 쳐서 로그인이 막힌다. 저장과 조회 모두 소문자로 맞춘다
     // Locale.ROOT: 터키어 설정에서는 I가 점 없는 i로 바뀐다. 언어 설정과 상관없이 같은 결과를 낸다
     private static String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);

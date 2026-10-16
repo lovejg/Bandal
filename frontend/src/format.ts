@@ -52,7 +52,7 @@ export function isoToLocalInput(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-// 내 방 목록 한 줄에서 "지금 할 일"을 문구로. 서버는 상태값만 주고 문구는 화면이 정한다 (ADR-053)
+// 내 방 목록 한 줄에서 "지금 할 일"을 문구로. 서버는 상태값만 주고 문구는 화면이 정한다
 // active: 진행 중 탭인가. 취소된 방이 진행 중 탭에 있다면 환불이 남았다는 뜻이다
 export function nextStep(room: MyRoom, active: boolean): { text: string; urgent: boolean } {
   if (!active) return { text: room.refundStatus === 'REFUNDED' ? '환불 완료' : '', urgent: false }

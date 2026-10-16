@@ -11,7 +11,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-// 모든 컨트롤러의 예외를 여기서 한 번에 상태 코드로 바꾼다 (ADR-023)
+// 모든 컨트롤러의 예외를 여기서 한 번에 상태 코드로 바꾼다
 // 어떤 실패든 응답 모양은 ErrorResponse 하나로 통일한다
 @RestControllerAdvice
 @Slf4j
@@ -29,7 +29,7 @@ public class ApiExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
-    // 누구인지는 알지만 할 자격이 없다. 참여자가 방장 버튼을 누른 것 같은 것 (ADR-050)
+    // 누구인지는 알지만 할 자격이 없다. 참여자가 방장 버튼을 누른 것 같은 것
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException e) {
         return build(HttpStatus.FORBIDDEN, e.getMessage());
@@ -48,7 +48,7 @@ public class ApiExceptionHandler {
         return build(HttpStatus.CONFLICT, e.getMessage());
     }
 
-    // 같은 걸 너무 자주 불렀다. 인증 메일 재전송 같은 것 (ADR-027)
+    // 같은 걸 너무 자주 불렀다. 인증 메일 재전송 같은 것
     @ExceptionHandler(TooManyRequestsException.class)
     public ResponseEntity<ErrorResponse> handleTooManyRequests(TooManyRequestsException e) {
         return build(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());

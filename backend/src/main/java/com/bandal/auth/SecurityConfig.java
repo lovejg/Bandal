@@ -40,7 +40,7 @@ public class SecurityConfig {
                 // 규칙은 위에서부터 차례로 맞춰본다. 먼저 걸리는 규칙이 이긴다.
                 // 그래서 좁은 규칙이 넓은 규칙보다 위에 있어야 한다.
                 //
-                // 기본은 전부 닫혀 있고 열 것만 연다 (ADR-034).
+                // 기본은 전부 닫혀 있고 열 것만 연다.
                 // 반대로 "열어두고 닫을 것만 예외"로 하면, 새 엔드포인트를 만들 때 예외를
                 // 빠뜨리는 순간 구멍이 난다. 이쪽은 빠뜨리면 막힌다. 안전한 쪽으로 실패한다
                 .authorizeHttpRequests(auth -> auth
@@ -51,7 +51,7 @@ public class SecurityConfig {
                         // 가입, 로그인, 토큰 갱신, 인증 링크는 계정이 없거나 미인증이어도 불러야 한다
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
-                        // 조회는 로그인만 하면 된다. 메일 미인증도 구경은 할 수 있다 (ADR-027, 034)
+                        // 조회는 로그인만 하면 된다. 메일 미인증도 구경은 할 수 있다
                         .requestMatchers(HttpMethod.GET, "/api/**").authenticated()
                         // 쓰기는 메일 인증을 마친 사람만. hasRole("VERIFIED")는 ROLE_VERIFIED를 찾는다
                         .anyRequest().hasRole("VERIFIED"))

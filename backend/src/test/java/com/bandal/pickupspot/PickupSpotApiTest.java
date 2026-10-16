@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 거점 목록과 거점 만들기. 방을 만들 때 수령 거점을 고르는 화면이다 (ADR-033, 036)
+// 거점 목록과 거점 만들기. 방을 만들 때 수령 거점을 고르는 화면이다
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -100,7 +100,7 @@ class PickupSpotApiTest {
         younghee = user(minguk, "영희", true);
     }
 
-    // 계좌까지 등록한 사용자. 마지막 테스트에서 만든 거점으로 방을 만들어 보려면 계좌가 있어야 한다 (ADR-031)
+    // 계좌까지 등록한 사용자. 마지막 테스트에서 만든 거점으로 방을 만들어 보려면 계좌가 있어야 한다
     User user(University university, String nickname, boolean verified) {
         userSeq++;
         String domain = university == hankuk ? "hankuk.ac.kr" : "minguk.ac.kr";
@@ -166,7 +166,7 @@ class PickupSpotApiTest {
     @Test
     @DisplayName("거점이 하나도 없으면 빈 목록이다")
     void emptyList() throws Exception {
-        // 서비스 첫날의 모습. 첫 사람이 만들어야 목록이 생긴다 (ADR-033)
+        // 서비스 첫날의 모습. 첫 사람이 만들어야 목록이 생긴다
         list(minsu)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.spots.length()").value(0));
@@ -215,7 +215,7 @@ class PickupSpotApiTest {
     @Test
     @DisplayName("메일 인증을 안 한 사용자는 거점을 만들 수 없다")
     void unverifiedCannotCreate() throws Exception {
-        // 쓰기는 인증 사용자만 (ADR-027, 034). 거점은 학교 전체가 같이 보는 목록이라 더 그렇다
+        // 쓰기는 인증 사용자만. 거점은 학교 전체가 같이 보는 목록이라 더 그렇다
         create(user(hankuk, "신입생", false), "공대 7호관 앞", null)
                 .andExpect(status().isForbidden());
     }

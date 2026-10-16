@@ -4,7 +4,7 @@ import com.bandal.grouporder.GroupOrder;
 
 import java.util.List;
 
-// 방장의 검수 목록. 참여자마다 담은 메뉴를 붙여서 돌려준다 (ADR-039)
+// 방장의 검수 목록. 참여자마다 담은 메뉴를 붙여서 돌려준다
 // 방장이 배달앱 장바구니와 한 사람씩 맞춰보는 화면이다
 public record GroupOrderItemsResponse(
         Long groupOrderId,

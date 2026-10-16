@@ -61,7 +61,7 @@ class ParticipationRepositoryTest {
         University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         PickupSpot pickupSpot = pickupSpotRepository.save(new PickupSpot(university, "제1기숙사 로비", null));
         host = userRepository.save(new User(university, "kim@hankuk.ac.kr", "hashed-password", "배고파"));
-        // 계좌가 없으면 방을 만들 수 없다 (ADR-031)
+        // 계좌가 없으면 방을 만들 수 없다
         host.registerAccount("한국은행", "110-123-456789", "김민수");
         member = userRepository.save(new User(university, "lee@hankuk.ac.kr", "hashed-password", "마라탕러버"));
         groupOrder = groupOrderRepository.save(new GroupOrder(host, pickupSpot, "○○마라탕", 15_000, DEADLINE, 4));

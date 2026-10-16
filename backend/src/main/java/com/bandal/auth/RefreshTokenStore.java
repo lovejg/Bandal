@@ -37,6 +37,16 @@ public class RefreshTokenStore {
         return userId == null ? null : Long.valueOf(userId);
     }
 
+    // 갱신용. 이 토큰이 누구 것인지 꺼내면서 그 자리에서 지운다. Redis GETDEL 명령 하나라 사이에 끼어들 틈이 없다
+    // 동시에 여러 번 불러도 값을 받는 건 한 번뿐이고, 나머지는 null을 받는다
+    public Long consume(String token) {
+        if (token == null) {
+            return null;
+        }
+        String userId = redisTemplate.opsForValue().getAndDelete(KEY_PREFIX + token);
+        return userId == null ? null : Long.valueOf(userId);
+    }
+
     // 로그아웃. 지워지면 더는 갱신할 수 없다
     public void revoke(String token) {
         if (token != null) {

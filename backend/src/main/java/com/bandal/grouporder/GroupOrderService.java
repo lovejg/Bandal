@@ -1,5 +1,6 @@
 package com.bandal.grouporder;
 
+import com.bandal.common.NotFoundException;
 import com.bandal.grouporder.dto.*;
 import com.bandal.participation.GroupOrderStat;
 import com.bandal.participation.OrderItemRepository;
@@ -86,14 +87,14 @@ public class GroupOrderService {
         return new GroupOrderListResponse(rooms, slice.hasNext());
     }
 
-    // 내 방 목록: 진행 중 탭 (ADR-053)
+    // 내 방 목록: 진행 중 탭
     @Transactional(readOnly = true)
     public MyGroupOrderListResponse findMyActive(Long userId) {
         List<GroupOrder> rooms = groupOrderRepository.findMyActive(userId);
         return new MyGroupOrderListResponse(toMyRows(userId, rooms), false);
     }
 
-    // 내 방 목록: 끝난 방 탭 (ADR-053)
+    // 내 방 목록: 끝난 방 탭
     @Transactional(readOnly = true)
     public MyGroupOrderListResponse findMyDone(Long userId, int page, int size) {
         Slice<GroupOrder> slice = groupOrderRepository.findMyDone(userId, PageRequest.of(page, size));
@@ -103,7 +104,8 @@ public class GroupOrderService {
     // 방장 마감
     @Transactional
     public GroupOrderResponse close(Long groupOrderId, Long requesterId) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(groupOrderId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         long participantCount = participationRepository.countByGroupOrderId(groupOrderId);
         long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
@@ -117,7 +119,8 @@ public class GroupOrderService {
     // 방장 취소
     @Transactional
     public GroupOrderResponse cancel(Long groupOrderId, Long requesterId, CancelRequest request) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(groupOrderId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.cancelByHost(requesterId, request.reason(), Instant.now());
 
@@ -127,7 +130,8 @@ public class GroupOrderService {
     // 스케줄러가 방 하나씩 부른다. 멈춘 방을 다음 상태로 넘긴다
     @Transactional
     public void expire(Long groupOrderId, Instant now) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(groupOrderId);
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         // 모집중은 추가 정보(participantCount와 menuTotalAmount)가 필요해서 따로
         if(groupOrder.getStatus() == GroupOrderStatus.RECRUITING) {

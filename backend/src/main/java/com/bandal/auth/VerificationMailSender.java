@@ -40,7 +40,7 @@ public class VerificationMailSender {
                 """.formatted(link, tokenMinutes));
     }
 
-    // 이미 가입된 주소로 또 가입을 시도했을 때 (ADR-028)
+    // 이미 가입된 주소로 또 가입을 시도했을 때
     // 가입 API 응답으로는 알려주지 않고, 주소의 주인에게만 알린다
     public void sendAlreadyRegistered(String email) {
         send(email, "[반달] 이미 가입된 계정입니다", """

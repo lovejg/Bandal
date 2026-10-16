@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 스케줄러가 멈춘 방을 찾아 넘기는 한 바퀴 (ADR-051, 052)
+// 스케줄러가 멈춘 방을 찾아 넘기는 한 바퀴
 // 실제로 1분을 기다리지 않는다. 시각을 앞으로 당겨 runAt에 넘긴다
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -247,7 +247,7 @@ class GroupOrderExpiryTest {
     @Test
     @DisplayName("방 하나를 넘기다 실패해도 나머지 방은 넘어간다")
     void isolatesFailure() {
-        // 방들은 서로 독립적이다. 한 방의 데이터가 이상하거나 DB가 잠깐 끊겨도 다른 방은 멈추면 안 된다 (ADR-052)
+        // 방들은 서로 독립적이다. 한 방의 데이터가 이상하거나 DB가 잠깐 끊겨도 다른 방은 멈추면 안 된다
         GroupOrder first = closedRoom();
         GroupOrder broken = closedRoom();
         GroupOrder last = closedRoom();

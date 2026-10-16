@@ -7,6 +7,7 @@ import com.bandal.university.University;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,7 +50,12 @@ public class PickupSpotService {
             throw new IllegalStateException("이미 있는 거점입니다");
         }
 
-        pickupSpotRepository.save(pickupSpot);
+        try {
+            pickupSpotRepository.saveAndFlush(pickupSpot);
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalStateException("이미 있는 거점입니다");
+        }
+
         return PickupSpotResponse.of(pickupSpot);
     }
 }

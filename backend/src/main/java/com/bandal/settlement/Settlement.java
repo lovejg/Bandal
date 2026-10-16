@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 import java.util.Objects;
 
-// 정산표 한 줄. 참여자 한 명이 얼마를 부담하고 입금이 어디까지 왔는지 (ADR-030)
+// 정산표 한 줄. 참여자 한 명이 얼마를 부담하고 입금이 어디까지 왔는지
 // 금액은 계산으로 다시 구할 수 있지만 입금 여부는 누가 눌러야만 아는 사실이라 저장한다
 @Entity
 @Getter
@@ -68,7 +68,7 @@ public class Settlement {
         this.feeShare = feeShare;
         this.totalAmount = menuTotalAmount + feeShare;
         this.host = host;
-        // 방장 몫은 방장 자신에게 내는 돈이라 처음부터 보냄, 확인됨으로 둔다 (ADR-030)
+        // 방장 몫은 방장 자신에게 내는 돈이라 처음부터 보냄, 확인됨으로 둔다
         if(host) {
             this.markedPaidAt = now;
             this.confirmedPaidAt = now;
@@ -110,7 +110,7 @@ public class Settlement {
         confirmedPaidAt = now;
     }
 
-    // 방장이 잘못 누른 확인을 되돌린다. 참여자의 표시는 건드리지 않는다 (ADR-045)
+    // 방장이 잘못 누른 확인을 되돌린다. 참여자의 표시는 건드리지 않는다
     public void revokeConfirm(Long requesterId, Instant now) {
         if(this.groupOrder.getStatus() != GroupOrderStatus.SETTLING) {
             throw new IllegalStateException("정산중인 방에서만 할 수 있습니다");

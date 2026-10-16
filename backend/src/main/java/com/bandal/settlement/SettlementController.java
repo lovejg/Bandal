@@ -21,7 +21,7 @@ public class SettlementController {
 
     private final SettlementService settlementService;
 
-    // 방장의 배달비 입력. 방이 정산중으로 넘어가고 정산표가 생긴다 (ADR-042)
+    // 방장의 배달비 입력. 방이 정산중으로 넘어가고 정산표가 생긴다
     // 방의 상태를 바꾸는 동작이라 방 주소 아래에 둔다. 응답은 재입력(PUT)과 같은 모양이라 200이다
     @PostMapping("/api/group-orders/{groupOrderId}/delivery-fee")
     public SettlementResponse start(@PathVariable Long groupOrderId,
@@ -30,7 +30,7 @@ public class SettlementController {
         return settlementService.start(groupOrderId, userId, request);
     }
 
-    // 방장의 배달비 재입력. 아무도 입금에 손대지 않았을 때만 정산표를 다시 만든다 (ADR-046)
+    // 방장의 배달비 재입력. 아무도 입금에 손대지 않았을 때만 정산표를 다시 만든다
     // 첫 입력은 POST, 이미 있는 값을 바꾸는 건 PUT으로 나눴다. 같은 값을 두 번 보내도 결과가 같다
     @PutMapping("/api/group-orders/{groupOrderId}/delivery-fee")
     public SettlementResponse changeDeliveryFee(@PathVariable Long groupOrderId,
@@ -39,7 +39,7 @@ public class SettlementController {
         return settlementService.changeDeliveryFee(groupOrderId, userId, request);
     }
 
-    // 정산 정보 조회. 방장은 전원의 줄, 참여자는 자기 줄을 받는다 (ADR-043)
+    // 정산 정보 조회. 방장은 전원의 줄, 참여자는 자기 줄을 받는다
     // 방 하나에 정산표는 하나라 id 없이 방 주소 아래에 단수형으로 둔다
     @GetMapping("/api/group-orders/{groupOrderId}/settlement")
     public SettlementResponse find(@PathVariable Long groupOrderId,
@@ -47,7 +47,7 @@ public class SettlementController {
         return settlementService.find(groupOrderId, userId);
     }
 
-    // 참여자의 "보냈어요". 정산 줄 하나의 상태를 바꾸므로 정산 줄 주소 아래에 둔다 (ADR-044)
+    // 참여자의 "보냈어요". 정산 줄 하나의 상태를 바꾸므로 정산 줄 주소 아래에 둔다
     // 응답은 조회와 같다. 누른 사람 시점의 정산 정보가 나간다
     @PostMapping("/api/settlements/{settlementId}/mark-paid")
     public SettlementResponse markPaid(@PathVariable Long settlementId,
@@ -55,22 +55,22 @@ public class SettlementController {
         return settlementService.markPaid(settlementId, userId);
     }
 
-    // 방장의 "받았어요". 응답에 전원의 줄이 들어 있어 남은 사람을 바로 볼 수 있다 (ADR-044)
+    // 방장의 "받았어요". 응답에 전원의 줄이 들어 있어 남은 사람을 바로 볼 수 있다
     @PostMapping("/api/settlements/{settlementId}/confirm")
     public SettlementResponse confirm(@PathVariable Long settlementId,
                                       @AuthenticationPrincipal Long userId) {
         return settlementService.confirm(settlementId, userId);
     }
 
-    // 방장의 확인 취소. 확인만 되돌리고 취소한 흔적을 남긴다 (ADR-045)
-    // 지우는 건 자원이 아니라 상태라서 DELETE가 아니라 동사 주소다 (ADR-023)
+    // 방장의 확인 취소. 확인만 되돌리고 취소한 흔적을 남긴다
+    // 지우는 건 자원이 아니라 상태라서 DELETE가 아니라 동사 주소다
     @PostMapping("/api/settlements/{settlementId}/unconfirm")
     public SettlementResponse revokeConfirm(@PathVariable Long settlementId,
                                             @AuthenticationPrincipal Long userId) {
         return settlementService.revokeConfirm(settlementId, userId);
     }
 
-    // 방장의 "주문했어요". 전원의 입금을 확인했을 때만 주문완료로 넘어간다 (ADR-047)
+    // 방장의 "주문했어요". 전원의 입금을 확인했을 때만 주문완료로 넘어간다
     // 결제금액은 비워도 되지만 본문은 늘 받는다. 비울 때는 {}를 보낸다
     @PostMapping("/api/group-orders/{groupOrderId}/order")
     public SettlementResponse order(@PathVariable Long groupOrderId,
@@ -79,7 +79,7 @@ public class SettlementController {
         return settlementService.order(groupOrderId, userId, request);
     }
 
-    // 방장의 "돌려줬어요". 정산중에 취소된 방의 환불 대상 줄에만 받는다 (ADR-049)
+    // 방장의 "돌려줬어요". 정산중에 취소된 방의 환불 대상 줄에만 받는다
     // 완료는 참여자가 정하므로 이건 알림이다. 응답은 방장 시점의 전원 줄이다
     @PostMapping("/api/settlements/{settlementId}/send-refund")
     public SettlementResponse sendRefund(@PathVariable Long settlementId,
@@ -87,21 +87,21 @@ public class SettlementController {
         return settlementService.sendRefund(settlementId, userId);
     }
 
-    // 방장의 "입금 안 됐어요". 보냈어요만 있고 확인은 없는 줄에만 받는다 (ADR-048, 049)
+    // 방장의 "입금 안 됐어요". 보냈어요만 있고 확인은 없는 줄에만 받는다
     @PostMapping("/api/settlements/{settlementId}/deny-payment")
     public SettlementResponse denyPayment(@PathVariable Long settlementId,
                                           @AuthenticationPrincipal Long userId) {
         return settlementService.denyPayment(settlementId, userId);
     }
 
-    // 참여자의 "돌려받았어요". 환불 완료의 기준이고, 앞의 버튼과 상관없이 받는다 (ADR-049)
+    // 참여자의 "돌려받았어요". 환불 완료의 기준이고, 앞의 버튼과 상관없이 받는다
     @PostMapping("/api/settlements/{settlementId}/receive-refund")
     public SettlementResponse receiveRefund(@PathVariable Long settlementId,
                                             @AuthenticationPrincipal Long userId) {
         return settlementService.receiveRefund(settlementId, userId);
     }
 
-    // 방장의 "배달 왔어요". 받을 값이 없어서 본문이 없다 (ADR-047)
+    // 방장의 "배달 왔어요". 받을 값이 없어서 본문이 없다
     @PostMapping("/api/group-orders/{groupOrderId}/deliver")
     public SettlementResponse deliver(@PathVariable Long groupOrderId,
                                       @AuthenticationPrincipal Long userId) {

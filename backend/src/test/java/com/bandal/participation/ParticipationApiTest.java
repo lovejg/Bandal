@@ -115,7 +115,7 @@ class ParticipationApiTest {
         hostParticipation = participationRepository.save(new Participation(groupOrder, host, Instant.now()));
     }
 
-    // 메일 인증을 마친 사용자. 미인증이면 쓰기가 전부 403이라 참여 로직을 볼 수 없다 (ADR-027)
+    // 메일 인증을 마친 사용자. 미인증이면 쓰기가 전부 403이라 참여 로직을 볼 수 없다
     User verifiedUser(University university, String email, String nickname) {
         User user = new User(university, email, "hashed-password", nickname);
         ReflectionTestUtils.setField(user, "emailVerifiedAt", Instant.now());
@@ -159,7 +159,7 @@ class ParticipationApiTest {
         @Test
         @DisplayName("메일 인증을 안 한 사용자는 참여할 수 없다")
         void rejectsUnverified() throws Exception {
-            // 쓰기는 인증 사용자만 (ADR-027, 034). SecurityConfig가 서비스까지 오기 전에 막는다
+            // 쓰기는 인증 사용자만. SecurityConfig가 서비스까지 오기 전에 막는다
             User unverified = userRepository.save(
                     new User(university, "new@hankuk.ac.kr", "hashed-password", "신입생"));
 
@@ -171,7 +171,7 @@ class ParticipationApiTest {
         @Test
         @DisplayName("계좌가 없어도 참여할 수 있다")
         void joinsWithoutAccount() throws Exception {
-            // 계좌는 돈을 받는 방장에게만 필요하다 (ADR-031). 참여자는 보내기만 한다
+            // 계좌는 돈을 받는 방장에게만 필요하다. 참여자는 보내기만 한다
             User noAccount = new User(university, "new@hankuk.ac.kr", "hashed-password", "계좌없음");
             ReflectionTestUtils.setField(noAccount, "emailVerifiedAt", Instant.now());
             userRepository.save(noAccount);
@@ -221,8 +221,9 @@ class ParticipationApiTest {
         void rejectsWhenFull() throws Exception {
             User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
             User fourth = verifiedUser(university, "choi@hankuk.ac.kr", "탕수육");
-            participationRepository.save(new Participation(groupOrder, member, Instant.now()));
-            participationRepository.save(new Participation(groupOrder, third, Instant.now()));
+            // 리포지토리로 바로 넣으면 방의 인원 칸이 안 늘어난다. 실제 참여 API로 채운다
+            join(groupOrder.getId(), member).andExpect(status().isCreated());
+            join(groupOrder.getId(), third).andExpect(status().isCreated());
 
             // 정원 3명이 이미 찼다
             join(groupOrder.getId(), fourth)
@@ -282,15 +283,59 @@ class ParticipationApiTest {
 
         Participation memberParticipation;
 
+        // 메뉴를 담는 테스트가 이 참여 객체를 그대로 쓰므로 리포지토리로 바로 넣는다.
+        // 그러면 방의 인원 칸이 안 늘어나니 직접 맞춘다. save가 돌려준 방을 받아야 버전이 맞는다
         @BeforeEach
         void join() {
             memberParticipation = participationRepository.save(
                     new Participation(groupOrder, member, Instant.now()));
+            ReflectionTestUtils.setField(groupOrder, "participantCount", 2);
+            groupOrder = groupOrderRepository.save(groupOrder);
+        }
+
+        Participation joinByApi(User user) throws Exception {
+            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
+                            .header("Authorization", bearer(user.getId())))
+                    .andExpect(status().isCreated());
+            return participationRepository.findByGroupOrderIdAndUserId(groupOrder.getId(), user.getId()).orElseThrow();
+        }
+
+        int roomParticipantCount() {
+            return groupOrderRepository.findById(groupOrder.getId()).orElseThrow().getParticipantCount();
         }
 
         ResultActions leave(Long participationId, User user) throws Exception {
             return mockMvc.perform(delete("/api/participations/" + participationId)
                     .header("Authorization", bearer(user.getId())));
+        }
+
+        @Test
+        @DisplayName("나가면 방의 인원도 1명 줄어든다")
+        void decreasesRoomCount() throws Exception {
+            assertThat(roomParticipantCount()).isEqualTo(2);
+
+            leave(memberParticipation.getId(), member).andExpect(status().isNoContent());
+
+            // 참여 행 개수와 방의 인원 칸이 같아야 한다
+            assertThat(roomParticipantCount()).isEqualTo(1);
+            assertThat(participationRepository.countByGroupOrderId(groupOrder.getId())).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("정원이 찬 방에서 한 명이 나가면 다른 사람이 그 자리에 들어올 수 있다")
+        void freesSeatForOthers() throws Exception {
+            // 정원 3명: 방장, member, third
+            User third = verifiedUser(university, "park@hankuk.ac.kr", "꿔바로우");
+            User fourth = verifiedUser(university, "choi@hankuk.ac.kr", "탕수육");
+            joinByApi(third);
+
+            leave(memberParticipation.getId(), member).andExpect(status().isNoContent());
+
+            // 나간 사람만큼 인원이 안 줄면 자리가 비었는데도 "정원이 다 찼습니다"가 뜬다
+            mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
+                            .header("Authorization", bearer(fourth.getId())))
+                    .andExpect(status().isCreated());
+            assertThat(roomParticipantCount()).isEqualTo(3);
         }
 
         @Test
@@ -306,7 +351,7 @@ class ParticipationApiTest {
         @Test
         @DisplayName("나갔던 방에 다시 들어올 수 있다")
         void rejoinsAfterLeaving() throws Exception {
-            // 행을 지우니까 유니크 제약과 부딪히지 않는다 (ADR-019)
+            // 행을 지우니까 유니크 제약과 부딪히지 않는다
             leave(memberParticipation.getId(), member).andExpect(status().isNoContent());
 
             mockMvc.perform(post("/api/group-orders/" + groupOrder.getId() + "/participations")
@@ -317,7 +362,7 @@ class ParticipationApiTest {
         @Test
         @DisplayName("담아둔 메뉴가 있어도 나갈 수 있고 메뉴도 같이 사라진다")
         void leavesWithItems() throws Exception {
-            // 메뉴가 참여 행을 가리키고 있다. 참여 행만 지우면 DB가 거부한다 (ADR-037)
+            // 메뉴가 참여 행을 가리키고 있다. 참여 행만 지우면 DB가 거부한다
             orderItemRepository.save(memberParticipation.addItem(member.getId(), "마라탕", null, 9_000, 1, Instant.now()));
             orderItemRepository.save(memberParticipation.addItem(member.getId(), "꿔바로우", null, 15_000, 1, Instant.now()));
 
@@ -846,7 +891,7 @@ class ParticipationApiTest {
         @Test
         @DisplayName("주인이 보면 200이고 담기 응답과 같은 모양으로 온다")
         void ownerSeesItems() throws Exception {
-            // 프론트가 "내 메뉴 칸"을 그리는 코드를 하나만 쓰게 한다 (ADR-039)
+            // 프론트가 "내 메뉴 칸"을 그리는 코드를 하나만 쓰게 한다
             myItems(memberParticipation.getId(), member)
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.participationId").value(memberParticipation.getId()))
@@ -1031,7 +1076,7 @@ class ParticipationApiTest {
         @Test
         @DisplayName("참여자가 늘어도 쿼리 수는 그대로다")
         void queryCountDoesNotGrowWithParticipants() throws Exception {
-            // N+1 확인. 사람마다 쿼리가 나가면 2명일 때보다 5명일 때 쿼리가 많다 (ADR-039)
+            // N+1 확인. 사람마다 쿼리가 나가면 2명일 때보다 5명일 때 쿼리가 많다
             long withTwo = countQueries(() -> review(groupOrder.getId(), host).andExpect(status().isOk()));
 
             // 3명을 더 넣는다. 정원(3명)을 넘지만 쿼리 수만 보는 테스트라 참여 검사 없이 행을 바로 넣는다

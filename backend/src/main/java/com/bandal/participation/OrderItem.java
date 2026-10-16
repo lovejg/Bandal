@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 import java.util.Objects;
 
-// 참여자가 담은 메뉴 한 줄. 가게 연동이 없어서 이름과 가격을 직접 입력받는다 (ADR-022)
+// 참여자가 담은 메뉴 한 줄. 가게 연동이 없어서 이름과 가격을 직접 입력받는다
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -25,12 +25,12 @@ public class OrderItem {
     @JoinColumn(name = "participation_id", nullable = false)
     private Participation participation;
 
-    // 길이 상한은 요청 DTO와 맞춘다 (ADR-038)
+    // 길이 상한은 요청 DTO와 맞춘다
     @Column(nullable = false, length = 50)
     private String menuName;
 
     // 맵기, 사이드 추가 같은 옵션. 구조 없는 자유 문자열이고 없으면 null
-    // 방장이 배달앱에서 그대로 따라 누를 수 있을 만큼 적는다 (ADR-038)
+    // 방장이 배달앱에서 그대로 따라 누를 수 있을 만큼 적는다
     @Column(length = 100)
     private String options;
 

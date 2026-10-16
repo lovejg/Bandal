@@ -1,7 +1,9 @@
 package com.bandal.settlement;
 
 import com.bandal.participation.GroupOrderStat;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +16,16 @@ public interface SettlementRepository extends JpaRepository<Settlement, Long> {
     List<Settlement> findByGroupOrderId(Long groupOrderId);
 
     Optional<Settlement> findByGroupOrderIdAndUserId(Long groupOrderId, Long userId);
+
+    // 정산 줄 하나. 보냈어요, 받았어요, 확인 취소, 환불 버튼이 쓴다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Settlement s WHERE s.id = :id")
+    Optional<Settlement> findByIdForUpdate(@Param("id") Long id);
+
+    // 한 방의 정산 줄 전부. 배달비 수정이 "입금 기록 없음"을 확인할 때 쓴다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Settlement s WHERE s.groupOrder.id = :groupOrderId")
+    List<Settlement> findByGroupOrderIdForUpdate(@Param("groupOrderId") Long groupOrderId);
 
     // 배달비 수정 때 정산표를 통째로 지운다
     // 이름으로만 만들면 하나씩 불러와서 하나씩 지운다. DELETE 한 번으로 보낸다

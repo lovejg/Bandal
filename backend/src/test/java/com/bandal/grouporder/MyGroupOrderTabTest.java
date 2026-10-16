@@ -31,7 +31,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// 내 방 목록의 탭 판정이 엔티티의 환불 규칙과 맞는지 (ADR-053)
+// 내 방 목록의 탭 판정이 엔티티의 환불 규칙과 맞는지
 // "환불 대상이고 아직 안 받음"이 엔티티(refundStatus)와 쿼리(EXISTS) 두 곳에 있다.
 // 한쪽만 바뀌면 여기가 빨간불이 된다. 기대값을 손으로 적지 않고 엔티티에게 물어서 만든다
 @SpringBootTest

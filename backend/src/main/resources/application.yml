@@ -31,7 +31,7 @@ spring:
     host: localhost
     port: 1025
 
-# 토큰 설정 (ADR-024, 026)
+# 토큰 설정
 jwt:
   # HS256이라 32바이트 이상이어야 한다. 개발용이고, 배포할 때는 환경변수로 옮긴다.
   # 이 값이 새면 누구나 남의 토큰을 만들 수 있다.
@@ -41,7 +41,7 @@ jwt:
   # 리프레시 토큰은 길게. 이건 Redis에 저장해서 로그아웃 때 지운다
   refresh-token-days: 14
 
-# 이메일 인증 설정 (ADR-027)
+# 이메일 인증 설정
 app:
   # 메일에 들어갈 링크의 앞부분. 프론트가 생기면 이 줄만 프론트 주소로 바꾼다
   verify-link-base: http://localhost:8080/api/auth/verify
