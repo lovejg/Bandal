@@ -34,11 +34,12 @@ public class GroupOrderController {
     }
 
     // 목록. 내 대학 방만 보여줘야 해서 요청자 id가 필요하다. 대학을 주소로 받으면 남의 대학 방을 볼 수 있다
-    // page, size가 주소에 없으면 기본값을 쓴다. /api/group-orders 만 불러도 첫 페이지 30개가 나온다
+    // page, size가 주소에 없으면 기본값을 쓴다. /api/group-orders 만 불러도 첫 페이지 20개가 나온다
+    // 기본 크기는 화면, 캐시하는 크기와 같다. 그래야 기본 요청이 캐시를 탄다
     @GetMapping
     public GroupOrderListResponse findList(@AuthenticationPrincipal Long userId,
                                            @RequestParam(defaultValue = "0") int page,
-                                           @RequestParam(defaultValue = "30") int size) {
+                                           @RequestParam(defaultValue = "" + RoomListCache.CACHED_SIZE) int size) {
         return groupOrderService.findList(userId, page, size);
     }
 
