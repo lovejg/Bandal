@@ -25,6 +25,9 @@ spring:
       # docker-compose.yml에서 6380으로 열었다
       host: localhost
       port: 6380
+      # 명령 하나의 응답을 기다리는 최대 시간. 기본값은 60초라, Redis가 느려지면 요청마다 그만큼 멈춘다
+      # 캐시는 빨리 포기하고 DB로 가는 게 낫다
+      timeout: 500ms
 
   mail:
     # Mailpit. 밖으로 나가지 않고 http://localhost:8025 에 쌓인다
@@ -52,6 +55,12 @@ app:
   resend-window-minutes: 60
   # 메일 보내는 사람 주소. 배포할 때 실제 도메인으로 바꾼다
   mail-from: no-reply@bandal.local
+  # 방 목록 첫 페이지 캐시
+  room-list-cache:
+    # Phase 4 부하 테스트에서 끄고 켜며 비교한다
+    enabled: true
+    # 목록은 늦어도 이만큼만 옛것이다. 지우기를 빠뜨린 곳도 이 시간이 지나면 맞아진다
+    ttl-seconds: 10
 
 logging:
   level:

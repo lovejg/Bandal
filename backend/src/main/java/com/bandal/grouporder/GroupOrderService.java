@@ -35,6 +35,8 @@ public class GroupOrderService {
     private final PickupSpotRepository pickupSpotRepository;
     private final OrderItemRepository orderItemRepository;
     private final SettlementRepository settlementRepository;
+    private final RoomListCache roomListCache;
+
 
     // 방 생성. 방장도 참여 행을 하나 가진다
     @Transactional
@@ -43,9 +45,13 @@ public class GroupOrderService {
         PickupSpot pickupSpot = pickupSpotRepository.findByIdOrThrow(request.pickupSpotId());
         GroupOrder groupOrder = new GroupOrder(host, pickupSpot, request.storeName(),
             request.minOrderAmount(), request.deadlineAt(), request.capacity());
+
         groupOrderRepository.save(groupOrder);
+        roomListCache.evict(pickupSpot.getUniversity().getId()); // 캐시 지우기(스레드한테 커밋 이후에 지워달라고 요청하기)
+
         Participation participation = new Participation(groupOrder, host, Instant.now());
         participationRepository.save(participation);
+
         return GroupOrderResponse.of(groupOrder, 1, 0, participation.getId());
     }
 
@@ -60,6 +66,15 @@ public class GroupOrderService {
     @Transactional(readOnly = true)
     public GroupOrderListResponse findList(Long userId, int page, int size) {
         Long universityId = userRepository.findByIdOrThrow(userId).getUniversity().getId();
+
+        // 해당 요청을 캐시로 받을 수 있는지 확인하고, 되면 캐시 반환
+        boolean cacheable = roomListCache.covers(page, size);
+        if(cacheable) {
+            GroupOrderListResponse cached = roomListCache.get(universityId);
+            if(cached != null) {
+                return cached;
+            }
+        }
 
         // 페이지 번호는 0부터 시작한다
         Slice<GroupOrder> slice = groupOrderRepository.findRecruiting(universityId, Instant.now(), PageRequest.of(page, size));
@@ -84,7 +99,12 @@ public class GroupOrderService {
                 r.getDeadlineAt()
             )).toList();
 
-        return new GroupOrderListResponse(rooms, slice.hasNext());
+        // 캐시가 없을 경우 캐시 만들어주기
+        GroupOrderListResponse response = new GroupOrderListResponse(rooms, slice.hasNext());
+        if(cacheable) {
+            roomListCache.put(universityId, response);
+        }
+        return response;
     }
 
     // 내 방 목록: 진행 중 탭
@@ -111,6 +131,7 @@ public class GroupOrderService {
         long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
 
         groupOrder.closeByHost(requesterId, participantCount, menuTotalAmount, Instant.now());
+        roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
 
         return GroupOrderResponse.of(groupOrder, participantCount, menuTotalAmount,
             myParticipationId(groupOrderId, requesterId));
@@ -123,6 +144,7 @@ public class GroupOrderService {
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.cancelByHost(requesterId, request.reason(), Instant.now());
+        roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
 
         return toResponse(groupOrder, requesterId);
     }
@@ -138,10 +160,11 @@ public class GroupOrderService {
             long participantCount = participationRepository.countByGroupOrderId(groupOrderId);
             long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
             groupOrder.closeAtDeadline(participantCount, menuTotalAmount, now);
+            roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
             return;
         }
 
-        groupOrder.expireIfStale(now);
+        groupOrder.expireIfStale(now); // 모집중이 아닌 방은 방 목록에 안 뜨니까 캐시 지울 필요 X
     }
 
     // 방 상세 응답. 인원, 메뉴 합계, 보는 사람의 참여 id는 엔티티가 모르는 값이라 여기서 센다

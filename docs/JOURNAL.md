@@ -1621,3 +1621,68 @@ could not execute statement [ERROR: duplicate key value violates unique constrai
 try-catch가 못 잡는다. 15번 모두 성공 1, 만들어진 거점 1, 나머지 9는 "이미 있는 거점입니다"였다.
 
 **한 줄 요약** "확인은 둘 다 통과했고 DB 제약이 막았는데, 그 거절이 409가 아니라 500으로 나갔다."
+
+---
+
+## 2026-10-17. 나가기 끝에 캐시 지우기 한 줄을 넣자 트랜잭션 안인데 no session으로 500이 났다
+
+**상황** 방 목록 캐시를 넣고, 목록을 바꾸는 곳마다 `roomListCache.evict(학교 id)`를 붙였다. 학교 id는
+`groupOrder.getPickupSpot().getUniversity().getId()`로 꺼낸다. 참여, 메뉴 담기·고치기·빼기는 통과했는데 나가기만 500이었다.
+
+```
+LazyInitializationException: Could not initialize proxy [com.bandal.pickupspot.PickupSpot#8] - no session
+  at PickupSpot$HibernateProxy.getUniversity
+  at ParticipationService.leave(ParticipationService.java:64)
+```
+
+**원인** `leave`는 `@Transactional`이라 세션이 없을 리가 없어 보였다. 범인은 바로 위 줄의 메뉴 일괄 삭제
+`deleteByParticipationId`다. 이 쿼리는 `clearAutomatically = true`라서, DELETE 뒤에 영속성 컨텍스트를 통째로 비운다
+(2026-10-02에 남은 메뉴 객체 때문에 넣은 설정이다). 비우기 전에 꺼낸 `groupOrder`는 변수에 그대로 있지만 컨텍스트 소속이 아니게 된다.
+`groupOrder`의 거점은 아직 안 읽은 프록시였고, 컨텍스트에서 떨어진 프록시는 SELECT를 보낼 수 없다. 참여(`join`)는 같은 줄을 써도
+중간에 비우는 쿼리가 없어서 멀쩡했다.
+
+**해결** 학교 id를 메뉴 일괄 삭제보다 먼저, 방을 불러온 바로 뒤에 `Long`으로 꺼내 두고 `evict`에는 그 값을 넘긴다.
+꺼내는 순간 프록시가 SELECT를 보내고, 숫자는 컨텍스트를 비워도 남는다. `evict` 줄은 "다 바꾼 다음에 지운다" 순서를 지키려고
+끝에 그대로 뒀다. 나가기 테스트를 포함해 전체 700개가 통과했다.
+
+**배운 것**
+- `@Transactional` 안이라도 컨텍스트가 비워진 뒤의 객체는 지연 로딩을 못 한다. "no session"이 꼭 트랜잭션 밖이라는 뜻은 아니다.
+- `clearAutomatically`는 그 쿼리 한 줄이 아니라 메서드 전체에 영향을 준다. 그 뒤에 줄을 더할 때는 앞에서 꺼낸 객체를 믿으면 안 된다.
+
+**한 줄 요약** "나가기 끝에 캐시 지우기 한 줄을 넣었더니, 위의 메뉴 일괄 삭제가 컨텍스트를 비워 둔 탓에 방의 거점 프록시가
+트랜잭션 안에서 no session으로 터졌다. 학교 id를 비우기 전에 꺼내 두는 걸로 고쳤다."
+
+---
+
+## 2026-10-17. 캐시를 지운 뒤 커밋 전에 다른 사람이 목록을 열자, 옛 인원이 다시 담겨 남았다
+
+**상황** 방 목록 캐시는 목록을 바꾸는 곳마다 `evict`를 부르고, `evict`는 그 자리에서 바로 Redis 키를 지운다. 참여 테스트(목록 열기 →
+참여 → 다시 열기)는 통과했다. 하지만 지우는 줄은 트랜잭션 한가운데에 있고, 커밋은 메서드가 끝난 뒤다. 그 틈을 테스트로 고정했다.
+A가 참여하고(키 삭제) 커밋하기 전에, 다른 스레드의 B가 목록을 연다. 그다음 A가 커밋한다.
+
+```
+[커밋 전에 B가 담은 옛 목록(인원 1)이 남아 있으면 안 된다]  Expecting value to be false but was true
+```
+
+B가 연 목록은 인원 1이었다. 캐시가 비어 있어서 DB를 읽었지만 A의 참여는 커밋 전이라 안 보였고(READ COMMITTED), B는 그 인원 1을
+캐시에 다시 담았다. A의 커밋 뒤 DB는 인원 2인데 캐시에는 인원 1이 남았고, 이걸 지울 코드는 이미 지나갔다. TTL 10초가 끝날 때까지
+모든 사람이 옛 인원을 본다. 캐시 클래스 단위 테스트에서도 "트랜잭션 안이면 커밋 전에는 안 지운다", "롤백이면 안 지운다"가
+`delete`가 바로 불려서 실패했다.
+
+**해결** `evict`는 트랜잭션 안이면(`TransactionSynchronizationManager.isSynchronizationActive()`) 지우지 않고
+`registerSynchronization`으로 "커밋 뒤에 지워 달라"는 객체만 맡긴다. 스프링이 커밋 직후 그 객체의 `afterCommit()`을 부를 때
+지운다. 롤백되면 `afterCommit`이 불리지 않아 안 지운다. 트랜잭션 밖이면 쿼리가 그 자리에서 확정되므로 바로 지운다.
+Redis 예외를 삼키는 try-catch는 `afterCommit` 안에서 도는 `delete`로 옮겼다. 등록 줄을 감싸면 실제 호출은 커밋 뒤라 못 잡는다.
+B는 여전히 커밋 전에 인원 1을 담지만, 커밋 뒤 A가 그걸 지워서 다음 목록은 인원 2다. 경합 테스트와 단위 테스트 4개를 포함해
+전체 706개가 통과했다.
+
+남는 틈: A의 커밋과 `afterCommit` 사이에 B가 커밋 전 값을 읽어 놓고, A가 지운 뒤에 담으면 다시 옛 값이 남는다. 이번 것보다 훨씬
+좁고, TTL 10초가 덮는다(ADR-061).
+
+**배운 것**
+- 캐시 지우기는 DB 트랜잭션에 묶이지 않는다. "언제 지우느냐"까지가 무효화다.
+- 지운 다음 다시 담는 쪽은 다른 사람의 읽기다. 내 코드만 보면 순서가 맞아 보여도 그 사이에 남이 끼어든다.
+- 커밋 뒤에 도는 콜백 안의 예외는 등록한 자리의 try-catch가 못 잡는다. 예외 처리는 실제로 도는 곳에 둔다.
+
+**한 줄 요약** "캐시를 트랜잭션 한가운데서 지웠더니, 커밋 전 DB를 읽은 다른 사람이 옛 인원을 다시 담았고 그게 10초 동안 남았다.
+`afterCommit`으로 커밋 뒤에 지우게 고쳤다."

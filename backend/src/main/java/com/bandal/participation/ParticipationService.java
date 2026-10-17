@@ -4,6 +4,7 @@ import com.bandal.common.ForbiddenException;
 import com.bandal.common.NotFoundException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
+import com.bandal.grouporder.RoomListCache;
 import com.bandal.participation.dto.*;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
@@ -25,6 +26,8 @@ public class ParticipationService {
     private final UserRepository userRepository;
     private final GroupOrderRepository groupOrderRepository;
     private final OrderItemRepository orderItemRepository;
+    private final RoomListCache roomListCache;
+
 
     // 방 참여
     @Transactional
@@ -42,6 +45,7 @@ public class ParticipationService {
         groupOrder.addParticipant(user, now);
         Participation participation = new Participation(groupOrder, user, now);
         participationRepository.save(participation);
+        roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
         return ParticipationResponse.of(participation);
     }
 
@@ -51,12 +55,15 @@ public class ParticipationService {
         Participation participation = participationRepository.findByIdOrThrow(participationId);
         GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(participation.getGroupOrder().getId())
                 .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        // 아래 메뉴 일괄 삭제 뒤에서는 거점 프록시를 못 읽어서 미리 이렇게 id를 꺼내두어야 한다
+        Long universityId = groupOrder.getPickupSpot().getUniversity().getId();
 
         participation.checkLeavable(requesterId, Instant.now());
 
         groupOrder.removeParticipant();
         orderItemRepository.deleteByParticipationId(participationId);
         participationRepository.delete(participation);
+        roomListCache.evict(universityId); // 캐시 지우기
     }
 
     // 메뉴 담기
@@ -67,6 +74,7 @@ public class ParticipationService {
         OrderItem item = participation.addItem(requesterId, request.menuName(),
             request.options(), request.unitPrice(), request.quantity(), Instant.now());
         orderItemRepository.save(item);
+        roomListCache.evict(participation.getGroupOrder().getPickupSpot().getUniversity().getId()); // 캐시 지우기
 
         return itemsResponse(participation);
     }
@@ -78,6 +86,7 @@ public class ParticipationService {
 
         item.update(requesterId, request.menuName(), request.options(),
             request.unitPrice(), request.quantity(), Instant.now());
+        roomListCache.evict(item.getParticipation().getGroupOrder().getPickupSpot().getUniversity().getId()); // 캐시 지우기
 
         return itemsResponse(item.getParticipation());
     }
@@ -90,6 +99,7 @@ public class ParticipationService {
 
         participation.removeItem(requesterId, item, Instant.now());
         orderItemRepository.delete(item);
+        roomListCache.evict(participation.getGroupOrder().getPickupSpot().getUniversity().getId()); // 캐시 지우기
 
         return itemsResponse(participation);
     }
