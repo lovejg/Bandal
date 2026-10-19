@@ -166,22 +166,30 @@ export const tokenStore = {
   },
 }
 
-// 갱신이 동시에 여러 번 나가지 않게 진행 중인 갱신을 함께 기다린다
+// 한 탭 안에서는 갱신이 동시에 여러 번 나가지 않게 진행 중인 갱신을 함께 기다린다
 let refreshing: Promise<boolean> | null = null
 
-async function refreshTokens(): Promise<boolean> {
+// 리프레시 토큰은 한 번만 쓸 수 있어서, 탭 두 개가 같은 토큰으로 동시에 갱신하면 하나는 진다.
+// 진 탭이 실패했다고 저장소를 비우면 이긴 탭이 받은 새 토큰까지 지워 둘 다 로그아웃된다.
+// 그래서 탭끼리 잠금(Web Locks)으로 차례를 정한다. 기다린 탭은 차례가 오면 저장소를 다시 보고,
+// 그사이 다른 탭이 새 토큰을 써 뒀으면 서버에 가지 않고 그걸 쓴다
+function refreshTokens(used: Tokens): Promise<boolean> {
+  // 잠금을 못 쓰는 브라우저에서는 잠금 없이 한다
+  if (!navigator.locks) return doRefresh(used)
+  return navigator.locks.request('bandal.refresh', () => doRefresh(used))
+}
+
+async function doRefresh(used: Tokens): Promise<boolean> {
   const current = tokenStore.get()
   if (!current) return false
+  if (current.refreshToken !== used.refreshToken) return true
+
   const res = await fetch('/api/auth/refresh', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken: current.refreshToken }),
   })
   if (!res.ok) {
-    // 리프레시 토큰은 한 번만 쓸 수 있다. 다른 탭이 같은 토큰으로 먼저 갱신해 새 토큰을 써 뒀으면 그걸 쓴다.
-    // 여기서 지우면 다른 탭이 방금 받은 토큰까지 지워서 탭이 전부 로그아웃된다
-    const latest = tokenStore.get()
-    if (latest && latest.refreshToken !== current.refreshToken) return true
     tokenStore.clear()
     return false
   }
@@ -204,7 +212,7 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
   })
 
   if (res.status === 401 && retry && tokens) {
-    refreshing ??= refreshTokens().finally(() => {
+    refreshing ??= refreshTokens(tokens).finally(() => {
       refreshing = null
     })
     if (await refreshing) return request<T>(method, path, body, false)

@@ -86,7 +86,7 @@ public class Settlement {
         }
 
         if(confirmedPaidAt != null) {
-            throw new IllegalStateException("이미 송금을 완료했습니다");
+            throw new IllegalStateException("이미 입금이 확인됐습니다");
         }
         if(markedPaidAt != null) {
             return;

@@ -162,7 +162,8 @@ class SettlementTest {
             line.confirm(HOST_ID, NOW);
 
             assertThatThrownBy(() -> line.markPaid(MEMBER_ID, NOW.plusSeconds(60)))
-                    .isInstanceOf(IllegalStateException.class);
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("이미 입금이 확인됐습니다");
         }
     }
 
