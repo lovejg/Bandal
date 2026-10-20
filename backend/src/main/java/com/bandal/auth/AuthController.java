@@ -61,10 +61,10 @@ public class AuthController {
                 <html lang="ko"><meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1"><title>반달</title>
                 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-                <body style="margin:0;font-family:'Pretendard Variable',-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f2f2ec;color:#121212;text-align:center;padding:80px 18px">
+                <body style="margin:0;font-family:'Pretendard Variable',-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f6f3ec;color:#1c1b19;text-align:center;padding:80px 18px">
                 <h1 style="font-size:24px">%s</h1>
-                <p style="color:#6d6d66">%s</p>
-                <p style="margin-top:28px"><a href="/" style="display:inline-block;padding:13px 22px;border-radius:14px;background:#c6f53f;color:#121212;font-weight:700;text-decoration:none">반달로 가기</a></p>
+                <p style="color:#6e6a61">%s</p>
+                <p style="margin-top:28px"><a href="/" style="display:inline-block;padding:13px 22px;border-radius:4px;background:#e8590c;color:#fff;font-weight:700;text-decoration:none">반달로 가기</a></p>
                 </body></html>
                 """.formatted(title, body);
     }

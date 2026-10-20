@@ -103,8 +103,8 @@ export function Row({ label, value, strong = false }: { label: ReactNode; value:
   )
 }
 
-// 둥근 블록 하나. 제목과 오른쪽 덧말
-export function Card({ title, aside, children, tone }: { title?: ReactNode; aside?: ReactNode; children: ReactNode; tone?: 'lime' | 'warn' }) {
+// 영수증 한 장. 제목과 오른쪽 덧말. accent는 지금 내가 할 일이 있는 카드, warn은 경고
+export function Card({ title, aside, children, tone }: { title?: ReactNode; aside?: ReactNode; children: ReactNode; tone?: 'accent' | 'warn' }) {
   return (
     <section className={`card${tone ? ` card--${tone}` : ''}`}>
       {(title || aside) && (
