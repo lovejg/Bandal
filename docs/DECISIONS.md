@@ -3297,6 +3297,75 @@ stage(서버용 compose 그대로)에 R2 대신 S3 호환 저장소 SeaweedFS를
 
 ---
 
+## ADR-071. 서버 준비는 스크립트 하나로: 다시 돌려도 되게, 배포는 따로 둔 deploy 사용자와 키로
+
+- **날짜**: 2026-10-20
+- **상태**: 스크립트(`deploy/server/setup.sh`, `bootstrap.sh`)와 로컬 리허설 끝. OCI 보안 목록에 80, 443을 열었다(CLI). 서버가 생기면 돌린다
+- 서버 설정은 학습 축 밖이라 토의 없이 Claude가 정했다(사용자 요청)
+
+**결정**
+- 내 PC에서 `bootstrap.sh <IP>` 하나로 한다. 배포 키를 만들고(없으면), `setup.sh`를 서버에서 root로 돌리고, 바깥 Nginx 파일을 올리고,
+  GitHub에 넣을 값(배포 키 파일 위치, 호스트 키 줄, IP, 사용자)을 알려 준다.
+- `setup.sh`는 몇 번을 다시 돌려도 된다. 단계마다 이미 된 것은 건너뛰거나 같은 내용으로 덮어쓴다.
+- 배포는 `deploy` 사용자로 한다. sudo 없음, docker 그룹. 키는 내 키(`bandal_oci`)와 따로 만들고, `authorized_keys`에 `restrict`를 붙여
+  포트 포워딩, 에이전트 전달, 터미널을 끈다.
+- SSH는 키로만 받는다. 비밀번호와 keyboard-interactive를 끄고, root 로그인을 끄고, `ubuntu`와 `deploy`만 들어올 수 있다.
+- 그 밖의 설정:
+  - 시간대: UTC.
+  - 업데이트: 보안 업데이트는 자동(unattended-upgrades)으로 받고, 재부팅은 자동으로 하지 않는다.
+  - Docker: 공식 저장소에서 받는다. 컨테이너 로그는 10MB짜리 3개까지만 남긴다.
+  - 스왑: 2GB, swappiness 10.
+  - 폴더와 네트워크: `/srv/bandal`, `/srv/edge`, `edge` 네트워크를 만든다.
+  - cron: 백업(한국 4시)과 인증서 갱신(하루 두 번)을 등록한다. 첫 배포, 첫 인증서 전에는 돌지 않게 조건을 붙인다.
+- OCI 보안 목록(오라클 쪽 방화벽)은 22, 80, 443만 연다.
+
+**근거**
+- 키를 따로 두는 건 막기 위해서가 아니라 끊기 위해서다. docker 그룹은 컨테이너에 서버 디스크를 붙여서 무엇이든 할 수 있으니 사실상
+  root다. 배포 키가 새면 서버를 빼앗긴 것과 같다. 대신 그 키 한 줄만 지우면 되고, 내 접속은 그대로다. `ubuntu` 키를 GitHub에 넣었다면
+  키를 바꾸는 동안 나도 못 들어간다.
+- 명령을 제한하는 강제 명령(`command=`)도 생각했지만, 배포가 compose 파일을 올리는 이상 그 파일로 무엇이든 할 수 있어서 막는 게 없다.
+  그래서 키를 GitHub의 production 환경에만 두고(ADR-067), 새면 지운다.
+- 비밀번호 로그인이 없으면 봇이 시도할 문이 없다. 키 로그인만 있으면 fail2ban(실패가 쌓인 IP를 막기)은 로그만 줄여 준다.
+- 다시 돌려도 되는 스크립트여야 중간에 끊긴 날, 서버를 새로 받은 날 같은 명령 하나로 된다.
+- 로그 상한이 없으면 Docker 기본 로그(json-file)는 끝없이 쌓여서 언젠가 디스크를 채운다.
+- 스왑은 메모리가 모자랄 때 커널이 컨테이너를 바로 죽이는(OOM) 대신 잠깐 느려지게 하는 여유분이다. 1 OCPU/6GB로 잡히면 두 앱에 빠듯하다.
+
+**서버를 처음 받은 날, 그리고 서버를 새로 받아 다시 살리는 날의 순서**
+1. `bash deploy/server/bootstrap.sh <IP>`
+2. GitHub production 환경에 값을 넣는다(다시 살리는 날에는 바뀐 IP와 호스트 키만).
+   - Secrets: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, R2 키, `BACKUP_PING_URL`
+   - Variables: `DEPLOY_HOST`, `DEPLOY_USER=deploy`, `APP_BASE_URL=https://bandal.site`, `R2_ENDPOINT`, `R2_BUCKET`
+3. Cloudflare DNS에 `bandal.site`, `www.bandal.site` A 기록을 새 IP로 넣는다(DNS only).
+4. 마지막 Deploy 워크플로를 다시 돌린다(Re-run). 빈 DB에 Flyway가 테이블을 만들고 앱이 뜬다.
+5. 다시 살리는 날에만: R2에서 마지막 덤프를 받아 `restore.sh`로 넣는다(ADR-069).
+6. `/srv/edge/.env`에 `CERT_PING_URL`을 넣고 `/srv/edge/cert.sh issue bandal.site www.bandal.site`
+7. 밖에서 `https://bandal.site`로 가입부터 방 만들기까지 해 본다.
+
+**로컬 리허설(2026-10-20)**
+systemd가 도는 Ubuntu 24.04 컨테이너를 "막 받은 서버"로 만들었다. `ubuntu` 사용자, 비밀번호 없는 sudo, 내 키를 넣고, 비밀번호 로그인은
+일부러 켰다.
+- 준비 전 서버가 받는 방식: `Permission denied (publickey,password)`. 준비 뒤: `(publickey)`. 클라우드 이미지 설정(60-)에 일부러 둔
+  `PasswordAuthentication yes`를 우리 설정(10-)이 이겼다.
+- 1회차 20초, 2회차 4초. 둘 다 오류 없이 끝났다.
+- root 로그인 거부. deploy는 컨테이너 실행 가능(`docker run alpine echo` 출력), sudo 불가(`a password is required`), 터미널 거부
+  (`PTY allocation request failed`), 포트 포워딩 거부(`administratively prohibited`).
+- UTC, swappiness 10, 로그 설정, `/srv` 폴더 주인 deploy, cron 두 줄.
+- 처음 돌렸을 때 `crontab: command not found`로 멈췄다. 리허설 이미지에 cron이 없었다. 오라클 이미지에는 보통 있지만 기대지 않고 직접 깐다.
+- 리허설 환경 때문에 바꾼 것(서버 스크립트는 그대로): 부팅이 끝나기 전 접속이 `System is booting up`으로 막혀서 부팅 완료를 기다렸다.
+  컨테이너 안의 Docker가 overlay 위에 overlay를 못 올려서(`failed to mount ... overlay ... invalid argument`) Docker 폴더를 WSL 디스크로
+  뺐다. 스왑 파일도 같은 이유로 WSL 디스크에 미리 만들어 붙였다.
+- 하지 못한 것: 스왑 파일을 새로 만드는 부분, 오라클 Ubuntu 이미지의 기본 iptables 규칙과 Docker가 연 80, 443이 같이 동작하는지.
+  서버가 생기면 밖에서 접속해 확인한다.
+
+**버린 대안**
+- *`ubuntu` 계정 키로 배포*: 키가 새면 내 접속까지 같이 바꿔야 하고, 배포 작업이 비밀번호 없는 sudo까지 갖는다.
+- *강제 명령으로 배포 명령만 허용*: compose 파일을 올리는 이상 제한이 안 된다.
+- *SSH 포트 바꾸기, fail2ban*: 키로만 받으면 얻는 게 로그가 조금 줄어드는 정도다.
+- *Ansible 같은 설정 관리 도구*: 서버 한 대, 사람 한 명에는 셸 스크립트 하나가 읽기 쉽다.
+- *손으로 한 줄씩*: 서버를 다시 받는 날 순서를 빼먹는다.
+
+---
+
 ## 아직 결정 안 한 것
 
 `DESIGN.md` 8번 열린 질문 참고. 코드를 쓰다 보면 답이 나오는 것들이라 미리 정하지 않는다.
