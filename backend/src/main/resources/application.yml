@@ -5,6 +5,11 @@ spring:
   application:
     name: bandal
 
+  # 사용자 저장소를 따로 만들지 않으면 Spring Security가 "user"라는 기본 계정을 메모리에 만들고 그 비밀번호를 로그에 찍는다.
+  # 우리 로그인은 JWT라 이 계정을 쓸 곳이 없다. 운영 로그에 비밀번호가 남지 않게 이 자동 설정을 끈다
+  autoconfigure:
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+
   datasource:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
