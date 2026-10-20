@@ -1,61 +1,74 @@
 /* 반달
-   형광 라임 하나만 포인트로 쓴다. 그림자 대신 얇은 테두리, 블록은 둥글게, 숫자는 굵게.
-   라이트/다크는 같은 이름의 변수를 바꿔 끼운다 */
+   배달 영수증처럼 보이게 한다. 돈을 나누는 서비스라서다.
+   종이색 바탕에 잉크색 글자, 포인트는 배달 주황 하나. 모서리는 거의 각지게, 그림자 대신 얇은 선,
+   정산 줄과 합계는 점선으로 나누고 금액은 고정폭 숫자로 칸을 맞춘다.
+   상태 색은 배경을 깔지 않고 글자와 테두리로만 쓴다. 라이트/다크는 같은 이름의 변수를 바꿔 끼운다 */
 
 :root {
-  --bg: #f2f2ec;
-  --surface: #ffffff;
-  --surface-2: #f5f5f0;
-  --ink: #121212;
-  --sub: #6d6d66;
-  --line: #e4e4dd;
-  --track: #e8e8e1;
-  --lime: #c6f53f;
-  --on-lime: #121212;
-  --lime-soft: #edfbc6;
-  --coral: #f2532f;
-  --coral-soft: #ffe8e1;
-  --solid-bg: #121212;
-  --solid-fg: #ffffff;
-  --scrim: rgba(242, 242, 236, 0.86);
+  --bg: #f6f3ec;
+  --surface: #fffdf8;
+  --surface-2: #efebe1;
+  --ink: #1c1b19;
+  --sub: #6e6a61;
+  --line: #dcd6c8;
+  --track: #e6e0d3;
+  /* 배달 주황. 채운 버튼과 막대에 쓴다 */
+  --accent: #e8590c;
+  --on-accent: #ffffff;
+  /* 종이 위 글자로 쓸 때는 조금 더 진하게. 흰 바탕 대비 4.5:1을 넘긴다 */
+  --accent-ink: #c2410c;
+  --accent-wash: rgba(232, 89, 12, 0.22);
+  --danger: #b42318;
+  --solid-bg: #1c1b19;
+  --solid-fg: #f6f3ec;
+  --scrim: rgba(246, 243, 236, 0.9);
 
+  --radius: 4px;
   --font: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  /* 금액은 영수증처럼 고정폭. index.html이 숫자와 기호만 담은 JetBrains Mono를 불러온다.
+     한글(원, 명)은 그 글꼴에 없어서 뒤의 Pretendard로 그린다 */
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, var(--font);
   color-scheme: light;
 }
 
+/* 다크는 꺼진 영수증 프린터처럼 먹색 바탕에 같은 주황 */
 :root[data-theme='dark'] {
-  --bg: #0e0f0d;
-  --surface: #191a17;
-  --surface-2: #22231f;
-  --ink: #f0f0ea;
-  --sub: #9b9b93;
-  --line: #2c2d28;
-  --track: #2b2c27;
-  --lime-soft: #26300f;
-  --coral: #ff6b4d;
-  --coral-soft: #3a1d16;
-  --solid-bg: #f0f0ea;
-  --solid-fg: #121212;
-  --scrim: rgba(14, 15, 13, 0.86);
+  --bg: #161513;
+  --surface: #1e1d1a;
+  --surface-2: #282622;
+  --ink: #ece7dc;
+  --sub: #a39e92;
+  --line: #3a3732;
+  --track: #2e2c28;
+  --accent: #f2702b;
+  --on-accent: #161513;
+  --accent-ink: #ff8a4c;
+  --accent-wash: rgba(242, 112, 43, 0.3);
+  --danger: #ff6b5b;
+  --solid-bg: #ece7dc;
+  --solid-fg: #161513;
+  --scrim: rgba(22, 21, 19, 0.9);
   color-scheme: dark;
 }
 
 /* 고른 적이 없으면 시스템 설정을 따른다 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0e0f0d;
-    --surface: #191a17;
-    --surface-2: #22231f;
-    --ink: #f0f0ea;
-    --sub: #9b9b93;
-    --line: #2c2d28;
-    --track: #2b2c27;
-    --lime-soft: #26300f;
-    --coral: #ff6b4d;
-    --coral-soft: #3a1d16;
-    --solid-bg: #f0f0ea;
-    --solid-fg: #121212;
-    --scrim: rgba(14, 15, 13, 0.86);
+    --bg: #161513;
+    --surface: #1e1d1a;
+    --surface-2: #282622;
+    --ink: #ece7dc;
+    --sub: #a39e92;
+    --line: #3a3732;
+    --track: #2e2c28;
+    --accent: #f2702b;
+    --on-accent: #161513;
+    --accent-ink: #ff8a4c;
+    --accent-wash: rgba(242, 112, 43, 0.3);
+    --danger: #ff6b5b;
+    --solid-bg: #ece7dc;
+    --solid-fg: #161513;
+    --scrim: rgba(22, 21, 19, 0.9);
     color-scheme: dark;
   }
 }
@@ -98,11 +111,13 @@ p {
 h1,
 h2 {
   margin: 0;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.03em;
 }
 
 .num {
+  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .sub {
@@ -169,27 +184,27 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 800;
   letter-spacing: -0.05em;
   text-decoration: none;
 }
 
-/* 반달. 왼쪽 반이 라임으로 차 있다 */
+/* 반달. 왼쪽 반이 주황으로 차 있다. 달은 둥글어야 해서 여기만 원이다 */
 .logo__moon,
 .hero__moon {
   display: inline-block;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border: 2px solid var(--ink);
   border-radius: 50%;
-  background: linear-gradient(90deg, var(--lime) 50%, transparent 50%);
+  background: linear-gradient(90deg, var(--accent) 50%, transparent 50%);
 }
 
 .topbar__school {
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--surface-2);
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
   color: var(--sub);
   font-size: 12px;
   font-weight: 600;
@@ -203,41 +218,41 @@ h2 {
   display: flex;
   gap: 22px;
   margin: 4px 0 6px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--ink);
 }
 
 .tabbar a {
   position: relative;
-  padding: 10px 0 12px;
+  padding: 10px 0 11px;
   color: var(--sub);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   text-decoration: none;
 }
 
 .tabbar a.active {
   color: var(--ink);
+  font-weight: 700;
 }
 
-/* 지금 탭 아래에 라임 막대 */
+/* 지금 탭 아래에 주황 막대 */
 .tabbar a.active::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
   bottom: -1px;
-  height: 4px;
-  border-radius: 4px 4px 0 0;
-  background: var(--lime);
+  height: 3px;
+  background: var(--accent);
 }
 
 .theme-toggle {
   position: relative;
-  width: 48px;
-  height: 28px;
+  width: 46px;
+  height: 26px;
   padding: 0;
-  border: 1.5px solid var(--line);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--surface-2);
   cursor: pointer;
 }
@@ -246,11 +261,11 @@ h2 {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 19px;
-  height: 19px;
+  width: 18px;
+  height: 18px;
   border: 2px solid var(--ink);
   border-radius: 50%;
-  background: linear-gradient(90deg, var(--lime) 50%, var(--surface) 50%);
+  background: linear-gradient(90deg, var(--accent) 50%, var(--surface) 50%);
   transition: transform 0.2s;
 }
 
@@ -267,15 +282,16 @@ h2 {
 }
 
 .pagehead h1 {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 800;
 }
 
+/* 안내는 종이에 붙인 메모처럼 왼쪽에 주황 선 */
 .notice {
   margin: 12px 0;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--lime-soft);
+  padding: 11px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
   font-size: 14px;
 }
 
@@ -285,10 +301,10 @@ h2 {
 
 .inline-error {
   margin: 12px 0;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--coral-soft);
-  color: var(--coral);
+  padding: 11px 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
   font-size: 14px;
   font-weight: 600;
 }
@@ -300,7 +316,7 @@ h2 {
 
 .empty__big {
   margin-bottom: 6px;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
 }
 
@@ -310,42 +326,42 @@ h2 {
 
 /* ---------- 작은 조각 ---------- */
 
+/* 상태는 도장처럼 테두리 라벨. 모집중만 채운다(지금 들어갈 수 있는 방이 눈에 먼저 띄게) */
 .chip {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
+  padding: 2px 7px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
   font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
 .chip--recruiting {
-  background: var(--lime);
-  color: var(--on-lime);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .chip--closed {
+  border-color: var(--solid-bg);
   background: var(--solid-bg);
   color: var(--solid-fg);
 }
 
 .chip--settling {
-  background: var(--coral-soft);
-  color: var(--coral);
+  color: var(--accent-ink);
 }
 
 .chip--ordered,
 .chip--delivered {
-  background: var(--surface-2);
   color: var(--ink);
-  box-shadow: inset 0 0 0 1.5px var(--line);
 }
 
 .chip--canceled {
-  background: transparent;
   color: var(--sub);
-  box-shadow: inset 0 0 0 1.5px var(--line);
   text-decoration: line-through;
 }
 
@@ -353,10 +369,10 @@ h2 {
   display: inline-flex;
   align-items: center;
   margin-left: 6px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--ink);
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--sub);
   font-size: 11px;
   font-weight: 700;
   vertical-align: 1px;
@@ -364,22 +380,22 @@ h2 {
 
 .badge--warn {
   margin-left: 0;
-  background: var(--coral-soft);
-  color: var(--coral);
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
 }
 
 .pill {
   flex: none;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--surface-2);
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
   font-size: 12px;
   font-weight: 700;
 }
 
 .pill--hot {
-  background: var(--coral-soft);
-  color: var(--coral);
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
 }
 
 /* ---------- 진행률 ---------- */
@@ -389,21 +405,20 @@ h2 {
 }
 
 .progress__track {
-  height: 10px;
-  border-radius: 999px;
+  height: 8px;
+  border-radius: 1px;
   background: var(--track);
   overflow: hidden;
 }
 
 .progress__fill {
   height: 100%;
-  border-radius: 999px;
   background: var(--ink);
   transition: width 0.4s ease;
 }
 
 .progress__fill--done {
-  background: var(--lime);
+  background: var(--accent);
 }
 
 .progress__labels {
@@ -416,16 +431,16 @@ h2 {
 
 .progress__labels b {
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .progress__done {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--lime);
-  color: var(--on-lime);
+  padding: 1px 6px;
+  border: 1.5px solid var(--accent-ink);
+  border-radius: 2px;
+  color: var(--accent-ink);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 /* ---------- 카드 ---------- */
@@ -433,47 +448,46 @@ h2 {
 .card {
   padding: 18px;
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
-.card--lime {
-  border-color: transparent;
-  background: var(--lime);
-  color: var(--on-lime);
-}
-
-.card--lime .sub {
-  color: rgba(18, 18, 18, 0.62);
+/* 지금 내가 할 일(보낼 돈, 받은 환불)이 있는 카드. 잉크 테두리에 위쪽 주황 띠 */
+.card--accent {
+  border: 1.5px solid var(--ink);
+  border-top: 5px solid var(--accent);
 }
 
 .card--warn {
-  border-color: transparent;
-  background: var(--coral-soft);
-  color: var(--coral);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .card--warn .sub {
-  color: var(--coral);
+  color: var(--danger);
   opacity: 0.85;
 }
 
+/* 영수증 머리. 제목 아래에 점선 */
 .card__head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--line);
 }
 
 .card__title {
-  font-size: 17px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .card__aside {
+  font-family: var(--mono);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .card > p + p,
@@ -486,7 +500,7 @@ h2 {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 5px 0;
+  padding: 4px 0;
   font-size: 14px;
 }
 
@@ -498,10 +512,11 @@ h2 {
   font-weight: 600;
 }
 
+/* 합계 줄. 영수증처럼 위에 점선 */
 .row--strong {
-  margin-top: 4px;
+  margin-top: 6px;
   padding-top: 10px;
-  border-top: 1px solid var(--line);
+  border-top: 1.5px dashed var(--ink);
   font-size: 16px;
 }
 
@@ -522,31 +537,33 @@ h2 {
   justify-content: center;
   gap: 6px;
   padding: 11px 18px;
-  border: 0;
-  border-radius: 14px;
-  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
   font-size: 15px;
   font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
-  transition: transform 0.08s, filter 0.12s, background-color 0.12s;
+  transition: transform 0.08s, filter 0.12s, background-color 0.12s, border-color 0.12s;
 }
 
 .btn:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: translateY(1px);
 }
 
 .btn--primary {
-  background: var(--lime);
-  color: var(--on-lime);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .btn--primary:hover:not(:disabled) {
-  filter: brightness(0.96);
+  filter: brightness(0.94);
 }
 
 .btn--dark {
+  border-color: var(--solid-bg);
   background: var(--solid-bg);
   color: var(--solid-fg);
 }
@@ -557,32 +574,31 @@ h2 {
 
 .btn--ghost {
   background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--line);
 }
 
 .btn--ghost:hover:not(:disabled) {
-  box-shadow: inset 0 0 0 1.5px var(--ink);
+  border-color: var(--ink);
 }
 
 .btn--danger {
-  background: var(--coral);
+  border-color: var(--danger);
+  background: var(--danger);
   color: #fff;
 }
 
 .btn--danger-text {
-  color: var(--coral);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .btn--lg {
-  padding: 15px 20px;
+  padding: 14px 20px;
   font-size: 16px;
-  border-radius: 16px;
 }
 
 .btn--sm {
-  padding: 7px 12px;
+  padding: 6px 11px;
   font-size: 13px;
-  border-radius: 10px;
 }
 
 .btn--block {
@@ -607,41 +623,44 @@ h2 {
   color: var(--sub);
   font-size: 13px;
   font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 
 .textbtn:hover {
   color: var(--ink);
+  text-decoration-color: currentColor;
 }
 
 .textbtn--danger {
-  color: var(--coral);
+  color: var(--danger);
 }
 
 .textbtn--danger:hover {
-  color: var(--coral);
-  text-decoration: underline;
+  color: var(--danger);
 }
 
+/* 계좌번호를 눌러 복사 */
 .copy {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 6px 6px 12px;
-  border: 0;
-  border-radius: 999px;
-  background: #fff;
-  color: #121212;
+  padding: 5px 5px 5px 11px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--surface);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
 }
 
 .copy__hint {
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: #121212;
-  color: #fff;
+  padding: 2px 8px;
+  border-radius: 2px;
+  background: var(--solid-bg);
+  color: var(--solid-fg);
   font-size: 12px;
 }
 
@@ -665,18 +684,18 @@ select,
 textarea {
   width: 100%;
   min-width: 0;
-  padding: 12px 14px;
-  border: 1.5px solid transparent;
-  border-radius: 12px;
-  background: var(--surface-2);
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
   font-size: 16px;
-  transition: border-color 0.12s;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
 
 .card input,
 .card select,
 .card textarea {
-  background: var(--surface-2);
+  background: var(--bg);
 }
 
 input:focus,
@@ -684,6 +703,7 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
 }
 
 input::placeholder,
@@ -728,28 +748,30 @@ textarea {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
-  border-radius: 12px;
-  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .stepper button {
-  width: 44px;
-  height: 46px;
+  width: 42px;
+  height: 44px;
   border: 0;
   background: none;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .stepper span {
-  min-width: 52px;
+  min-width: 50px;
+  font-family: var(--mono);
   text-align: center;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .stepper--sm button {
-  width: 38px;
+  width: 36px;
 }
 
 .stepper--sm span {
@@ -787,14 +809,14 @@ textarea {
 }
 
 .hero__moon {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border-width: 3px;
 }
 
 .hero__title {
   margin-top: 16px;
-  font-size: 54px;
+  font-size: 52px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.06em;
@@ -802,17 +824,17 @@ textarea {
 
 .hero__copy {
   margin-top: 16px;
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.45;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.5;
   letter-spacing: -0.03em;
 }
 
+/* 형광펜으로 그은 것처럼 글자 아래쪽만 칠한다 */
 .hero__copy mark {
-  padding: 0 4px;
-  border-radius: 6px;
-  background: var(--lime);
-  color: var(--on-lime);
+  padding: 0 2px;
+  background: linear-gradient(transparent 58%, var(--accent-wash) 58%);
+  color: inherit;
 }
 
 .hero--small {
@@ -820,12 +842,11 @@ textarea {
 }
 
 .hero--small .hero__title {
-  font-size: 40px;
+  font-size: 38px;
 }
 
 .hero--small .hero__copy {
   font-size: 16px;
-  font-weight: 600;
   color: var(--sub);
 }
 
@@ -852,16 +873,14 @@ textarea {
 .campus__dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: var(--lime);
-  box-shadow: 0 0 0 1.5px var(--ink);
+  background: var(--accent);
 }
 
 .campus--none {
   padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--coral-soft);
-  color: var(--coral);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
 }
 
 .campus-pick {
@@ -880,23 +899,23 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
-  border: 1.5px solid transparent;
-  border-radius: 12px;
-  background: var(--surface-2);
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
   font-weight: 600;
   cursor: pointer;
 }
 
 .campus-pick__item.on {
   border-color: var(--ink);
-  background: var(--lime-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .campus-pick__item input {
   width: auto;
   margin: 0;
-  accent-color: var(--ink);
+  accent-color: var(--accent);
 }
 
 .notice__action {
@@ -916,10 +935,10 @@ textarea {
 
 .samples {
   margin-top: 28px;
-  padding: 14px;
-  border-radius: 16px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
   background: var(--surface);
-  border: 1px solid var(--line);
 }
 
 .samples__head {
@@ -934,9 +953,9 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  padding: 10px 4px;
+  padding: 10px 2px;
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px dashed var(--line);
   background: none;
   font-size: 14px;
   text-align: left;
@@ -949,8 +968,9 @@ textarea {
 
 .samples__row:hover b {
   text-decoration: underline;
-  text-decoration-color: var(--lime);
-  text-decoration-thickness: 3px;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
 }
 
 /* ---------- 방 목록 ---------- */
@@ -958,7 +978,7 @@ textarea {
 .roomlist {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   margin: 0 0 14px;
   padding: 0;
   list-style: none;
@@ -967,9 +987,9 @@ textarea {
 .roomcard,
 .myroom {
   display: block;
-  padding: 16px 18px;
+  padding: 15px 16px;
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--radius);
   background: var(--surface);
   text-decoration: none;
   transition: border-color 0.12s, transform 0.08s;
@@ -982,7 +1002,7 @@ textarea {
 
 .roomcard:active,
 .myroom:active {
-  transform: scale(0.99);
+  transform: translateY(1px);
 }
 
 .roomcard__top,
@@ -994,8 +1014,8 @@ textarea {
 }
 
 .roomcard__store {
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 17px;
+  font-weight: 700;
   letter-spacing: -0.03em;
 }
 
@@ -1009,11 +1029,13 @@ textarea {
 
 /* ---------- 방 한 개 ---------- */
 
+/* 영수증 맨 위. 가게 이름이 상호처럼 크게 */
 .roomhero {
   margin-top: 16px;
   padding: 20px;
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-top: 3px solid var(--ink);
+  border-radius: var(--radius);
   background: var(--surface);
 }
 
@@ -1025,7 +1047,7 @@ textarea {
 
 .roomhero__store {
   margin-top: 12px;
-  font-size: 28px;
+  font-size: 27px;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -1046,19 +1068,23 @@ textarea {
   color: var(--ink);
 }
 
+/* 숫자 세 칸. 칸 사이를 세로 점선으로 */
 .facts {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
   margin-top: 16px;
+  border-top: 1px dashed var(--line);
+  border-bottom: 1px dashed var(--line);
 }
 
 .fact {
   display: flex;
   flex-direction: column;
   padding: 10px 12px;
-  border-radius: 14px;
-  background: var(--surface-2);
+}
+
+.fact + .fact {
+  border-left: 1px dashed var(--line);
 }
 
 .fact__label {
@@ -1068,19 +1094,20 @@ textarea {
 }
 
 .fact__value {
-  font-size: 20px;
-  font-weight: 800;
+  font-family: var(--mono);
+  font-size: 19px;
+  font-weight: 700;
   letter-spacing: -0.03em;
 }
 
 .fact__value small {
   color: var(--sub);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .fact__hint {
-  color: var(--coral);
+  color: var(--accent-ink);
   font-size: 11px;
   font-weight: 700;
 }
@@ -1093,14 +1120,14 @@ textarea {
 }
 
 .items > li + li {
-  border-top: 1px solid var(--line);
+  border-top: 1px dashed var(--line);
 }
 
 .itemrow {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 2px 12px;
-  padding: 12px 0;
+  padding: 11px 0;
 }
 
 .itemrow__main {
@@ -1113,11 +1140,12 @@ textarea {
 
 .itemrow__name {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .itemrow__qty {
   color: var(--sub);
+  font-family: var(--mono);
   font-weight: 600;
 }
 
@@ -1127,8 +1155,9 @@ textarea {
 }
 
 .itemrow__price {
+  font-family: var(--mono);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .itemrow__actions {
@@ -1143,8 +1172,9 @@ textarea {
   gap: 12px;
   margin: 8px 0 4px;
   padding: 14px;
-  border-radius: 16px;
-  background: var(--surface-2);
+  border: 1px dashed var(--ink);
+  border-radius: var(--radius);
+  background: var(--bg);
 }
 
 .itemform input {
@@ -1169,16 +1199,18 @@ textarea {
 }
 
 .person {
-  padding: 12px 14px 4px;
-  border-radius: 16px;
-  background: var(--surface-2);
+  padding: 10px 12px 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
 }
 
 .person__head {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding-bottom: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--line);
 }
 
 .person .itemrow {
@@ -1194,8 +1226,9 @@ textarea {
 
 .paycard__amount {
   margin: 2px 0 2px !important;
-  font-size: 36px;
-  font-weight: 800;
+  font-family: var(--mono);
+  font-size: 34px;
+  font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.15;
 }
@@ -1212,8 +1245,9 @@ textarea {
   gap: 8px 10px;
   margin-top: 14px;
   padding: 12px;
-  border-radius: 14px;
-  background: rgba(18, 18, 18, 0.07);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
 }
 
 .account__bank {
@@ -1222,7 +1256,7 @@ textarea {
 
 .account__holder {
   flex-basis: 100%;
-  opacity: 0.7;
+  color: var(--sub);
 }
 
 .payees {
@@ -1240,7 +1274,7 @@ textarea {
 }
 
 .payee + .payee {
-  border-top: 1px solid var(--line);
+  border-top: 1px dashed var(--line);
 }
 
 .payee__info {
@@ -1250,8 +1284,9 @@ textarea {
 }
 
 .payee__amount {
+  font-family: var(--mono);
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .payee__actions {
@@ -1270,20 +1305,16 @@ textarea {
   color: var(--sub);
 }
 
+/* 끝난 줄 앞에 작은 체크 표시 */
 .state--done::before {
-  content: '';
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 6px;
-  border-radius: 50%;
-  background: var(--lime);
-  box-shadow: 0 0 0 1.5px var(--ink);
-  vertical-align: 1px;
+  content: '✓';
+  margin-right: 5px;
+  color: var(--accent-ink);
+  font-weight: 800;
 }
 
 .state--todo {
-  color: var(--coral);
+  color: var(--accent-ink);
 }
 
 .state--wait {
@@ -1301,8 +1332,8 @@ textarea {
   flex-direction: column;
   gap: 10px;
   padding: 14px;
-  border-radius: 16px;
-  background: var(--coral-soft);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
 }
 
 .cancelbox textarea {
@@ -1313,11 +1344,10 @@ textarea {
 
 .segment {
   display: flex;
-  gap: 4px;
   margin-bottom: 14px;
-  padding: 4px;
-  border-radius: 16px;
-  background: var(--surface-2);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .segment button {
@@ -1328,31 +1358,35 @@ textarea {
   gap: 6px;
   padding: 10px;
   border: 0;
-  border-radius: 12px;
-  background: none;
+  background: var(--surface);
   color: var(--sub);
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 
+.segment button + button {
+  border-left: 1px solid var(--ink);
+}
+
 .segment button.on {
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: var(--solid-bg);
+  color: var(--solid-fg);
+  font-weight: 700;
 }
 
 .segment__count {
   min-width: 20px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--coral);
-  color: #fff;
+  padding: 0 5px;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--mono);
   font-size: 12px;
 }
 
 .myroom__store {
-  font-size: 17px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 700;
   letter-spacing: -0.03em;
 }
 
@@ -1372,12 +1406,13 @@ textarea {
   font-size: 13px;
 }
 
+/* 내가 할 일이 있는 방은 왼쪽에 주황 선 */
 .myroom--todo {
-  box-shadow: inset 4px 0 0 var(--coral);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .myroom--todo .myroom__step {
-  color: var(--coral);
+  color: var(--accent-ink);
   font-weight: 700;
 }
 
@@ -1393,17 +1428,18 @@ textarea {
 .profile__avatar {
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--lime);
-  color: var(--on-lime);
-  font-size: 24px;
+  width: 52px;
+  height: 52px;
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-size: 22px;
   font-weight: 800;
 }
 
 .profile__name {
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 800;
   letter-spacing: -0.03em;
 }
@@ -1429,8 +1465,8 @@ textarea {
   align-items: center;
   gap: 10px;
   max-width: 100%;
-  padding: 12px 16px 12px 12px;
-  border-radius: 16px;
+  padding: 11px 15px 11px 11px;
+  border-radius: var(--radius);
   background: var(--solid-bg);
   color: var(--solid-fg);
   font-size: 14px;
@@ -1443,27 +1479,27 @@ textarea {
   flex: none;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  font-size: 13px;
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .toast--error .toast__icon {
-  background: var(--coral);
+  background: var(--danger);
   color: #fff;
 }
 
 .toast--ok .toast__icon {
-  background: var(--lime);
-  color: var(--on-lime);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -1489,19 +1525,15 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .facts {
-    gap: 6px;
-  }
-
   .fact {
-    padding: 9px 10px;
+    padding: 9px 8px;
   }
 
   .fact__value {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   .hero__title {
-    font-size: 46px;
+    font-size: 44px;
   }
 }

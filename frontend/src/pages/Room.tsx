@@ -150,7 +150,7 @@ export default function RoomPage() {
       )}
 
       {!isHost && myLine && canceled && myLine.refundStatus && (
-        <Card title="환불" tone={myLine.refundStatus === 'REFUND_SENT' ? 'lime' : undefined}>
+        <Card title="환불" tone={myLine.refundStatus === 'REFUND_SENT' ? 'accent' : undefined}>
           <p className="strong">{REFUND_LABEL[myLine.refundStatus]}</p>
           <p className="sub">보낸 돈 {won(myLine.totalAmount)}원을 방장에게 돌려받아야 해요.</p>
           {myLine.refundStatus !== 'REFUNDED' && (
@@ -225,7 +225,7 @@ function PayCard({ line, settlement, busy, onMarkPaid }: { line: SettlementLine;
   const account = settlement.hostAccount
   const sent = line.markedPaidAt !== null || line.confirmedPaidAt !== null
   return (
-    <Card tone={sent ? undefined : 'lime'}>
+    <Card tone={sent ? undefined : 'accent'}>
       <p className="paycard__label">{sent ? '보낸 돈' : '방장에게 보낼 돈'}</p>
       <p className="paycard__amount num">{won(line.totalAmount)}원</p>
       <p className="sub small num">
