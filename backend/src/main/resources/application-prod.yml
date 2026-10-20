@@ -11,15 +11,20 @@ spring:
       host: redis
       port: 6379
 
-  # 메일 발송 수단은 아직 정하지 않았다. 정하기 전까지는 값이 없어서 운영으로는 뜨지 않는다
+  # 메일은 발송 서비스(Resend)의 SMTP로 보낸다. 주소와 계정은 환경 변수로 받는다
   mail:
     host: ${MAIL_HOST}
     port: ${MAIL_PORT}
     username: ${MAIL_USERNAME}
     password: ${MAIL_PASSWORD}
+    # 로컬 Mailpit은 로그인도 암호화도 없지만, 바깥 SMTP는 둘 다 요구한다.
+    # starttls.required: 암호화 연결을 못 맺으면 평문으로 보내지 않고 실패한다(계정 비밀번호가 평문으로 흐르지 않게)
+    properties:
+      "[mail.smtp.auth]": true
+      "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.starttls.required]": true
 
 app:
-  # 도메인을 정하면 실제 주소가 들어간다
   verify-link-base: ${APP_BASE_URL}/api/auth/verify
   mail-from: ${MAIL_FROM}
 

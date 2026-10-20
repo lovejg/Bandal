@@ -91,8 +91,8 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
-      - name: compose 파일과 배포 스크립트 올리기
-        run: tar -C deploy/bandal -cz compose.yml deploy.sh | ssh "$HOST" 'mkdir -p /srv/bandal && tar -xz -C /srv/bandal'
+      - name: compose 파일과 배포, 백업 스크립트 올리기
+        run: tar -C deploy/bandal -cz compose.yml deploy.sh backup.sh restore.sh | ssh "$HOST" 'mkdir -p /srv/bandal && tar -xz -C /srv/bandal'
 
       # .env는 배포마다 새로 쓴다. 비밀값을 Secrets에서 바꾸면 다음 배포부터 들어간다. 다른 사용자는 읽지 못하게 600으로
       - name: .env 쓰기
@@ -100,6 +100,9 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          BACKUP_PING_URL: ${{ secrets.BACKUP_PING_URL }}
         run: |
           {
             echo "IMAGE_PREFIX=${{ needs.images.outputs.prefix }}"
@@ -112,6 +115,12 @@ jobs:
             echo "MAIL_PASSWORD=${MAIL_PASSWORD}"
             echo "MAIL_FROM=${{ vars.MAIL_FROM }}"
             echo "APP_BASE_URL=${{ vars.APP_BASE_URL }}"
+            # 아래는 앱이 아니라 backup.sh가 읽는다
+            echo "R2_ENDPOINT=${{ vars.R2_ENDPOINT }}"
+            echo "R2_BUCKET=${{ vars.R2_BUCKET }}"
+            echo "R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}"
+            echo "R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}"
+            echo "BACKUP_PING_URL=${BACKUP_PING_URL}"
           } | ssh "$HOST" 'umask 077 && cat > /srv/bandal/.env'
 
       # 새 버전이 healthy가 안 되면 스크립트가 이전 버전으로 되돌리고 실패로 끝난다

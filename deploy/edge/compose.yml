@@ -1,6 +1,7 @@
 # 서버의 /srv/edge에 놓이는 바깥 Nginx. 두 앱이 같이 쓴다. 구조는 DESIGN.md 6번 "배포 구조"
 # 먼저: docker network create edge
-# 실행: docker compose up -d
+# 처음 띄울 때: ./cert.sh issue bandal.site www.bandal.site  (임시 인증서로 띄우고 진짜 인증서를 받아 바꾼다)
+# 그 뒤로는 cron이 ./cert.sh renew를 하루 두 번 돌린다
 name: edge
 
 services:
@@ -8,12 +9,16 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     mem_limit: 64m
-    # 서버가 밖으로 여는 포트는 이것뿐이다. 로컬에서 확인할 때는 EDGE_HTTP_PORT로 다른 번호를 쓴다
-    # HTTPS(443)는 도메인을 정한 뒤 붙인다
+    # 서버가 밖으로 여는 포트는 이 둘뿐이다. 로컬에서 확인할 때는 EDGE_HTTP_PORT, EDGE_HTTPS_PORT로 다른 번호를 쓴다
     ports:
       - "${EDGE_HTTP_PORT:-80}:80"
+      - "${EDGE_HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # 인증서. cert.sh가 Let's Encrypt에서 받은 것을 도메인별 폴더에 복사해 둔다
+      - ./certs:/etc/nginx/certs:ro
+      # 인증서 증명 파일. certbot이 쓰고 Nginx가 80번으로 내준다
+      - ./acme:/var/www/acme:ro
     # edge에만 붙는다. 각 앱의 입구(bandal-web 등)는 보이지만 backend와 DB는 이름조차 모른다
     networks: [edge]
 

@@ -220,7 +220,7 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
                               │ 80, 443  ← 서버가 밖으로 여는 포트는 이 둘뿐
                               ▼
   /srv/edge          ┌──────────────────┐
-                     │   바깥 Nginx      │  주소(서브도메인)를 보고 어느 앱으로 보낼지 정한다. HTTPS를 여기서 푼다
+                     │   바깥 Nginx      │  도메인을 보고 어느 앱으로 보낼지 정한다. HTTPS를 여기서 푼다
                      └──────────────────┘
                               │
   ═══════════════════ edge 네트워크 (두 앱이 같이 쓴다) ═══════════════════
@@ -250,9 +250,30 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
 - 앱마다 Postgres, Redis를 따로 둔다. 한 앱의 장애(디스크, 커넥션, 잘못된 마이그레이션, Redis 비우기)가 다른 앱으로 번지지 않는다.
 - 컨테이너마다 메모리 상한을 둔다. 한 앱이 메모리를 다 먹어도 다른 앱은 산다.
 
-요청 한 번의 길: 브라우저가 `https://bandal.<도메인>/api/group-orders`를 연다 → 바깥 Nginx가 HTTPS를 풀고 주소를 보고 `edge`로
-`bandal-web`에 넘긴다 → bandal-web이 `/api`를 보고 bandal 네트워크로 `backend:8080`에 넘긴다 → backend가 `postgres:5432`,
-`redis:6379`를 쓴다 → 거꾸로 돌아간다. `/api`가 아닌 주소(`/`, `/rooms/3`)는 bandal-web이 화면 파일을 바로 내준다.
+요청 한 번의 길: 브라우저가 `https://bandal.site/api/group-orders`를 연다 → Cloudflare DNS가 서버 IP를 알려 준다(프록시는 끔,
+브라우저가 서버에 바로 붙는다) → 바깥 Nginx가 HTTPS를 풀고 도메인을 보고 `edge`로 `bandal-web`에 넘긴다 → bandal-web이 `/api`를
+보고 bandal 네트워크로 `backend:8080`에 넘긴다 → backend가 `postgres:5432`, `redis:6379`를 쓴다 → 거꾸로 돌아간다. `/api`가 아닌
+주소(`/`, `/rooms/3`)는 bandal-web이 화면 파일을 바로 내준다. `http://`로 오면 바깥 Nginx가 `https://`로 돌려보낸다. (ADR-070)
+
+### 운영 흐름 한눈에 (ADR-067, 069, 070)
+
+요청 말고 서버에서 저절로 도는 일들이다. 아키텍처를 다시 볼 때 이 넷과 위의 "요청 한 번의 길"을 같이 따라가면 된다.
+
+```
+[코드가 바뀔 때]  브랜치 push → PR → CI(테스트) 초록 → main merge
+                 → Deploy 워크플로: Arm 이미지 두 개를 만들어 GHCR에 올린다(태그 = 커밋 SHA)
+                 → SSH로 서버에 들어가 compose 파일, 스크립트, .env(GitHub Secrets에서)를 올린다
+                 → deploy.sh: 배포 직전 DB 백업 → 새 이미지 pull → 띄우고 healthy 기다림
+                              → 안 되면 마지막 성공 태그로 되돌리고 워크플로 빨간불
+
+[매일 새벽 4시]   cron → backup.sh: pg_dump → 빈 Postgres에 복구해 보고 행 수 비교
+                 → Cloudflare R2에 업로드(14일 보관) → healthchecks.io에 성공 신호
+
+[하루 두 번]      cron → cert.sh renew: 만료 30일 전이면 Let's Encrypt에서 새 인증서(80번으로 증명)
+                 → Nginx가 읽는 폴더에 복사 → nginx reload → healthchecks.io에 성공 신호
+
+[신호가 끊기면]   healthchecks.io가 메일을 보낸다. 실패 신호(/fail)면 바로, 아무 신호가 없으면 정한 시간 뒤에
+```
 
 ## 7. 단계별로 만들 것
 
@@ -316,7 +337,11 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
 - 캠퍼스를 대학 행으로, 가입할 때 캠퍼스를 고른다. 처음 학교 목록은 Flyway V2로 (끝, ADR-066)
 - 가입과 메일 인증 화면 (끝)
 - 배포 워크플로: CI가 초록이면 Arm 이미지를 GHCR에 올리고 SSH로 서버에 띄운다. 실패하면 이전 버전으로 자동 되돌림 (ADR-067)
-- 남은 것: 서버(OCI) 만들기, 실제 메일 발송 수단, 도메인과 HTTPS, DB 백업
+- 도메인 bandal.site와 운영 메일 Resend (끝, ADR-068)
+- DB 백업: 매일과 배포 직전에 pg_dump, 복구해 본 뒤 Cloudflare R2에 둔다. 스크립트와 로컬 리허설 끝, 서버 쪽 설정은 서버가 생기면 (ADR-069)
+- HTTPS: 바깥 Nginx에서 풀고, Let's Encrypt 인증서를 certbot으로 자동 갱신. http는 https로 돌려보내고 HSTS. Cloudflare 프록시는 끔.
+  설정과 로컬 리허설(시험용 ACME 서버 Pebble) 끝, 실제 인증서는 서버가 생기면 (ADR-070)
+- 남은 것: 서버(OCI) 만들기와 첫 배포
 - 완료 기준: main에 push하면 자동 배포되고, 브라우저로 가입부터 방 만들기와 참여까지 할 수 있다
 - 일부러 앞으로 당겼다. 뒤로 미루면 안 하게 되고, 여기서 해두면 이후 모든 단계가
   실제 환경에서 굴러간다

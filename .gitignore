@@ -43,3 +43,10 @@ out/
 ### 비밀값 ###
 # 서버용 .env는 git에 올리지 않는다. 형식은 deploy/bandal/.env.example
 .env
+# DB 덤프에는 이메일과 비밀번호 해시가 들어 있다
+*.dump
+deploy/bandal/backups/
+# 인증서와 그 개인 키, Let's Encrypt 계정 키
+deploy/edge/certs/
+deploy/edge/letsencrypt/
+deploy/edge/acme/

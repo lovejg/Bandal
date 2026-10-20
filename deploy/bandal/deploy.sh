@@ -20,6 +20,15 @@ up() {
 }
 
 echo "배포: ${PREV_TAG:-없음} -> $NEW_TAG"
+
+# 배포 직전 백업. 이번 마이그레이션이 데이터를 망가뜨리면 이 덤프가 바로 앞 상태다.
+# 백업이 실패하면 배포하지 않는다(set -e). 돌아갈 자리 없이 마이그레이션을 돌리지 않는다
+if [ -n "$(docker compose ps -q postgres 2>/dev/null)" ]; then
+  bash ./backup.sh "predeploy-${NEW_TAG:0:7}"
+else
+  echo "DB가 아직 없다(첫 배포). 배포 전 백업을 건너뛴다"
+fi
+
 if up "$NEW_TAG"; then
   echo "$NEW_TAG" > "$LAST_FILE"
   # 일주일 넘게 안 쓴 이미지를 지운다. 디스크가 차는 걸 막는다. 되돌릴 때는 레지스트리에서 다시 받는다
