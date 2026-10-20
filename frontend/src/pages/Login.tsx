@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { ThemeToggle, useToast } from '../components'
 
@@ -60,6 +60,10 @@ export default function Login() {
           {busy ? '확인하는 중…' : '로그인'}
         </button>
       </form>
+
+      <p className="login__switch sub">
+        처음 왔나요? <Link to="/signup">학교 메일로 가입하기</Link>
+      </p>
 
       {import.meta.env.DEV && (
         <section className="samples">

@@ -39,3 +39,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### 비밀값 ###
+# 서버용 .env는 git에 올리지 않는다. 형식은 deploy/bandal/.env.example
+.env

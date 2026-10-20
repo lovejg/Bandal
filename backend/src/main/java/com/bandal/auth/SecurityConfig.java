@@ -51,6 +51,8 @@ public class SecurityConfig {
                         // 가입, 로그인, 토큰 갱신, 인증 링크는 계정이 없거나 미인증이어도 불러야 한다
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+                        // 가입 화면이 고를 캠퍼스를 묻는다. 아직 계정이 없을 때 부른다
+                        .requestMatchers(HttpMethod.GET, "/api/universities").permitAll()
                         // 조회는 로그인만 하면 된다. 메일 미인증도 구경은 할 수 있다
                         .requestMatchers(HttpMethod.GET, "/api/**").authenticated()
                         // 쓰기는 메일 인증을 마친 사람만. hasRole("VERIFIED")는 ROLE_VERIFIED를 찾는다

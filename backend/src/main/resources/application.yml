@@ -1,44 +1,40 @@
+# 어디서나 같은 설정. 환경마다 다른 값은 application-dev.yml(로컬), application-prod.yml(운영)이 덮어쓴다.
+# ${...}는 밖(환경 변수)에서 받는 비밀값이다. 기본값을 두지 않아서, 빠뜨리면 앱이 뜨지 않는다.
+# 기본값이 있으면 운영에서 빠뜨려도 GitHub에 공개된 개발용 값으로 조용히 뜬다.
 spring:
   application:
     name: bandal
 
   datasource:
-    # docker-compose.yml에서 5433으로 열었다. 기본 포트 5432는 다른 프로젝트가 쓴다.
-    url: jdbc:postgresql://localhost:5433/bandal
-    username: bandal
-    password: bandal
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:
-      # 앱을 띄울 때 테이블을 새로 만들고, 내릴 때 지운다.
-      # 엔티티를 자주 고치는 지금 단계에 편하다. Phase 2에서 Flyway로 바꾼다.
-      ddl-auto: create-drop
-    properties:
-      hibernate:
-        format_sql: true
+      # 테이블은 Flyway가 만든다. Hibernate는 엔티티와 테이블이 맞는지만 보고, 안 맞으면 앱이 뜨지 않는다
+      ddl-auto: validate
     # 기본값이 true라서 컨트롤러가 응답을 다 쓸 때까지 DB 커넥션을 잡고 있는다.
     # 커넥션을 오래 물고 있으면 나중에 부하 테스트에서 그대로 병목이 된다. 꺼둔다.
     open-in-view: false
 
   data:
     redis:
-      # docker-compose.yml에서 6380으로 열었다
-      host: localhost
-      port: 6380
       # 명령 하나의 응답을 기다리는 최대 시간. 기본값은 60초라, Redis가 느려지면 요청마다 그만큼 멈춘다
       # 캐시는 빨리 포기하고 DB로 가는 게 낫다
       timeout: 500ms
 
   mail:
-    # Mailpit. 밖으로 나가지 않고 http://localhost:8025 에 쌓인다
-    host: localhost
-    port: 1025
+    properties:
+      # 기본값은 끝없이 기다린다(timeout -1). 메일 서버가 응답하지 않으면 인증 메일을 보내던 요청이 영영 붙잡힌다
+      # 대괄호는 "점까지 포함해 키 하나"라는 뜻이다. JavaMail이 이 이름 그대로 읽는다
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 10000
+      "[mail.smtp.writetimeout]": 10000
 
 # 토큰 설정
 jwt:
-  # HS256이라 32바이트 이상이어야 한다. 개발용이고, 배포할 때는 환경변수로 옮긴다.
-  # 이 값이 새면 누구나 남의 토큰을 만들 수 있다.
-  secret: bandal-local-dev-secret-key-change-me-in-production
+  # HS256이라 32바이트 이상이어야 한다. 이 값이 새면 누구나 남의 토큰을 만들 수 있다
+  secret: ${JWT_SECRET}
   # 액세스 토큰은 짧게. 탈취돼도 피해 시간을 줄인다
   access-token-minutes: 15
   # 리프레시 토큰은 길게. 이건 Redis에 저장해서 로그아웃 때 지운다
@@ -46,15 +42,11 @@ jwt:
 
 # 이메일 인증 설정
 app:
-  # 메일에 들어갈 링크의 앞부분. 프론트가 생기면 이 줄만 프론트 주소로 바꾼다
-  verify-link-base: http://localhost:8080/api/auth/verify
   # 메일은 사람이 여는 매체라 액세스 토큰(15분)보다 길게 준다
   verification-token-minutes: 30
   # 재전송 제한. 창 안에서 이 횟수를 넘으면 429
   resend-limit: 5
   resend-window-minutes: 60
-  # 메일 보내는 사람 주소. 배포할 때 실제 도메인으로 바꾼다
-  mail-from: no-reply@bandal.local
   # 방 목록 첫 페이지 캐시
   room-list-cache:
     # Phase 4 부하 테스트에서 끄고 켜며 비교한다
@@ -62,15 +54,13 @@ app:
     # 목록은 늦어도 이만큼만 옛것이다. 지우기를 빠뜨린 곳도 이 시간이 지나면 맞아진다
     ttl-seconds: 10
 
-logging:
-  level:
-    # 실행되는 SQL을 눈으로 본다. JPA가 뭘 하는지 모르고 넘어가지 않기 위해서.
-    org.hibernate.SQL: debug
-    # 물음표 자리에 실제로 들어간 값까지 보여준다.
-    org.hibernate.orm.jdbc.bind: trace
-
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+  health:
+    # 메일 서버에 못 닿는다고 앱 전체를 DOWN으로 보지 않는다. 메일이 멈춰도 방 목록, 참여, 정산은 된다.
+    # DOWN이면 컨테이너가 unhealthy가 되어 입구(web)가 뜨지 않는다. DB와 Redis는 health에 남긴다
+    mail:
+      enabled: false

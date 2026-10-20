@@ -15,7 +15,7 @@ public class University {
 
     private String name;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String emailDomain;
 
     public University(String name, String emailDomain) {

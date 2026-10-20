@@ -1,0 +1,39 @@
+# 로컬 개발(./gradlew bootRun이 dev를 켠다). docker-compose.yml로 띄운 Postgres, Redis, Mailpit을 쓴다.
+# 여기 있는 비밀값은 개발용이라 공개돼도 된다. 운영에서는 절대 쓰지 않는다
+spring:
+  datasource:
+    # docker-compose.yml에서 5433으로 열었다. 기본 포트 5432는 다른 프로젝트가 쓴다.
+    url: jdbc:postgresql://localhost:5433/bandal
+    username: bandal
+    password: bandal
+
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      # docker-compose.yml에서 6380으로 열었다
+      host: localhost
+      port: 6380
+
+  mail:
+    # Mailpit. 밖으로 나가지 않고 http://localhost:8025 에 쌓인다
+    host: localhost
+    port: 1025
+
+jwt:
+  secret: bandal-local-dev-secret-key-change-me-in-production
+
+app:
+  # 메일에 들어갈 링크의 앞부분. 프론트가 생기면 이 줄만 프론트 주소로 바꾼다
+  verify-link-base: http://localhost:8080/api/auth/verify
+  mail-from: no-reply@bandal.local
+
+logging:
+  level:
+    # 실행되는 SQL을 눈으로 본다. JPA가 뭘 하는지 모르고 넘어가지 않기 위해서.
+    org.hibernate.SQL: debug
+    # 물음표 자리에 실제로 들어간 값까지 보여준다. 이메일, 계좌번호도 찍히니 운영에서는 켜지 않는다
+    org.hibernate.orm.jdbc.bind: trace

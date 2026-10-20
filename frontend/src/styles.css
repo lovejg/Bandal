@@ -815,6 +815,105 @@ textarea {
   color: var(--on-lime);
 }
 
+.hero--small {
+  margin: 28px 0 28px;
+}
+
+.hero--small .hero__title {
+  font-size: 40px;
+}
+
+.hero--small .hero__copy {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--sub);
+}
+
+.login__switch {
+  margin-top: 22px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.login__switch a {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* 가입할 때 이메일 아래에 뜨는 학교 */
+.campus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -4px;
+  font-weight: 600;
+}
+
+.campus__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 0 1.5px var(--ink);
+}
+
+.campus--none {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--coral-soft);
+  color: var(--coral);
+}
+
+.campus-pick {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.campus-pick__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campus-pick__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.campus-pick__item.on {
+  border-color: var(--ink);
+  background: var(--lime-soft);
+}
+
+.campus-pick__item input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.notice__action {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.notice__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .samples {
   margin-top: 28px;
   padding: 14px;

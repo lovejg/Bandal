@@ -9,7 +9,10 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // @DataJpaTest: JPA 관련 빈만 띄운다. 컨트롤러 같은 건 안 올라와서 빠르다.
@@ -50,30 +53,6 @@ class UniversityRepositoryTest {
     }
 
     @Test
-    @DisplayName("이메일 도메인으로 대학을 찾을 수 있다")
-    void findByEmailDomain() {
-        // given
-        University university = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
-        universityRepository.save(new University("다른대학교", "other.ac.kr"));
-        entityManager.flush();
-        entityManager.clear();
-
-        // when
-        University found = universityRepository.findByEmailDomain("hankuk.ac.kr").orElseThrow();
-
-        // then
-        assertThat(found.getId()).isEqualTo(university.getId());
-    }
-
-    @Test
-    @DisplayName("등록되지 않은 도메인으로는 대학을 찾지 못한다")
-    void unknownEmailDomain() {
-        universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
-
-        assertThat(universityRepository.findByEmailDomain("gmail.com")).isEmpty();
-    }
-
-    @Test
     @DisplayName("이메일 도메인 없이 대학을 저장하면 DB가 거부한다")
     void emailDomainIsRequired() {
         University university = new University("도메인 없는 대학교", null);
@@ -84,15 +63,53 @@ class UniversityRepositoryTest {
     }
 
     @Test
-    @DisplayName("이미 다른 대학이 쓰는 이메일 도메인은 저장할 수 없다")
-    void emailDomainIsUnique() {
-        // given
-        universityRepository.saveAndFlush(new University("한국대학교", "hankuk.ac.kr"));
+    @DisplayName("같은 학교의 캠퍼스들은 이메일 도메인을 같이 쓸 수 있다")
+    void campusesShareEmailDomain() {
+        // 캠퍼스 하나가 대학 행 하나다. 신촌과 미래캠퍼스 학생은 둘 다 @yonsei.ac.kr이다. 어느 캠퍼스인지는 가입할 때 고른다
+        universityRepository.saveAndFlush(new University("한국대학교 본캠퍼스", "campus-test.ac.kr"));
+        University other = new University("한국대학교 제2캠퍼스", "campus-test.ac.kr");
 
-        // when, then
-        // 같은 도메인이 두 학교에 걸리면 가입자가 어느 학교 소속인지 정할 수 없다.
-        University duplicated = new University("다른대학교", "hankuk.ac.kr");
-        assertThatThrownBy(() -> universityRepository.saveAndFlush(duplicated))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatCode(() -> universityRepository.saveAndFlush(other)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("이메일 도메인으로 그 학교의 캠퍼스를 모두 찾는다. 순서는 등록한 순서다")
+    void findAllByEmailDomain() {
+        University main = universityRepository.save(new University("한국대학교 본캠퍼스", "campus-test.ac.kr"));
+        University second = universityRepository.save(new University("한국대학교 제2캠퍼스", "campus-test.ac.kr"));
+        universityRepository.save(new University("다른대학교", "other.ac.kr"));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<University> found = universityRepository.findAllByEmailDomainOrderById("campus-test.ac.kr");
+
+        assertThat(found).extracting(University::getId).containsExactly(main.getId(), second.getId());
+    }
+
+    @Test
+    @DisplayName("등록되지 않은 도메인이면 빈 목록이다")
+    void findAllByUnknownEmailDomain() {
+        assertThat(universityRepository.findAllByEmailDomainOrderById("gmail.com")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("운영에 처음 넣는 학교가 마이그레이션으로 들어 있다")
+    void seededUniversities() {
+        // 운영 DB에는 대학을 만드는 API가 없어서, 마이그레이션이 넣어 두지 않으면 아무도 가입할 수 없다
+        List<String> names = entityManager
+                .createQuery("select u.name from University u where u.emailDomain in :domains order by u.name", String.class)
+                .setParameter("domains", List.of("snu.ac.kr", "yonsei.ac.kr", "korea.ac.kr", "hanyang.ac.kr",
+                        "khu.ac.kr", "sogang.ac.kr", "ewhain.net", "kaist.ac.kr"))
+                .getResultList();
+
+        assertThat(names).containsExactlyInAnyOrder(
+                "서울대학교",
+                "연세대학교 신촌캠퍼스", "연세대학교 미래캠퍼스",
+                "고려대학교 서울캠퍼스", "고려대학교 세종캠퍼스",
+                "한양대학교 서울캠퍼스", "한양대학교 ERICA캠퍼스",
+                "경희대학교 서울캠퍼스", "경희대학교 국제캠퍼스",
+                "서강대학교",
+                "이화여자대학교",
+                "KAIST");
     }
 }

@@ -1,0 +1,26 @@
+# 운영 서버. 서버 안의 Docker Compose가 SPRING_PROFILES_ACTIVE=prod로 띄운다.
+# 비밀값(DB 계정, JWT 비밀키, 메일 계정)은 application.yml의 ${...} 자리로 환경 변수에서 받는다.
+# 여기에는 비밀이 아니지만 운영에서만 다른 값을 둔다
+spring:
+  datasource:
+    # 같은 Compose 안의 Postgres 컨테이너. 밖으로는 열지 않는다
+    url: jdbc:postgresql://postgres:5432/bandal
+
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+  # 메일 발송 수단은 아직 정하지 않았다. 정하기 전까지는 값이 없어서 운영으로는 뜨지 않는다
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+
+app:
+  # 도메인을 정하면 실제 주소가 들어간다
+  verify-link-base: ${APP_BASE_URL}/api/auth/verify
+  mail-from: ${MAIL_FROM}
+
+# SQL 로그는 켜지 않는다. 기본값(INFO)이면 시작, 경고, 에러만 남는다
