@@ -69,8 +69,6 @@ jobs:
 
   deploy:
     needs: images
-    # 서버가 생기기 전에는 건너뛴다. 저장소 변수 DEPLOY_HOST를 넣는 순간부터 돈다
-    if: vars.DEPLOY_HOST != ''
     runs-on: ubuntu-24.04
     # Settings > Environments의 production. 비밀값을 이 환경에만 두면 다른 워크플로가 꺼내 쓸 수 없다
     environment: production
@@ -79,6 +77,35 @@ jobs:
     env:
       HOST: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
     steps:
+      # 값이 빠졌으면 조용히 건너뛰지 않고 무엇이 없는지 말하고 실패한다.
+      # job의 if에서는 이 검사를 못 한다. if는 환경(production)이 정해지기 전에 계산돼서 환경 변수가 보이지 않는다
+      - name: 배포 값 확인
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+          R2_ENDPOINT: ${{ vars.R2_ENDPOINT }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          MAIL_HOST: ${{ vars.MAIL_HOST }}
+          MAIL_PORT: ${{ vars.MAIL_PORT }}
+          MAIL_USERNAME: ${{ vars.MAIL_USERNAME }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          missing=0
+          for n in DEPLOY_HOST DEPLOY_USER APP_BASE_URL R2_ENDPOINT R2_BUCKET MAIL_HOST MAIL_PORT MAIL_USERNAME MAIL_FROM \
+                   DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS \
+                   DB_PASSWORD JWT_SECRET MAIL_PASSWORD R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+            if [ -z "${!n}" ]; then echo "::error::production 환경에 $n 이 없다"; missing=1; fi
+          done
+          exit $missing
+
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
