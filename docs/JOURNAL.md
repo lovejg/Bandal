@@ -1730,3 +1730,77 @@ A는 진짜 실패로 보고 로그아웃했다. 이 순서는 지어낸 게 아
 
 **한 줄 요약** "탭 두 개가 동시에 토큰을 갱신할 때 진 탭의 401이 먼저 오면 그 탭이 로그아웃됐다. 브라우저 잠금(Web Locks)으로
 탭끼리 갱신 차례를 세워 고쳤다."
+
+---
+
+## 2026-10-19. 메일 서버에 못 닿는다는 이유로 앱 전체가 DOWN이 되어, 입구가 뜨지 않았다
+
+**상황** 서버 구성(바깥 Nginx, bandal-web, backend, postgres, redis)을 노트북에서 그대로 띄웠다. 메일 발송 수단은 아직 안 정해서
+없는 주소(`smtp.nowhere.invalid`)를 줬다. `docker compose up`이 이렇게 끝났다.
+
+```
+dependency failed to start: container bandal-stage-backend-1 is unhealthy
+```
+
+원인이 둘 겹쳐 있었다. healthcheck 기록에는 명령 자체가 안 돌았다고 나왔다.
+
+```
+/bin/sh: 1: cannot create /dev/tcp/127.0.0.1/8080: Directory nonexistent
+```
+
+`CMD-SHELL`은 `/bin/sh`로 돌고, Ubuntu 기반 JRE 이미지의 `/bin/sh`는 dash다. `/dev/tcp`는 bash에만 있는 기능이다. 그런데 컨테이너
+안에서 bash로 직접 물어보니 health 자체도 `{"status":"DOWN"}`이었다. 앱 로그에는 이렇게 있었다.
+
+```
+WARN o.s.b.mail.health.MailHealthIndicator : Mail health check failed
+MailConnectException: Couldn't connect to host, port: smtp.nowhere.invalid, 587; timeout -1;
+```
+
+**원인** Spring의 health는 붙어 있는 외부 서비스를 전부 확인하고, 메일 서버 하나가 안 닿아도 앱 전체를 DOWN으로 본다. 그래서
+backend가 unhealthy가 됐고, backend가 healthy가 되길 기다리던 입구(web)는 아예 뜨지 않았다. 운영이었다면 메일 서비스가 잠깐 멈춘
+것만으로 방 목록, 참여, 정산까지 들어갈 수 없게 된다. `timeout -1`은 접속을 끝없이 기다린다는 뜻이다. 메일 서버가 응답을 안 하면
+인증 메일을 보내던 요청 스레드가 영영 묶인다.
+
+**해결**
+- healthcheck를 `["CMD", "bash", "-c", "..."]`로 bash를 직접 부르게 했다.
+- health에서 메일을 뺐다(`management.health.mail.enabled=false`). 메일 없이도 앱은 일한다. DB와 Redis는 남겼다.
+- 메일 접속 5초, 응답과 쓰기 10초로 상한을 뒀다.
+
+다시 띄우자 backend가 healthy가 되고 web이 떴다. 밖에서 화면 200, 화면 안 주소(`/rooms/3`) 200, 로그인이 필요한 API 401, 모르는
+주소는 응답 없이 끊음. 바깥 Nginx 안에서 이름을 찾아보니 `bandal-web`만 보이고 `backend`, `postgres`, `redis`는 안 보였다(ADR-065).
+밖으로 열린 포트는 바깥 Nginx 하나였다.
+
+곁에서 본 것: 다시 띄우는 사이에 `password authentication failed for user "bandal"`로 backend가 4번 다시 켜졌다. 확인 스크립트가
+띄울 때마다 DB 비밀번호를 새로 만들었는데, Postgres는 `POSTGRES_PASSWORD`를 볼륨이 비어 있는 첫 실행 때만 쓴다. 운영에서 `.env`의
+비밀번호만 바꿔도 똑같이 멈춘다.
+
+**배운 것**
+- health는 "앱이 일할 수 있는가"여야 한다. 없어도 되는 외부 서비스까지 넣으면, 그 서비스의 장애가 앱 전체의 장애가 된다.
+- 외부를 부르는 곳은 기다리는 시간에 상한이 있는지 본다. 기본값이 "끝없이"인 라이브러리가 있다.
+
+**한 줄 요약** "메일 서버에 못 닿는다는 이유로 health가 DOWN이 되어 입구 컨테이너가 뜨지 않았다. health에서 메일을 빼고, 메일 대기
+시간에 상한을 뒀다."
+
+## 2026-10-20 이미 돌린 V2의 줄바꿈을 고쳤더니 로컬 앱이 뜨지 않았다
+
+**상황** 로컬 개발 DB에 V2(캠퍼스 학교 넣기)가 이미 돌아간 뒤에, V2 파일에서 `insert ... values`의 `values`를 다음 줄로 내렸다.
+SQL의 뜻은 그대로다.
+
+**증상** 다음에 개발 서버를 띄우자 Flyway가 멈췄다.
+
+```
+FlywayValidateException: Validate failed: Migrations have failed validation
+Either revert the changes to the migration, or run repair to update the schema history.
+```
+
+**원인** Flyway는 돌린 파일마다 내용의 체크섬을 `flyway_schema_history`에 적어 두고, 뜰 때마다 지금 파일과 비교한다. 체크섬은
+글자 단위라 줄바꿈 하나도 "다른 파일"이다. 운영이었다면 배포한 앱이 뜨지 않는다.
+
+**해결** 아직 운영에 나가지 않은 파일이라 로컬 기록만 맞추면 된다. `docker compose down -v`로 로컬 DB 볼륨을 지우고 다시
+띄웠다. Flyway가 기록 테이블부터 새로 만들고 V1, V2를 차례로 돌려 정상으로 떴다. `flyway repair`(기록된 체크섬만 고치기)는
+로컬 데이터를 남길 이유가 없어서 쓰지 않았다.
+
+**배운 것** 한 번 돈 마이그레이션 파일은 모양까지 얼린다. 운영에 나가기 전이면 로컬 기록을 맞추고(repair 또는 DB 다시 만들기),
+나간 뒤면 새 번호 파일을 쓴다.
+
+**한 줄 요약** "SQL 뜻은 그대로인데 줄바꿈만 바꿔도 Flyway 체크섬이 달라져 앱이 뜨지 않았다."

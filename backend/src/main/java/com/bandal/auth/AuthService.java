@@ -17,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -51,8 +52,15 @@ public class AuthService {
         String password = request.password();
         String nickname = request.nickname();
         String domain = email.substring(email.indexOf('@') + 1);
-        University university = universityRepository.findByEmailDomain(domain)
-            .orElseThrow(() -> new IllegalArgumentException("지원하지 않는 학교 이메일입니다"));
+
+        List<University> campuses = universityRepository.findAllByEmailDomainOrderById(domain);
+        if(campuses.isEmpty()) {
+            throw new IllegalArgumentException("지원하지 않는 학교 이메일입니다");
+        }
+        University university = campuses.stream()
+            .filter(campus -> campus.getId().equals(request.universityId()))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("이메일과 고른 학교가 맞지 않습니다"));
 
         // 닉네임은 방 목록에 그대로 보이는 공개 정보라 감출 게 없다. 그대로 알려준다
         if(userRepository.existsByNickname(nickname)) {

@@ -1,0 +1,91 @@
+# 서버의 /srv/bandal에 놓이는 Bandal 묶음. 구조는 DESIGN.md 6번 "배포 구조"
+# 먼저: docker network create edge  (바깥 Nginx와 같이 쓰는 네트워크. 없으면 이 파일이 뜨지 않는다)
+# 비밀값은 같은 폴더의 .env에서 읽는다(.env.example 참고, git에 올리지 않는다)
+# 서버에서는 배포 작업이 이 파일과 deploy.sh, .env를 올리고 ./deploy.sh <커밋 SHA>로 띄운다
+# 로컬에서 직접 만들어 띄울 때: docker compose up -d --build
+name: bandal
+
+services:
+  # Bandal의 입구. 화면 파일을 내주고 /api는 backend로 넘긴다. edge와 bandal 네트워크 둘 다에 붙는 건 이것뿐이다
+  web:
+    image: ${IMAGE_PREFIX:-bandal}-web:${IMAGE_TAG:-local}
+    build: ../../frontend
+    restart: unless-stopped
+    mem_limit: 64m
+    networks:
+      default:
+      edge:
+        # edge에서는 서비스 이름(web) 대신 이 이름으로 찾는다. 다른 앱도 web이라는 서비스를 두면 edge 안에서 이름이 겹친다
+        aliases: [bandal-web]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    image: ${IMAGE_PREFIX:-bandal}-backend:${IMAGE_TAG:-local}
+    build: ../../backend
+    restart: unless-stopped
+    # JVM 힙은 이 값의 75%다(Dockerfile)
+    mem_limit: 1g
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
+      APP_BASE_URL: ${APP_BASE_URL}
+    # ports가 없다. bandal 네트워크 안의 web만 이 컨테이너에 닿는다
+    healthcheck:
+      # JRE 이미지에 curl이 없어서, 이미 있는 bash로 health 주소에 요청을 보낸다.
+      # CMD-SHELL은 /bin/sh(dash)로 돌고, /dev/tcp는 bash에만 있는 기능이라 bash를 직접 부른다
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_DB: bandal
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      # 컨테이너를 지우고 새로 만들어도 데이터는 이 볼륨에 남는다
+      - postgres-data:/var/lib/postgresql/data
+    # ports가 없다. 밖에서도, 바깥 Nginx에서도 닿지 않는다
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d bandal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # 리프레시 토큰이 들어 있어서, 메모리가 차도 키를 멋대로 지우는 설정(maxmemory 정책)은 켜지 않는다
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  # default는 이 파일이 만드는 bandal 전용 네트워크(bandal_default)다
+  edge:
+    external: true
+
+volumes:
+  postgres-data:

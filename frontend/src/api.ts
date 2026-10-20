@@ -121,6 +121,19 @@ export interface PickupSpot {
   description: string | null
 }
 
+// 가입할 때 고르는 캠퍼스. 같은 메일 도메인을 여러 캠퍼스가 같이 쓴다
+export interface Campus {
+  id: number
+  name: string
+}
+
+export interface SignUpInput {
+  email: string
+  password: string
+  nickname: string
+  universityId: number
+}
+
 export interface ItemInput {
   menuName: string
   options: string | null
@@ -249,6 +262,10 @@ export const api = {
     return Promise.resolve()
   },
   me: () => get<Me>('/api/auth/me'),
+  campuses: (domain: string) =>
+    get<{ universities: Campus[] }>(`/api/universities?domain=${encodeURIComponent(domain)}`).then((r) => r.universities),
+  signUp: (input: SignUpInput) => post<{ message: string }>('/api/auth/signup', input),
+  resendVerification: () => post<void>('/api/auth/verify/resend'),
   registerAccount: (bankName: string, accountNumber: string, accountHolder: string) =>
     put<void>('/api/users/me/account', { bankName, accountNumber, accountHolder }),
 

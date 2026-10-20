@@ -109,7 +109,7 @@ class SignUpApiTest {
     @Test
     @DisplayName("학교 이메일로 가입하면 202이고 메일을 보냈다고만 답한다")
     void signsUp() throws Exception {
-        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버");
+        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId());
 
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -127,7 +127,7 @@ class SignUpApiTest {
     @Test
     @DisplayName("가입 응답에는 사용자 정보가 들어가지 않는다")
     void responseCarriesNoUserInfo() throws Exception {
-        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버");
+        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId());
 
         String body = mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -145,7 +145,7 @@ class SignUpApiTest {
     @DisplayName("가입하면 인증 메일이 그 주소로 나간다")
     void sendsVerificationMail() throws Exception {
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))))
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
                 .andExpect(status().isAccepted());
 
         SimpleMailMessage mail = sentMail();
@@ -161,7 +161,7 @@ class SignUpApiTest {
                 .when(mailSender).send(org.mockito.ArgumentMatchers.any(SimpleMailMessage.class));
 
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))))
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
                 .andExpect(status().isAccepted());
 
         // 계정은 남아야 한다. 메일은 재전송으로 다시 받을 수 있다
@@ -171,7 +171,7 @@ class SignUpApiTest {
     @Test
     @DisplayName("비밀번호는 해시로 저장되고 응답에 나가지 않는다")
     void storesHashedPassword() throws Exception {
-        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버");
+        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId());
 
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -188,9 +188,9 @@ class SignUpApiTest {
     @DisplayName("같은 비밀번호로 둘이 가입해도 해시는 서로 다르다")
     void hashesDifferPerUser() throws Exception {
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))));
+                .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))));
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                .content(json(new SignUpRequest("kim@hankuk.ac.kr", "password1234", "배고파"))));
+                .content(json(new SignUpRequest("kim@hankuk.ac.kr", "password1234", "배고파", hankuk.getId()))));
 
         String first = userRepository.findByEmail("lee@hankuk.ac.kr").orElseThrow().getPassword();
         String second = userRepository.findByEmail("kim@hankuk.ac.kr").orElseThrow().getPassword();
@@ -201,7 +201,7 @@ class SignUpApiTest {
     @Test
     @DisplayName("모르는 학교 도메인이면 400이고 메일도 안 나간다")
     void rejectsUnknownDomain() throws Exception {
-        SignUpRequest request = new SignUpRequest("park@minguk.ac.kr", "password1234", "외부인");
+        SignUpRequest request = new SignUpRequest("park@minguk.ac.kr", "password1234", "외부인", hankuk.getId());
 
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -216,7 +216,7 @@ class SignUpApiTest {
     @Test
     @DisplayName("도메인 대소문자가 달라도 같은 학교로 본다")
     void ignoresDomainCase() throws Exception {
-        SignUpRequest request = new SignUpRequest("lee@HANKUK.AC.KR", "password1234", "마라탕러버");
+        SignUpRequest request = new SignUpRequest("lee@HANKUK.AC.KR", "password1234", "마라탕러버", hankuk.getId());
 
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -230,7 +230,7 @@ class SignUpApiTest {
     @DisplayName("이메일은 소문자로 저장한다")
     void storesEmailInLowerCase() throws Exception {
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("Lee@HANKUK.ac.kr", "password1234", "마라탕러버"))))
+                        .content(json(new SignUpRequest("Lee@HANKUK.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
                 .andExpect(status().isAccepted());
 
         assertThat(userRepository.findByEmail("lee@hankuk.ac.kr")).isPresent();
@@ -241,11 +241,11 @@ class SignUpApiTest {
     void treatsCaseVariantAsDuplicate() throws Exception {
         // 대소문자를 가리면 같은 사람이 계정을 두 개 만들 수 있다
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))));
+                .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))));
         org.mockito.Mockito.clearInvocations(mailSender);
 
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("LEE@hankuk.ac.kr", "password1234", "다른닉네임"))))
+                        .content(json(new SignUpRequest("LEE@hankuk.ac.kr", "password1234", "다른닉네임", hankuk.getId()))))
                 .andExpect(status().isAccepted());
 
         assertThat(userRepository.count()).isEqualTo(1);
@@ -257,12 +257,12 @@ class SignUpApiTest {
     @DisplayName("이미 가입된 이메일이어도 가입 성공과 똑같이 답한다")
     void hidesDuplicateEmail() throws Exception {
         String first = mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))))
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
 
         String second = mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "another-password", "다른닉네임"))))
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "another-password", "다른닉네임", hankuk.getId()))))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
 
@@ -279,12 +279,12 @@ class SignUpApiTest {
     @DisplayName("이미 가입된 이메일이면 주인에게만 알리는 메일이 간다")
     void tellsTheOwnerInstead() throws Exception {
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))));
+                .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))));
 
         org.mockito.Mockito.clearInvocations(mailSender);
 
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "다른닉네임"))))
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "다른닉네임", hankuk.getId()))))
                 .andExpect(status().isAccepted());
 
         SimpleMailMessage mail = sentMail();
@@ -297,19 +297,19 @@ class SignUpApiTest {
     @DisplayName("이미 쓰는 닉네임이면 409다")
     void rejectsDuplicateNickname() throws Exception {
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버"))))
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
                 .andExpect(status().isAccepted());
 
         // 닉네임은 방 목록에 그대로 보이는 공개 정보라 감추지 않는다
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
-                        .content(json(new SignUpRequest("kim@hankuk.ac.kr", "password1234", "마라탕러버"))))
+                        .content(json(new SignUpRequest("kim@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
                 .andExpect(status().isConflict());
     }
 
     @Test
     @DisplayName("이메일 형식이 아니면 400이다")
     void rejectsMalformedEmail() throws Exception {
-        SignUpRequest request = new SignUpRequest("hankuk.ac.kr", "password1234", "마라탕러버");
+        SignUpRequest request = new SignUpRequest("hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId());
 
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -321,7 +321,7 @@ class SignUpApiTest {
     @Test
     @DisplayName("비밀번호가 8자보다 짧으면 400이다")
     void rejectsShortPassword() throws Exception {
-        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "1234", "마라탕러버");
+        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "1234", "마라탕러버", hankuk.getId());
 
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -333,11 +333,70 @@ class SignUpApiTest {
     @Test
     @DisplayName("닉네임이 비면 400이다")
     void rejectsBlankNickname() throws Exception {
-        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "  ");
+        SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "  ", hankuk.getId());
 
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("같은 도메인의 캠퍼스가 여럿이면 고른 캠퍼스로 가입된다")
+    void signsUpToChosenCampus() throws Exception {
+        // 한국대 본캠퍼스(hankuk)와 제2캠퍼스가 hankuk.ac.kr을 같이 쓴다
+        University second = universityRepository.save(new University("한국대학교 제2캠퍼스", "hankuk.ac.kr"));
+
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", second.getId()))))
+                .andExpect(status().isAccepted());
+
+        User saved = userRepository.findByEmail("lee@hankuk.ac.kr").orElseThrow();
+        assertThat(saved.getUniversity().getId()).isEqualTo(second.getId());
+    }
+
+    @Test
+    @DisplayName("이메일과 다른 학교를 고르면 400이고 계정도 메일도 없다")
+    void rejectsOtherSchool() throws Exception {
+        // 화면을 거치지 않고 요청을 보내면 @hankuk.ac.kr로 민국대를 고를 수 있다
+        University minguk = universityRepository.save(new University("민국대학교", "minguk.ac.kr"));
+
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", minguk.getId()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("이메일과 고른 학교가 맞지 않습니다"));
+
+        assertThat(userRepository.count()).isZero();
+        verify(mailSender, never()).send((SimpleMailMessage) org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("없는 학교 id를 보내면 400이다")
+    void rejectsUnknownUniversityId() throws Exception {
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId() + 999))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("이메일과 고른 학교가 맞지 않습니다"));
+
+        assertThat(userRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("모르는 도메인이면 학교를 골랐어도 지원하지 않는 학교라고 답한다")
+    void unknownDomainComesFirst() throws Exception {
+        // 도메인부터 본다. gmail 사용자에게 "학교가 맞지 않는다"고 하면 무엇을 고쳐야 할지 모른다
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("lee@gmail.com", "password1234", "마라탕러버", hankuk.getId()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("지원하지 않는 학교 이메일입니다"));
+    }
+
+    @Test
+    @DisplayName("학교를 고르지 않으면 400이다")
+    void rejectsMissingUniversity() throws Exception {
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("universityId")));
     }
 }

@@ -43,6 +43,7 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -93,6 +94,7 @@ class EmailVerificationApiTest {
     @MockitoBean
     JavaMailSender mailSender;
 
+    University hankuk;
     PickupSpot pickupSpot;
     // 이미 인증을 마친 다른 사용자. 미인증 사용자가 구경할 방이 있어야 한다
     User host;
@@ -112,7 +114,7 @@ class EmailVerificationApiTest {
         redisTemplate.delete(redisTemplate.keys("verify:*"));
         Mockito.clearInvocations(mailSender);
 
-        University hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
+        hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpot = pickupSpotRepository.save(new PickupSpot(hankuk, "제1기숙사 로비", null));
 
         User verified = new User(hankuk, "kim@hankuk.ac.kr", "hashed-password", "배고파");
@@ -146,7 +148,7 @@ class EmailVerificationApiTest {
         mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new SignUpRequest(email, PASSWORD, nickname))))
+                                new SignUpRequest(email, PASSWORD, nickname, hankuk.getId()))))
                 .andExpect(status().isAccepted());
         // 인증을 마친 뒤 방을 만들어보는 테스트가 있어서 계좌까지 붙여둔다
         giveAccount(email);
@@ -316,6 +318,15 @@ class EmailVerificationApiTest {
             assertThat(madeUp).isEqualTo(usedBody);
             // 셋이 같기만 해서는 부족하다. 사용자가 읽을 수 있는 문장이어야 한다
             assertThat(usedBody).contains("만료되었거나 이미 사용된 링크입니다");
+        }
+
+        @Test
+        @DisplayName("링크가 틀려도 브라우저에 JSON이 아니라 화면이 뜨고, 반달로 돌아갈 길이 있다")
+        void failureIsAPage() throws Exception {
+            mockMvc.perform(get("/api/auth/verify").param("token", "이건-그냥-지어낸-값"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
+                    .andExpect(content().string(org.hamcrest.Matchers.containsString("href=\"/\"")));
         }
 
         String verifyFailure(String token) throws Exception {

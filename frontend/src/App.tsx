@@ -1,7 +1,10 @@
+import { useEffect } from 'react'
 import { Link, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { api } from './api'
 import { useAuth } from './auth'
-import { ThemeToggle } from './components'
+import { ThemeToggle, useAction } from './components'
 import Login from './pages/Login'
+import SignUp from './pages/SignUp'
 import Board from './pages/Board'
 import NewRoom from './pages/NewRoom'
 import RoomPage from './pages/Room'
@@ -12,6 +15,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<SignUp />} />
       <Route element={<Shell />}>
         <Route index element={<Board />} />
         <Route path="rooms/new" element={<NewRoom />} />
@@ -47,10 +51,31 @@ function Shell() {
         <NavLink to="/mine">내 방</NavLink>
         <NavLink to="/me">내 정보</NavLink>
       </nav>
-      {!me.emailVerified && <p className="notice">메일 인증 전이라 구경만 할 수 있어요. 받은 메일의 링크를 눌러 주세요.</p>}
+      {!me.emailVerified && <VerifyNotice />}
       <main>
         <Outlet />
       </main>
     </div>
+  )
+}
+
+// 메일 인증 전 안내. 링크는 보통 다른 탭(메일함)에서 누르므로, 이 탭으로 돌아오면 내 정보를 다시 읽는다
+function VerifyNotice() {
+  const { reload } = useAuth()
+  const { busy, run } = useAction()
+
+  useEffect(() => {
+    const onFocus = () => void reload()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [reload])
+
+  return (
+    <p className="notice">
+      메일 인증 전이라 구경만 할 수 있어요. 받은 메일의 링크를 눌러 주세요.
+      <button className="notice__action" disabled={busy} onClick={() => void run(() => api.resendVerification(), '인증 메일을 다시 보냈어요')}>
+        메일 다시 받기
+      </button>
+    </p>
   )
 }

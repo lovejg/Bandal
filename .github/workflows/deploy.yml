@@ -1,0 +1,119 @@
+# main의 CI가 초록이 되면 이어서 돈다. 이미지를 만들어 GHCR에 올리고, 서버에 들어가 새 버전으로 바꿔 띄운다
+# 구조는 DESIGN.md 6번 "배포 구조"
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+# 배포는 하나씩. 앞의 배포가 서버에서 도는 중에 취소하면 반쯤 바뀐 채로 남는다. 그래서 취소하지 않고 기다린다
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  images:
+    # PR이 아니라 main에 push되어 돈 CI가 성공했을 때만
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # GHCR에 이미지를 올린다. 따로 만든 토큰 없이 이 작업의 GITHUB_TOKEN으로 된다
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      prefix: ${{ steps.meta.outputs.prefix }}
+    steps:
+      # CI가 검사한 바로 그 커밋을 받는다. 그사이 main에 새 커밋이 들어왔어도 섞이지 않는다
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      # 이미지 이름. GHCR은 소문자만 받는다
+      - id: meta
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "prefix=ghcr.io/${owner}/bandal" >> "$GITHUB_OUTPUT"
+          echo "tag=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+
+      # x86 러너에서 Arm 이미지를 만든다. 무거운 빌드 단계는 Dockerfile이 러너의 CPU로 돌리고, 흉내 내는 건 마지막 단계뿐이다
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 층 캐시를 GitHub Actions 캐시에 둔다. 의존성이 그대로면 Gradle과 npm이 다시 받지 않는다
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.prefix }}-backend:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.prefix }}-web:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    needs: images
+    # 서버가 생기기 전에는 건너뛴다. 저장소 변수 DEPLOY_HOST를 넣는 순간부터 돈다
+    if: vars.DEPLOY_HOST != ''
+    runs-on: ubuntu-24.04
+    # Settings > Environments의 production. 비밀값을 이 환경에만 두면 다른 워크플로가 꺼내 쓸 수 없다
+    environment: production
+    permissions:
+      contents: read
+    env:
+      HOST: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      # 처음 보는 서버에는 접속하지 않는다. 서버의 호스트 키를 미리 Secrets에 넣어 두고 그것과 같은지 본다
+      - name: SSH 준비
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: compose 파일과 배포 스크립트 올리기
+        run: tar -C deploy/bandal -cz compose.yml deploy.sh | ssh "$HOST" 'mkdir -p /srv/bandal && tar -xz -C /srv/bandal'
+
+      # .env는 배포마다 새로 쓴다. 비밀값을 Secrets에서 바꾸면 다음 배포부터 들어간다. 다른 사용자는 읽지 못하게 600으로
+      - name: .env 쓰기
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+        run: |
+          {
+            echo "IMAGE_PREFIX=${{ needs.images.outputs.prefix }}"
+            echo "DB_USERNAME=bandal"
+            echo "DB_PASSWORD=${DB_PASSWORD}"
+            echo "JWT_SECRET=${JWT_SECRET}"
+            echo "MAIL_HOST=${{ vars.MAIL_HOST }}"
+            echo "MAIL_PORT=${{ vars.MAIL_PORT }}"
+            echo "MAIL_USERNAME=${{ vars.MAIL_USERNAME }}"
+            echo "MAIL_PASSWORD=${MAIL_PASSWORD}"
+            echo "MAIL_FROM=${{ vars.MAIL_FROM }}"
+            echo "APP_BASE_URL=${{ vars.APP_BASE_URL }}"
+          } | ssh "$HOST" 'umask 077 && cat > /srv/bandal/.env'
+
+      # 새 버전이 healthy가 안 되면 스크립트가 이전 버전으로 되돌리고 실패로 끝난다
+      - name: 배포
+        run: ssh "$HOST" "bash /srv/bandal/deploy.sh ${{ needs.images.outputs.tag }}"

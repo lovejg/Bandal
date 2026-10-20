@@ -90,4 +90,4 @@ git add, commit, push, PR은 사용자가 한다. 작업은 브랜치에서 하�
 merge된다. (ADR-057)
 
 백엔드는 `backend/`(Gradle 명령은 여기서), 화면은 `frontend/`에 있다. 맨 위에는 둘이 함께 쓰는
-`docker-compose.yml`과 문서만 둔다. (ADR-056) 화면은 학습 축 밖이라 Claude가 전부 짜고, 사용자는 관여하지 않는다.
+`docker-compose.yml`과 문서만 둔다. (ADR-056) 서버 배포 파일(서버용 compose, 바깥 Nginx 설정)은 `deploy/`에 둔다. (ADR-065) 화면은 학습 축 밖이라 Claude가 전부 짜고, 사용자는 관여하지 않는다.
