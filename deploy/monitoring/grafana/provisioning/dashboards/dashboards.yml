@@ -1,0 +1,10 @@
+# dashboards 폴더의 JSON을 대시보드로 읽는다. git에 있는 JSON이 원본이다
+apiVersion: 1
+providers:
+  - name: bandal
+    folder: Bandal
+    type: file
+    # 화면에서 고쳐도 저장되지 않는다. 고치려면 JSON을 고쳐서 배포한다
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

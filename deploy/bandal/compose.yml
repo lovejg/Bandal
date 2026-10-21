@@ -1,5 +1,6 @@
 # 서버의 /srv/bandal에 놓이는 Bandal 묶음. 구조는 DESIGN.md 6번 "배포 구조"
 # 먼저: docker network create edge  (바깥 Nginx와 같이 쓰는 네트워크. 없으면 이 파일이 뜨지 않는다)
+#       docker network create monitoring  (Prometheus가 backend를 긁는 네트워크. 서버에서는 deploy.sh가 만든다)
 # 비밀값은 같은 폴더의 .env에서 읽는다(.env.example 참고, git에 올리지 않는다)
 # 서버에서는 배포 작업이 이 파일과 deploy.sh, .env를 올리고 ./deploy.sh <커밋 SHA>로 띄운다
 # 로컬에서 직접 만들어 띄울 때: docker compose up -d --build
@@ -38,7 +39,12 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MAIL_FROM: ${MAIL_FROM}
       APP_BASE_URL: ${APP_BASE_URL}
-    # ports가 없다. bandal 네트워크 안의 web만 이 컨테이너에 닿는다
+    # ports가 없다. bandal 네트워크 안의 web과 monitoring 네트워크의 Prometheus만 이 컨테이너에 닿는다
+    networks:
+      default:
+      monitoring:
+        # Prometheus는 이 이름으로 긁는다. 다른 앱의 backend와 이름이 겹치지 않게
+        aliases: [bandal-backend]
     healthcheck:
       # JRE 이미지에 curl이 없어서, 이미 있는 bash로 health 주소에 요청을 보낸다.
       # CMD-SHELL은 /bin/sh(dash)로 돌고, /dev/tcp는 bash에만 있는 기능이라 bash를 직접 부른다
@@ -85,6 +91,9 @@ services:
 networks:
   # default는 이 파일이 만드는 bandal 전용 네트워크(bandal_default)다
   edge:
+    external: true
+  # 관측 묶음(deploy/monitoring)과 같이 쓴다. deploy.sh가 없으면 만든다
+  monitoring:
     external: true
 
 volumes:

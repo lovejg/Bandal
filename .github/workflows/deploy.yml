@@ -153,3 +153,9 @@ jobs:
       # 새 버전이 healthy가 안 되면 스크립트가 이전 버전으로 되돌리고 실패로 끝난다
       - name: 배포
         run: ssh "$HOST" "bash /srv/bandal/deploy.sh ${{ needs.images.outputs.tag }}"
+
+      # 앱 배포가 끝난 뒤에 띄운다. 관측이 실패해도 앱은 이미 새 버전이고, 이 단계만 빨간불이 된다
+      - name: 관측 묶음(Prometheus, Grafana) 올리고 띄우기
+        run: |
+          tar -C deploy/monitoring -cz . | ssh "$HOST" 'tar -xz -C /srv/monitoring'
+          ssh "$HOST" 'bash /srv/monitoring/up.sh'

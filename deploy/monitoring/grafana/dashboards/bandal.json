@@ -1,0 +1,145 @@
+{
+  "uid": "bandal-overview",
+  "title": "Bandal 한눈에",
+  "description": "Phase 4 측정용. 결과 숫자(p95/p99, 에러율, 처리량)와 원인 숫자(커넥션 풀, 락 대기, CPU, JVM, 캐시)를 한 화면에 둔다",
+  "editable": false,
+  "schemaVersion": 39,
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "env",
+        "label": "환경",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(http_server_requests_seconds_count{application=\"bandal\"}, env)",
+        "refresh": 2,
+        "current": { "text": "prod", "value": "prod" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "결과: 사용자가 느끼는 것", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    {
+      "id": 1, "type": "timeseries", "title": "응답 시간 p95 (요청별)",
+      "description": "판정선: 목록 300ms, 참여 1초",
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s",
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 0.3 }, { "color": "red", "value": 1 } ] },
+        "custom": { "thresholdsStyle": { "mode": "dashed" } } }, "overrides": [] },
+      "targets": [ { "refId": "A", "legendFormat": "{{method}} {{uri}}",
+        "expr": "histogram_quantile(0.95, sum by (le, method, uri) (rate(http_server_requests_seconds_bucket{application=\"bandal\", env=~\"$env\", uri!~\"/actuator.*\"}[1m])))" } ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "응답 시간 p99 (요청별)",
+      "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [ { "refId": "A", "legendFormat": "{{method}} {{uri}}",
+        "expr": "histogram_quantile(0.99, sum by (le, method, uri) (rate(http_server_requests_seconds_bucket{application=\"bandal\", env=~\"$env\", uri!~\"/actuator.*\"}[1m])))" } ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "처리량 (초당 요청)",
+      "gridPos": { "x": 0, "y": 9, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [ { "refId": "A", "legendFormat": "{{method}} {{uri}}",
+        "expr": "sum by (method, uri) (rate(http_server_requests_seconds_count{application=\"bandal\", env=~\"$env\", uri!~\"/actuator.*\"}[1m]))" } ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "에러율 (5xx 비율)",
+      "description": "판정선 1%. 연결 실패와 시간 초과는 서버에 기록되지 않으니 k6 결과와 같이 본다",
+      "gridPos": { "x": 12, "y": 9, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0,
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.01 } ] },
+        "custom": { "thresholdsStyle": { "mode": "dashed" } } }, "overrides": [] },
+      "targets": [ { "refId": "A", "legendFormat": "5xx 비율",
+        "expr": "sum(rate(http_server_requests_seconds_count{application=\"bandal\", env=~\"$env\", status=~\"5..\"}[1m])) / sum(rate(http_server_requests_seconds_count{application=\"bandal\", env=~\"$env\", uri!~\"/actuator.*\"}[1m]))" } ]
+    },
+    { "type": "row", "title": "원인: 왜 느려졌나", "gridPos": { "x": 0, "y": 17, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    {
+      "id": 5, "type": "timeseries", "title": "DB 커넥션 풀 (사용 중, 대기 중, 최대)",
+      "description": "대기 중이 0보다 커지면 풀이 모자란 것이다. 사용 중이 최대에 붙어 있으면 고갈",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "사용 중", "expr": "sum(hikaricp_connections_active{application=\"bandal\", env=~\"$env\"})" },
+        { "refId": "B", "legendFormat": "대기 중", "expr": "sum(hikaricp_connections_pending{application=\"bandal\", env=~\"$env\"})" },
+        { "refId": "C", "legendFormat": "최대", "expr": "sum(hikaricp_connections_max{application=\"bandal\", env=~\"$env\"})" }
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "커넥션을 얻기까지 기다린 시간 (최대)",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "legendFormat": "최대",
+        "expr": "max(hikaricp_connections_acquire_seconds_max{application=\"bandal\", env=~\"$env\"})" } ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "락 잡는 조회 p95 (findByIdForUpdate)",
+      "description": "락 대기 + 조회 시간. 같은 방에 몰리면 이 값이 먼저 오른다",
+      "gridPos": { "x": 0, "y": 26, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "legendFormat": "{{repository}}",
+        "expr": "histogram_quantile(0.95, sum by (le, repository) (rate(spring_data_repository_invocations_seconds_bucket{application=\"bandal\", env=~\"$env\", method=\"findByIdForUpdate\"}[1m])))" } ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "방 목록 캐시 적중률",
+      "gridPos": { "x": 12, "y": 26, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "refId": "A", "legendFormat": "적중률",
+        "expr": "sum(rate(bandal_room_list_cache_total{application=\"bandal\", env=~\"$env\", result=\"hit\"}[1m])) / sum(rate(bandal_room_list_cache_total{application=\"bandal\", env=~\"$env\"}[1m]))" } ]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "CPU (서버 전체, backend 프로세스)",
+      "gridPos": { "x": 0, "y": 34, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "서버 전체", "expr": "1 - avg(rate(node_cpu_seconds_total{env=~\"$env\", mode=\"idle\"}[1m]))" },
+        { "refId": "B", "legendFormat": "backend", "expr": "max(process_cpu_usage{application=\"bandal\", env=~\"$env\"})" }
+      ]
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "JVM 힙과 GC 멈춤",
+      "gridPos": { "x": 12, "y": 34, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 },
+        "overrides": [ { "matcher": { "id": "byName", "options": "GC 멈춤(초/초)" },
+          "properties": [ { "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "right" } ] } ] },
+      "targets": [
+        { "refId": "A", "legendFormat": "힙 사용", "expr": "sum(jvm_memory_used_bytes{application=\"bandal\", env=~\"$env\", area=\"heap\"})" },
+        { "refId": "B", "legendFormat": "힙 최대", "expr": "sum(jvm_memory_max_bytes{application=\"bandal\", env=~\"$env\", area=\"heap\"})" },
+        { "refId": "C", "legendFormat": "GC 멈춤(초/초)", "expr": "sum(rate(jvm_gc_pause_seconds_sum{application=\"bandal\", env=~\"$env\"}[1m]))" }
+      ]
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "서버 메모리 (남은 것)",
+      "gridPos": { "x": 0, "y": 42, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "쓸 수 있는 메모리", "expr": "sum(node_memory_MemAvailable_bytes{env=~\"$env\"})" },
+        { "refId": "B", "legendFormat": "전체", "expr": "sum(node_memory_MemTotal_bytes{env=~\"$env\"})" }
+      ]
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Tomcat 스레드 (바쁨, 최대)",
+      "description": "요청 하나에 스레드 하나. 락이나 커넥션을 기다리는 동안에도 스레드를 붙잡는다",
+      "gridPos": { "x": 12, "y": 42, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "바쁨", "expr": "sum(tomcat_threads_busy_threads{application=\"bandal\", env=~\"$env\"})" },
+        { "refId": "B", "legendFormat": "최대", "expr": "sum(tomcat_threads_config_max_threads{application=\"bandal\", env=~\"$env\"})" }
+      ]
+    }
+  ]
+}
