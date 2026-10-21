@@ -38,7 +38,7 @@ public interface GroupOrderRepository extends JpaRepository<GroupOrder, Long> {
         WHERE go.status = com.bandal.grouporder.GroupOrderStatus.RECRUITING
         AND ps.university.id = :universityId
         AND go.deadlineAt > :now
-        AND (SELECT COUNT(p) FROM Participation p WHERE p.groupOrder = go) < go.capacity
+        AND go.participantCount < go.capacity
         ORDER BY go.deadlineAt ASC
         """)
     Slice<GroupOrder> findRecruiting(@Param("universityId") Long universityId,
