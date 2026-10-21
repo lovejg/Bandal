@@ -12,6 +12,7 @@ import com.bandal.university.University;
 import com.bandal.university.UniversityRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
+import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
@@ -31,7 +32,9 @@ import java.time.temporal.ChronoUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -127,6 +130,14 @@ class GroupOrderListApiTest {
         return room;
     }
 
+    // 참여자를 넣는다. 실제 참여(ParticipationService.join)처럼 방의 인원 숫자도 같이 올린다.
+    // 참여 행만 넣으면 행은 2개인데 숫자는 1인, 앱에서는 생길 수 없는 방이 만들어진다. 목록은 이 숫자로 정원을 본다
+    Participation join(GroupOrder room, User member) {
+        room.addParticipant(member, Instant.now());
+        groupOrderRepository.save(room);
+        return participationRepository.save(new Participation(room, member, Instant.now()));
+    }
+
     // 마감 시각을 간단히 쓰려고. 지금으로부터 몇 시간 뒤
     Instant inHours(long hours) {
         return Instant.now().plus(hours, ChronoUnit.HOURS);
@@ -161,8 +172,7 @@ class GroupOrderListApiTest {
     void hidesClosedRoom() throws Exception {
         User host = user(hankuk, "방장", true);
         GroupOrder closed = room(host, dorm, "마감된 방", 20_000, inHours(2), 4);
-        User member = user(hankuk, "참여자", true);
-        participationRepository.save(new Participation(closed, member, Instant.now()));
+        join(closed, user(hankuk, "참여자", true));
         closed.closeByHost(host.getId(), 2, 20_000, Instant.now());
         groupOrderRepository.save(closed);
 
@@ -191,13 +201,40 @@ class GroupOrderListApiTest {
         // 정원이 차도 마감이 되는 건 아니다. 최소주문금액을 못 채웠으면 여전히 모집중이다.
         // 그래도 더 받을 수 없으니 목록에서는 뺀다
         GroupOrder full = room(user(hankuk, "방장", true), dorm, "꽉 찬 방", 8_000, inHours(2), 2);
-        participationRepository.save(new Participation(full, user(hankuk, "참여자", true), Instant.now()));
+        join(full, user(hankuk, "참여자", true));
 
         room(user(hankuk, "다른방장", true), dorm, "자리 있는 방", 8_000, inHours(2), 4);
 
         mockMvc.perform(get("/api/group-orders").header("Authorization", bearer(viewer)))
                 .andExpect(jsonPath("$.rooms.length()").value(1))
                 .andExpect(jsonPath("$.rooms[0].storeName").value("자리 있는 방"));
+    }
+
+    @Test
+    @DisplayName("참여로 정원이 차면 빠지고, 누가 나가 자리가 나면 다시 나온다")
+    void reappearsAfterLeave() throws Exception {
+        // 참여와 나가기를 실제 API로 한다. 방의 인원 숫자(participantCount)가 +1, -1 되는 길을 그대로 지난다
+        room(user(hankuk, "방장", true), dorm, "두 자리 방", 8_000, inHours(2), 2);
+        GroupOrder room = groupOrderRepository.findAll().getFirst();
+        User member = user(hankuk, "참여자", true);
+
+        String joined = mockMvc.perform(post("/api/group-orders/{id}/participations", room.getId())
+                        .header("Authorization", bearer(member)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        Long participationId = JsonPath.parse(joined).read("$.id", Long.class);
+
+        mockMvc.perform(get("/api/group-orders").header("Authorization", bearer(viewer)))
+                .andExpect(jsonPath("$.rooms.length()").value(0));
+
+        mockMvc.perform(delete("/api/participations/{id}", participationId)
+                        .header("Authorization", bearer(member)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/group-orders").header("Authorization", bearer(viewer)))
+                .andExpect(jsonPath("$.rooms.length()").value(1))
+                .andExpect(jsonPath("$.rooms[0].storeName").value("두 자리 방"))
+                .andExpect(jsonPath("$.rooms[0].participantCount").value(1));
     }
 
     @Test
@@ -217,8 +254,7 @@ class GroupOrderListApiTest {
     void carriesSummaryFields() throws Exception {
         User host = user(hankuk, "배고파", true);
         GroupOrder room = room(host, dorm, "○○마라탕", 8_000, inHours(2), 4);
-        Participation member = participationRepository.save(
-                new Participation(room, user(hankuk, "마라탕러버", true), Instant.now()));
+        Participation member = join(room, user(hankuk, "마라탕러버", true));
         orderItemRepository.save(member.addItem(member.getUser().getId(), "마라탕 소", null, 9_000, 1, Instant.now()));
 
         mockMvc.perform(get("/api/group-orders").header("Authorization", bearer(viewer)))
