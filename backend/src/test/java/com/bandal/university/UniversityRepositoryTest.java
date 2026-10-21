@@ -99,7 +99,7 @@ class UniversityRepositoryTest {
         List<String> names = entityManager
                 .createQuery("select u.name from University u where u.emailDomain in :domains order by u.name", String.class)
                 .setParameter("domains", List.of("snu.ac.kr", "yonsei.ac.kr", "korea.ac.kr", "hanyang.ac.kr",
-                        "khu.ac.kr", "sogang.ac.kr", "ewhain.net", "kaist.ac.kr"))
+                        "khu.ac.kr", "sogang.ac.kr", "ewhain.net", "kaist.ac.kr", "kw.ac.kr"))
                 .getResultList();
 
         assertThat(names).containsExactlyInAnyOrder(
@@ -110,6 +110,7 @@ class UniversityRepositoryTest {
                 "경희대학교 서울캠퍼스", "경희대학교 국제캠퍼스",
                 "서강대학교",
                 "이화여자대학교",
-                "KAIST");
+                "KAIST",
+                "광운대학교");
     }
 }
