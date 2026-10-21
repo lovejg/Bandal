@@ -9,6 +9,9 @@ services:
       - "${LOADTEST_BIND:-127.0.0.1}:8080:80"
 
   backend:
+    environment:
+      # 방 목록 캐시를 켜고 끄며 비교한다(app.room-list-cache.enabled). ROOM_LIST_CACHE=false ./up.sh <태그>로 끈다
+      APP_ROOMLISTCACHE_ENABLED: ${ROOM_LIST_CACHE:-true}
     # Prometheus가 /actuator/prometheus를 긁는 자리. /api도 열리지만 운영 서버에서만 닿는다
     ports:
       - "${LOADTEST_BIND:-127.0.0.1}:8081:8080"
