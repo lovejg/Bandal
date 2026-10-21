@@ -19,6 +19,8 @@ repositories {
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // 응답 시간, 커넥션 풀, JVM 숫자를 Prometheus가 읽는 글 모양으로 /actuator/prometheus에 내놓는다
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     // 테이블은 번호 붙인 SQL 파일(src/main/resources/db/migration)로 만들고 바꾼다
     implementation 'org.springframework.boot:spring-boot-starter-flyway'

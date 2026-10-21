@@ -1,6 +1,7 @@
 package com.bandal.grouporder;
 
 import com.bandal.grouporder.dto.GroupOrderListResponse;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,6 +30,7 @@ public class RoomListCache {
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
 
     // Phase 4에서 켜고 끄며 비교한다
     @Value("${app.room-list-cache.enabled}")
@@ -47,12 +49,25 @@ public class RoomListCache {
     public GroupOrderListResponse get(Long universityId) {
         try {
             String json = redisTemplate.opsForValue().get(key(universityId));
-            return json == null ? null : objectMapper.readValue(json, GroupOrderListResponse.class);
+            if (json == null) {
+                count("miss");
+                return null;
+            }
+            // 읽기에 성공한 것만 적중으로 센다. 모양이 깨진 값은 아래에서 error로 센다
+            GroupOrderListResponse cached = objectMapper.readValue(json, GroupOrderListResponse.class);
+            count("hit");
+            return cached;
         } catch (DataAccessException | JacksonException e) {
             // 읽던 모양이 바뀐 옛 값(응답 DTO를 고친 직후)도 여기로 온다. 없는 것으로 본다
             log.warn("방 목록 캐시를 읽지 못했습니다. universityId={}, {}", universityId, e.toString());
+            count("error");
             return null;
         }
+    }
+
+    // 캐시 적중률을 재려고 읽을 때마다 결과를 센다. Prometheus에서는 bandal_room_list_cache_total{result=...}로 보인다
+    private void count(String result) {
+        meterRegistry.counter("bandal.room_list_cache", "result", result).increment();
     }
 
     // DB에서 만든 첫 페이지를 담는다. TTL이 지나면 저절로 사라진다

@@ -1928,3 +1928,17 @@ job의 `if`는 그 job의 환경이 정해지기 전에 계산되어서, 그때�
 **배운 것** 표준입력을 읽는 명령(`docker exec`, `ssh`, `read`)이 낀 스크립트를 `bash -s`로 넘기면 안 된다. 입력을 쓰지 않는 명령이면 `< /dev/null`로 막는다. 실패가 아니라 "조용히 일찍 끝남"이라 종료 코드만 보면 모른다. 이번에도 마지막 단계의 출력이 없는 것을 보고 알았다. 다행히 앱을 멈추기 전이라 서비스에는 영향이 없었다.
 
 **한 줄 요약** "ssh로 넘긴 명령 목록을 그 안의 docker compose exec가 표준입력째 먹어서, 첫 조회 뒤에 조용히 끝났다."
+
+## 2026-10-21 node-exporter가 "/ is not a shared or slave mount"로 뜨지 않았다
+
+**상황** 관측 묶음 로컬 리허설. node-exporter에 서버의 `/`를 문서 예시대로 `/:/host:ro,rslave`로 붙였다.
+
+**증상** Prometheus는 떴는데 `docker compose up`이 `Error response from daemon: path / is mounted on / but it is not a shared or slave mount`로 끝났다.
+
+**원인** `rslave`는 "바깥에서 나중에 생긴 마운트도 컨테이너 안에 따라 보이게" 하는 전파 방식이다. 이 방식을 쓰려면 바깥의 `/`가 공유(shared)나 종속(slave) 마운트여야 한다. systemd로 부팅한 보통 리눅스 서버는 `/`가 공유라서 되지만, WSL의 `/`는 그렇지 않아서 Docker가 거부했다.
+
+**해결** `rslave`를 빼고 `/:/host:ro`로만 붙였다. 디스크 사용량, CPU, 메모리는 이걸로 다 보인다. 나중에 붙인 USB 같은 새 마운트가 안 보일 뿐이고, 이 서버에는 그런 일이 없다. 다시 돌린 리허설에서 세 대상 모두 up이었다.
+
+**배운 것** 문서 예시의 옵션은 그 옵션이 필요한 이유까지 보고 넣는다. 서버에서는 됐을 옵션이라도, 필요 없으면 빼는 게 환경 차이에 덜 흔들린다.
+
+**한 줄 요약** "node-exporter의 rslave 마운트가 WSL에서 거부돼서, 필요 없는 rslave를 빼고 ro로만 붙였다."

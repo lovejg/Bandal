@@ -1,6 +1,8 @@
 package com.bandal.grouporder;
 
 import com.bandal.grouporder.dto.GroupOrderListResponse;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,7 @@ class RoomListCacheTest {
 
     StringRedisTemplate redisTemplate;
     ValueOperations<String, String> ops;
+    MeterRegistry meterRegistry;
     RoomListCache cache;
 
     @BeforeEach
@@ -41,7 +44,9 @@ class RoomListCacheTest {
         ops = mock(ValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(ops);
 
-        cache = new RoomListCache(redisTemplate, JsonMapper.builder().build());
+        // 메모리에만 숫자를 담는 진짜 레지스트리. 캐시가 센 값을 바로 꺼내 볼 수 있다
+        meterRegistry = new SimpleMeterRegistry();
+        cache = new RoomListCache(redisTemplate, JsonMapper.builder().build(), meterRegistry);
         ReflectionTestUtils.setField(cache, "enabled", true);
         ReflectionTestUtils.setField(cache, "ttlSeconds", 10L);
     }
@@ -175,5 +180,29 @@ class RoomListCacheTest {
             cache.evict(7L);
             assertThatCode(this::commit).doesNotThrowAnyException();
         });
+    }
+
+    double counted(String result) {
+        return meterRegistry.counter("bandal.room_list_cache", "result", result).count();
+    }
+
+    @Test
+    @DisplayName("읽을 때마다 적중, 없음, 실패를 따로 센다")
+    void countsHitMissAndError() {
+        when(ops.get("rooms:1")).thenReturn("{\"rooms\":[],\"hasNext\":false}");
+        when(ops.get("rooms:2")).thenReturn(null);
+        when(ops.get("rooms:3")).thenThrow(redisDown());
+        when(ops.get("rooms:4")).thenReturn("{\"rooms\": 3");
+
+        cache.get(1L);
+        cache.get(1L);
+        cache.get(2L);
+        cache.get(3L);
+        cache.get(4L);
+
+        // 깨진 값은 Redis에서 뭔가 읽었어도 적중이 아니다
+        assertThat(counted("hit")).isEqualTo(2);
+        assertThat(counted("miss")).isEqualTo(1);
+        assertThat(counted("error")).isEqualTo(2);
     }
 }

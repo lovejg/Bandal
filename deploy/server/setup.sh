@@ -59,8 +59,9 @@ chown "$DEPLOY_USER:$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh/authorized_keys"
 chmod 600 "/home/$DEPLOY_USER/.ssh/authorized_keys"
 
 step "폴더와 edge 네트워크"
-install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/bandal /srv/bandal/backups /srv/edge
+install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/bandal /srv/bandal/backups /srv/edge /srv/monitoring
 docker network inspect edge > /dev/null 2>&1 || docker network create edge > /dev/null
+docker network inspect monitoring > /dev/null 2>&1 || docker network create monitoring > /dev/null
 
 # 키로만 들어온다. 봇이 비밀번호를 아무리 넣어 봐도 시도할 문이 없다.
 # sshd는 같은 설정이 여러 번 나오면 처음 것을 쓴다. 파일 이름(10-)이 클라우드 이미지 기본 설정(60-)보다 앞서서 이 값이 이긴다
