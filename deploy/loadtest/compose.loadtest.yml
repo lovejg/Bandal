@@ -1,0 +1,27 @@
+# 부하 테스트 서버(bandal-loadtest)에서 운영 compose(deploy/bandal/compose.yml) 위에 덧씌운다
+#   docker compose -f compose.yml -f compose.loadtest.yml up -d
+# 운영과 달리 바깥 Nginx와 인증서가 없다. 운영 서버의 k6가 같은 데이터센터 안에서 사설 IP로 web에 바로 붙고,
+# 운영 서버의 Prometheus가 backend와 서버 숫자를 긁는다. 포트는 사설 IP에만 연다(LOADTEST_BIND)
+# OCI 보안 목록도 이 포트들을 운영 서버의 사설 IP에서 오는 것만 받는다
+services:
+  web:
+    ports:
+      - "${LOADTEST_BIND:-127.0.0.1}:8080:80"
+
+  backend:
+    # Prometheus가 /actuator/prometheus를 긁는 자리. /api도 열리지만 운영 서버에서만 닿는다
+    ports:
+      - "${LOADTEST_BIND:-127.0.0.1}:8081:8080"
+
+  # 테스트 서버의 CPU, 메모리. 운영 서버의 node-exporter와 같은 설정이다(deploy/monitoring/compose.yml)
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    mem_limit: 64m
+    pid: host
+    command:
+      - --path.rootfs=/host
+    volumes:
+      - /:/host:ro
+    ports:
+      - "${LOADTEST_BIND:-127.0.0.1}:9100:9100"
