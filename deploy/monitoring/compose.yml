@@ -14,8 +14,10 @@ services:
       - --storage.tsdb.path=/prometheus
       # 배포는 6개월쯤 유지한다. 그동안의 숫자를 다 남긴다. 10초 간격이면 한 달에 수백 MB 수준이다
       - --storage.tsdb.retention.time=200d
+    # 파일 하나가 아니라 폴더를 붙인다. 파일 하나를 붙이면 Docker가 그 파일의 실체(inode)를 잡고 있어서,
+    # 배포의 tar가 파일을 새로 만들어 바꾸면 컨테이너는 옛 파일을 계속 본다. 폴더는 안의 파일이 바뀌면 바로 보인다
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
     # ports가 없다. Grafana만 같은 네트워크 안에서 부른다
     healthcheck:

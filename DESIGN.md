@@ -382,6 +382,7 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
   - backend가 `/actuator/prometheus`로 숫자를 내놓는다. 응답 시간 히스토그램, 커넥션 풀, 리포지토리 시간, 캐시 적중을 낸다.
   - 운영 서버에 Prometheus, Grafana, node-exporter를 하나씩 둔다.
   - Grafana는 SSH 터널로만 연다. 대시보드는 git의 JSON에서 읽는다.
+- 테스트 서버와 데이터, k6 시나리오(`deploy/loadtest/`, `loadtest/`). 기준값 1차를 쟀다(ADR-074). 복습은 `docs/REVIEW.md`
 - 완료 기준: 개선 전후 그래프가 남는다
 
 ### Phase 5 — Kafka와 알림 분리

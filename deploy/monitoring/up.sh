@@ -13,7 +13,7 @@ if ! grep -q '^GRAFANA_ADMIN_PASSWORD=' .env 2>/dev/null; then
 fi
 
 docker compose up -d --quiet-pull --wait --wait-timeout 120
-# 설정 파일(prometheus.yml)만 바뀌면 컨테이너가 다시 만들어지지 않는다. HUP 신호를 보내 다시 읽게 한다.
+# 설정 파일(prometheus/prometheus.yml)만 바뀌면 컨테이너가 다시 만들어지지 않는다. HUP 신호를 보내 다시 읽게 한다.
 # compose는 이걸 "Killed"라고 찍지만 프로세스는 죽지 않고 설정만 다시 읽는다
 docker compose kill -s HUP prometheus > /dev/null 2>&1
 echo "관측 묶음이 떴다"
