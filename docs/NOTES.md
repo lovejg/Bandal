@@ -569,6 +569,8 @@ GitHub Actions의 Arm 러너에서 만들거나, buildx로 여러 아키텍처�
 - SPF: "우리 도메인 메일은 이 서버들만 보낸다"는 목록. 목록에 없는 서버에서 온 메일은 의심한다.
 - DKIM: 보내는 서버가 메일에 비밀 키로 서명하고, 짝인 공개 키를 DNS에 올려 둔다. 받는 쪽이 서명을 확인한다. 중간에 바뀐 메일도 걸러진다.
 - DMARC: SPF나 DKIM이 실패한 메일을 어떻게 할지(그냥 받기, 스팸함, 거절)를 도메인 주인이 정해 둔다.
+  - `p=none`은 그냥 받기, `p=quarantine`은 스팸함, `p=reject`는 거절. 예전에 `p=none`을 "보고만"이라고 적었는데 정확하지 않다. 보고서는 `rua=mailto:...`로 받을 주소를 적어야 오고, 우리는 적지 않아서 어디에도 오지 않았다.
+  - `adkim`, `aspf`의 `r`(느슨하게)은 "서명하거나 보낸 도메인이 bandal.site의 하위 도메인이어도 같은 도메인으로 친다"는 뜻이다. Resend는 `send.bandal.site`로 보내서 SPF는 이 덕에 맞춰진다. `s`(엄격하게)면 정확히 같아야 한다. 둘 다 기본값이 `r`이다.
 Gmail 같은 큰 메일 서비스는 이 기록이 없는 메일을 스팸으로 보내거나 거절한다. 그래서 운영 메일은 내 도메인과 그 DNS가 있어야 한다.
 
 ### 메일 발송 서비스를 따로 쓰는 이유
@@ -902,6 +904,6 @@ Cloudflare의 주황/회색 구름(프록시)은 DNS 표준이 아니라 Cloudfl
 | `bandal.site` | NS | `eve`, `vasilii.ns.cloudflare.com` | 레코드를 Cloudflare가 들고 있다 |
 | `resend._domainkey.bandal.site` | TXT | `p=MIGf...`(공개 키) | DKIM. Resend가 비밀 키로 서명한 메일을 받는 쪽이 이 키로 확인한다 |
 | `send.bandal.site` | CNAME | `send.forge.rmta.net` | 그 끝에 MX와 SPF(TXT `v=spf1 ip4:... ~all`)가 있다. Resend가 메일을 보내는 쪽 이름으로 보인다(Resend 문서로 확인하지는 않았다) |
-| `_dmarc.bandal.site` | TXT | `v=DMARC1; p=none;` | DMARC. 검사에 떨어진 메일을 어떻게 할지. 지금은 "보고만" |
+| `_dmarc.bandal.site` | TXT | `v=DMARC1; p=quarantine; adkim=r; aspf=r;` | DMARC. 검사에 떨어진 메일은 스팸함으로. 2026-10-22에 `p=none`에서 올렸다 |
 | `bandal.site` | MX | 없음 | `@bandal.site`로 오는 메일은 받을 곳이 없다 |
 | `bandal.site` | CAA | 없음 | 아무 인증 기관이나 발급 가능 |

@@ -51,6 +51,13 @@
 
 ### 2-5. 데이터와 계정
 - 광운대학교(kw.ac.kr)를 V3 마이그레이션으로 더했다. 운영에 인증된 테스트 계정 하나를 SQL로 넣었다(비밀번호는 로컬 파일에만).
+- 친구가 운영에서 학교 메일로 직접 가입하고 메일 링크로 인증까지 했다(운영 DB에서 인증된 계정으로 확인). Phase 2의 "실제 메일 수신" 확인이 이걸로 됐다.
+
+### 2-6. 메일 DMARC — ADR-068
+- `p=none` → `p=quarantine; adkim=r; aspf=r`(2026-10-22). 사칭 메일을 스팸함으로 보낸다. 우리 메일은 bandal.site 이름의 DKIM으로 통과한다.
+- 공개 DNS(1.1.1.1, 8.8.8.8)와 Cloudflare 권한 서버에서 새 값을 확인. 올린 뒤 실제 수신은 아직 못 봤다(다음 가입 때 받은 편지함인지 본다).
+- 예전 "p=none은 보고만"은 틀린 말이었다. 보고서 주소(rua)가 없어서 보고서는 어디에도 오지 않았다.
+- **자세히**: ADR-068 상태 / NOTES "SPF, DKIM, DMARC", "bandal.site에 실제로 있는 레코드"
 
 ---
 
@@ -199,6 +206,8 @@ backend: RequestLogFilter가 그 id를 MDC와 응답 헤더에 넣고, 요청마
 1. 앱: `RequestLogFilter`(가장 앞 필터), `JwtAuthenticationFilter`가 MDC에 userId, prod는 `logging.structured.format.console: logstash`. 테스트 4개(JSON 줄, id 이어받기/버리기, userId와 MDC 비우기, /actuator 제외). 전체 726개 통과.
 2. 묶음: Loki 3.7.8(30일), Alloy v1.20.1, docker-proxy v0.5.0(컨테이너·네트워크 GET만). 꼬리표는 project, service, container, host, level.
 3. 로컬에서 띄워 확인하다 두 번 깨졌다. Loki 이미지엔 셸도 wget도 없어 healthcheck가 unhealthy. docker-proxy가 네트워크 목록을 막아 Alloy가 컨테이너를 못 찾음(403). 둘 다 고친 뒤 줄 10개가 꼬리표대로 들어오고, 컨테이너 만들기는 403으로 막히는 것을 봤다.
+4. 운영(c089780 + 바깥 Nginx 적용): 컨테이너 11종 로그 수집, Grafana에 Loki 자동 등록. 요청 하나의 id로 바깥 Nginx 줄(`rid=`, 9ms)과 backend 줄(4ms)이 같이 나왔다. 메모리 Loki 58MB, Alloy 55MB.
+5. 배포 뒤에도 남는지: 다음 배포(이 문서 PR)에서 확인.
 
 - **자세히**: ADR-079 / JOURNAL "Loki를 띄우자 healthcheck에서 unhealthy, Alloy는 컨테이너를 하나도 못 찾았다(403)" / NOTES "메트릭, 로그, 트레이스", "MDC", "구조화 로그", "Loki의 꼬리표와 본문, LogQL", "수집기(Alloy)와 Docker 소켓"
 ---
