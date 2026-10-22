@@ -839,6 +839,45 @@ DB와 Redis는 한 트랜잭션으로 묶이지 않는다. DB 커밋과 Redis �
 
 `http_server_requests_seconds`(서버 쪽 시간)는 요청이 Spring에 들어온 뒤부터 잰다. 그 앞에서 기다린 시간은 안 들어간다. 요청이 Tomcat 스레드(기본 최대 200개)보다 많이 한꺼번에 오면, 남는 요청은 스레드가 빌 때까지 Tomcat 앞에서 기다린다. 이 시간은 k6가 본 응답 시간에는 들어가고 서버 쪽 시간에는 없다. 그래서 둘의 차이는 "Spring 바깥에서 쓴 시간"의 단서가 된다. 1,000명 몰림에서 서버 쪽 최대 0.7초, k6 p95 1.1초였다(ADR-078). 남은 0.4~0.5초가 정확히 어디서 쓰였는지는 직접 확인하지 않았다. 스레드 게이지는 10초마다 한 번 찍는 순간값이라 몰림을 못 잡는다(JOURNAL 2026-10-21 "커넥션 대기 수 그래프는 계속 0").
 
+### 메트릭, 로그, 트레이스(관측의 세 가지)
+
+- **메트릭**: 시간에 따른 숫자다. "초당 몇 건, p95 몇 ms, 커넥션 몇 개". 싸고 오래 둘 수 있지만 "그 요청에 무슨 일이 있었나"는 모른다. 지금 Prometheus와 Grafana가 이것이다.
+- **로그**: 일 하나하나의 기록이다. "15:02:11 사용자 42가 방 7에 참여하다 409, 사유: 정원이 다 찼습니다", 예외 스택. 원인을 찾을 때 쓴다.
+- **트레이스**: 요청 하나가 여러 서비스와 DB를 지나간 길과 구간별 시간이다. 서비스가 하나뿐인 지금은 이득이 작다.
+
+로그를 모아 보는 도구:
+- **ELK**: Elasticsearch(로그를 저장하고 모든 단어로 찾게 색인), Logstash(로그를 모으고 다듬어 넣기), Kibana(화면). 요즘은 Logstash 대신 가벼운 Beats/Fluent Bit를 많이 쓴다(EFK). 모든 글자를 색인해서 검색이 강하지만, Elasticsearch가 JVM이라 메모리를 수 GB 단위로 쓴다.
+- **Loki**: Grafana를 만든 곳의 로그 저장소. 글 전체가 아니라 붙인 꼬리표(서비스 이름, 서버 같은 것)만 색인하고, 글은 묶어서 압축해 둔다. 가볍고 이미 있는 Grafana에서 메트릭 그래프 옆에 같은 시각의 로그를 띄운다. 수집은 Grafana Alloy(예전 Promtail)가 한다. 대신 "모든 로그에서 이 단어" 검색은 ELK보다 느리다.
+
+지금 Bandal의 로그(2026-10-22 확인): 컨테이너 로그를 Docker `local` 드라이버로 컨테이너마다 10MB × 3개까지 둔다(`deploy/server/setup.sh`). 로그는 컨테이너에 붙어 있어서, 배포로 컨테이너를 새로 만들면 이전 로그가 같이 사라진다. 실제로 16:13(KST) 배포 뒤 backend 로그의 첫 줄이 그 배포 시각이었고 그 전 로그는 없었다.
+### MDC(로그에 자동으로 붙는 칸)와 요청 id
+
+MDC는 "지금 이 스레드"에 붙여 두는 메모장이다. `MDC.put("requestId", "...")`를 한 뒤로 그 스레드에서 찍는 모든 로그에 그 값이 같이 붙는다. 요청 하나는 처음부터 끝까지 Tomcat 스레드 하나가 처리하므로, 요청 시작에 넣어 두면 서비스와 리포지토리 어디에서 찍은 로그든 같은 요청 id를 단다. 스레드는 다음 요청에 다시 쓰이므로 끝날 때 반드시 지운다(안 지우면 다음 사람 로그에 이 사람 id가 붙는다). 다른 스레드(`@Async`, 스케줄러)로 넘어가면 MDC는 따라가지 않는다.
+
+요청 id는 바깥 Nginx가 `$request_id`(16진수 32자)로 만들어 `X-Request-Id` 헤더로 넘기고, backend의 `RequestLogFilter`가 이어받아 MDC와 응답 헤더에 넣는다. 그래서 바깥 Nginx 접속 기록의 `rid=`, backend 로그의 `requestId`, 브라우저가 받은 응답 헤더가 같은 값이다.
+
+### 구조화 로그(JSON 한 줄)
+
+사람이 읽는 평문(`2026-10-22 INFO ... GET /api/x 200 38ms`)은 기계가 칸을 나누려면 정규식으로 쪼개야 한다. JSON 한 줄이면 `level`, `requestId`, `status`, `durationMs`가 처음부터 칸이다. Spring Boot 3.4부터 `logging.structured.format.console`에 `logstash`, `ecs`, `gelf` 중 하나를 쓰면 라이브러리 없이 JSON으로 나간다. MDC 값도 칸이 된다. 실제 한 줄(테스트에서 찍은 것):
+```json
+{"@timestamp":"2026-10-22T16:34:32.141+09:00","message":"GET /api/auth/me 200 38ms","logger_name":"com.bandal.common.RequestLogFilter",
+ "level":"INFO","method":"GET","userId":"1","uri":"/api/auth/me","durationMs":"38","requestId":"20a9c0ec011049bcbeb359c8850e57fb","status":"200"}
+```
+
+### Loki의 꼬리표(label)와 본문, LogQL
+
+Loki는 로그 줄마다 꼬리표 묶음(`{service="backend", level="ERROR"}`)을 달고, 같은 꼬리표 묶음끼리 한 줄기(stream)로 모은다. 색인은 꼬리표에만 있다. 그래서 꼬리표의 값 종류가 적어야 한다(서비스 이름, 레벨). 요청 id처럼 요청마다 다른 값을 꼬리표로 달면 줄기가 요청 수만큼 생겨서 느려진다. 그런 값은 본문(JSON 칸)에 두고 찾을 때 거른다.
+
+LogQL(Loki의 질의) 기본:
+- `{service="backend"}`: 꼬리표로 줄기를 고른다(빠르다).
+- `{service="backend"} |= "requestId\":\"20a9..."`: 고른 줄기에서 글자를 포함한 줄만(본문 훑기).
+- `{service="backend"} | json | status >= 500`: JSON 칸을 꺼내 칸 값으로 거른다.
+- `{service="backend"} | json | durationMs > 500`: 0.5초 넘은 요청.
+- `sum by (status) (count_over_time({service="backend"} | json [1m]))`: 로그로 숫자 만들기(1분마다 상태별 줄 수).
+
+### 수집기(Alloy)와 Docker 소켓
+
+컨테이너 로그는 Docker가 들고 있다. Alloy는 Docker API(`/containers`, `/containers/{id}/logs`)로 목록을 받고 로그를 읽어 Loki로 보낸다. Docker API는 보통 소켓 파일(`/var/run/docker.sock`)로 연다. 이 소켓을 쥐면 컨테이너를 만들고 지울 수 있고, 서버의 /를 붙인 컨테이너를 띄우면 서버 root가 된다. 소켓을 `:ro`로 붙여도 파일을 못 지울 뿐 API 요청은 다 된다. 그래서 그 앞에 docker-proxy(HAProxy로 만든 문)를 두고 GET 중 정한 경로(`CONTAINERS`, `NETWORKS`)만 열었다. 그래도 컨테이너 정보에는 환경 변수(비밀값)가 들어 있어, 그 문에는 Alloy만 붙인다.
 ## DNS
 
 ### DNS와 레코드 종류

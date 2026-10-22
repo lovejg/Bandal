@@ -1,0 +1,60 @@
+// Alloy: 이 서버의 모든 컨테이너 로그를 읽어 Loki로 보낸다
+// Docker에 직접 붙지 않고 docker-proxy(컨테이너 목록과 로그 읽기만 열어 둔 문)를 거친다
+
+// 지금 떠 있는 컨테이너 목록. 배포로 컨테이너가 새로 생기면 15초 안에 알아챈다
+discovery.docker "containers" {
+  host             = "tcp://docker-proxy:2375"
+  refresh_interval = "15s"
+}
+
+// Loki의 꼬리표(label). 꼬리표로만 색인하므로 값의 종류가 적은 것만 단다(요청 id 같은 건 꼬리표가 아니라 JSON 칸으로 둔다)
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  // Compose 프로젝트(bandal, monitoring, edge)와 서비스(backend, web, postgres ...)
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+// 컨테이너 로그를 Docker API로 읽는다. 어디까지 읽었는지 storage.path에 적어 두어, Alloy가 다시 떠도 같은 줄을 두 번 보내지 않는다
+loki.source.docker "containers" {
+  host          = "tcp://docker-proxy:2375"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.levels.receiver]
+}
+
+// Spring 앱(backend)의 로그는 JSON이다. 레벨만 꺼내 꼬리표로 단다(INFO, WARN, ERROR 정도라 종류가 적다)
+// JSON이 아닌 줄(시작 배너 같은 것)은 레벨 없이 그대로 지나간다
+loki.process "levels" {
+  stage.match {
+    selector = "{service=\"backend\"}"
+
+    stage.json {
+      expressions = { level = "level" }
+    }
+    stage.labels {
+      values = { level = "" }
+    }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+  // 나중에 테스트 서버 로그를 같이 넣어도 섞이지 않게
+  external_labels = { host = "prod" }
+}

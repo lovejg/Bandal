@@ -29,3 +29,9 @@ app:
   mail-from: ${MAIL_FROM}
 
 # SQL 로그는 켜지 않는다. 기본값(INFO)이면 시작, 경고, 에러만 남는다
+logging:
+  structured:
+    format:
+      # 한 줄에 JSON 하나로 찍는다. 시각, 레벨, 메시지, MDC(requestId, userId 같은 것)가 각각 칸이 된다.
+      # Loki에서 칸으로 거르고 묶는다. 로컬(dev)은 사람이 읽기 쉬운 평문 그대로 둔다
+      console: logstash

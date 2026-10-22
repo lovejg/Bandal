@@ -2053,3 +2053,25 @@ job의 `if`는 그 job의 환경이 정해지기 전에 계산되어서, 그때�
 결과: 동시성 테스트 11개 모두 통과(자리 하나 남은 방 10명 → 1명 성공, 9명 정원 초과, 인원 칸 4. 취소+참여 → CANCELED). 꽉 찬 방 참여는 앞사람이 락을 쥔 동안에도 1,981ms → 1ms. 전체 722개 통과.
 
 **한 줄 요약** "락 전에 같은 트랜잭션에서 방을 한 번 더 읽었더니, 잠근 뒤에도 JPA가 처음 읽은 옛 방을 돌려줘서 정원 4명 방에 13명이 들어가고 취소가 지워졌다."
+## 2026-10-22 Loki를 띄우자 healthcheck에서 unhealthy, Alloy는 컨테이너를 하나도 못 찾았다(403)
+
+**상황** 배포 전에 WSL에서 관측 묶음(Loki, Alloy, docker-proxy)을 띄우고, 알아볼 수 있는 줄을 찍는 컨테이너 하나를 붙여 그 줄이 Loki까지 가는지 봤다.
+
+**증상 1** `dependency failed to start: container loki-check-loki-1 is unhealthy`. Prometheus, Grafana처럼 healthcheck를 `wget -qO- http://127.0.0.1:3100/ready`로 뒀다. 직접 넣어 보니 `exec: "wget": executable file not found in $PATH`, `sh`도 없었다.
+**원인** Loki 이미지에는 loki 프로그램 말고 셸조차 없다. 컨테이너 안에서 무언가를 실행해 묻는 healthcheck는 쓸 수 없다. Alloy 이미지에도 wget, curl이 없었다.
+**해결** Loki의 healthcheck를 빼고, Alloy는 Loki가 "시작만 했으면" 뜨게 했다(Alloy는 보내기에 실패하면 다시 시도한다). 확인할 때는 같은 네트워크에 alpine을 잠깐 붙여서 물었다.
+
+**증상 2** 다시 띄우자 셋 다 떴지만 Loki에 줄이 0개였다. Alloy 로그:
+```
+level=error msg="Unable to refresh target groups" component_id=discovery.docker.containers
+err="error while computing network labels: Error response from daemon: <html><body><h1>403 Forbidden</h1>
+Request forbidden by administrative rules.
+```
+**원인** docker-proxy에 컨테이너 읽기(`CONTAINERS=1`)만 열었다. Alloy의 컨테이너 찾기(`discovery.docker`)는 컨테이너마다 네트워크 꼬리표도 만들려고 네트워크 목록(`/networks`)을 읽는데, 그게 막혀서 찾기 전체가 실패했다.
+**해결** `NETWORKS=1`(네트워크 읽기)을 더 열었다. 다시 띄우자 줄 10개가 `{project="check", service="echo", host="prod"}` 꼬리표로 들어왔고, proxy는 여전히 컨테이너 만들기(POST)를 `403 Forbidden`으로 막았다.
+
+**덤** 같은 확인에서 Alloy가 내 WSL의 다른 프로젝트 컨테이너 로그까지 읽어 보내려다 `timestamp too old ... oldest acceptable timestamp is ...`(7일 넘은 줄)로 거절당했다. Loki가 오래된 줄을 기본으로 받지 않는다. 운영에서도 처음 붙을 때 옛 줄 일부는 버려진다.
+
+**배운 것** 최소 권한으로 열면 무엇이 더 필요한지는 실제로 돌려 봐야 안다. 403을 보고 하나씩 연다. 그리고 이미지마다 안에 든 도구가 다르다. healthcheck를 복사해 붙이기 전에 그 이미지에 그 명령이 있는지 본다.
+
+**한 줄 요약** "셸도 없는 Loki 이미지에 wget healthcheck를 둬서 unhealthy, 읽기만 열어 둔 Docker 문이 네트워크 목록까지 막아 Alloy가 컨테이너를 못 찾았다(403)."

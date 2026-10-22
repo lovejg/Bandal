@@ -1,0 +1,16 @@
+# Grafana가 뜰 때 Loki를 데이터 출처로 자동 등록한다. Explore에서 Loki를 고르면 로그를 본다
+apiVersion: 1
+datasources:
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      # 로그 줄의 requestId 값을 누르면 같은 요청의 로그를 다시 찾는 링크로 만든다
+      derivedFields:
+        - name: requestId
+          matcherRegex: '"requestId":"([0-9A-Za-z-]+)"'
+          url: '{service="backend"} |= `$${__value.raw}`'
+          datasourceUid: loki

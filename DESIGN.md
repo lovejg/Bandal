@@ -204,6 +204,7 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
   컨슈머 그룹이 둘 이상이고 통계 쪽은 오프셋을 되감아 재처리해야 하므로 선택.
 - Spring Batch: 일별 통계 집계, 신뢰도 점수 일괄 재계산.
 - Prometheus + Grafana + k6: 동시성 문제를 재현하고 개선을 수치로 증명하는 용도.
+- Loki + Alloy: 컨테이너 로그를 30일 모아 Grafana에서 메트릭과 같은 화면으로 본다. 앱 로그는 JSON에 요청 id를 단다. (ADR-079)
 - Oracle Cloud(Always Free Arm 서버 한 대) + Docker Compose + GitHub Actions: 배포와 CI/CD. AWS 무료 기간을 이미 써서
   무료로 계속 둘 수 있는 곳을 골랐다. 같은 서버에 다른 앱 하나가 함께 산다. (ADR-063)
 
@@ -384,6 +385,8 @@ capacity는 방장이 정한다. 인원이 많을수록 배달비 분담은 싸�
   - Grafana는 SSH 터널로만 연다. 대시보드는 git의 JSON에서 읽는다.
 - 테스트 서버와 데이터, k6 시나리오(`deploy/loadtest/`, `loadtest/`). 기준값 1, 2차를 쟀다(ADR-074). 복습은 `docs/REVIEW.md`
 - 개선 1: 목록의 정원 조건을 하위 쿼리에서 인원 열로 바꿨다. 캐시를 끈 목록 p95가 5,149ms에서 12ms로 줄었다 (ADR-076)
+- 개선 2: 꽉 찬 방은 락 앞에 서지 않게 트랜잭션 밖 문지기에서 미리 거른다. A 200명 참여 p95 597~1,030ms → 351~589ms. Redis 번호표는 보류 (ADR-077, ADR-078)
+- 로그: Loki + Alloy, JSON 로그와 요청 id. 배포해도 로그가 남는다 (ADR-079)
 - 완료 기준: 개선 전후 그래프가 남는다
 
 ### Phase 5 — Kafka와 알림 분리

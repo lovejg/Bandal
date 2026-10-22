@@ -182,6 +182,27 @@
 
 ---
 
+## 5-4. 로그 모니터링: Loki — ADR-079
+
+**왜**: 로그가 컨테이너에 붙어 있어서 배포하면 이전 로그가 사라졌다(16:13 배포 뒤 backend 로그 첫 줄이 16:13). 메트릭은 "나빠졌다"만 알려 준다.
+
+**고른 것과 버린 것**: ELK는 본문 전체를 색인해 검색이 강하지만 JVM 둘과 화면 하나를 더 돌본다. 처음엔 "메모리가 모자라다"고 했다가 재 보니 서버는 12GB 중 1.3GB만 써서 그 이유는 틀렸다. 남는 이유는 품과 화면이 하나 더 는다는 것, 로그가 적다는 것. Loki는 꼬리표만 색인하고 이미 있는 Grafana에서 본다.
+
+**구조**
+```
+컨테이너들 ──(로그)── Docker ──GET만── docker-proxy ── Alloy ──push── Loki ── Grafana(Explore)
+바깥 Nginx: $request_id를 만들어 X-Request-Id로 넘기고 접속 기록에 rid=로 남긴다
+backend: RequestLogFilter가 그 id를 MDC와 응답 헤더에 넣고, 요청마다 JSON 한 줄(method, uri, status, durationMs, userId)
+```
+
+**한 일(순서대로)**
+1. 앱: `RequestLogFilter`(가장 앞 필터), `JwtAuthenticationFilter`가 MDC에 userId, prod는 `logging.structured.format.console: logstash`. 테스트 4개(JSON 줄, id 이어받기/버리기, userId와 MDC 비우기, /actuator 제외). 전체 726개 통과.
+2. 묶음: Loki 3.7.8(30일), Alloy v1.20.1, docker-proxy v0.5.0(컨테이너·네트워크 GET만). 꼬리표는 project, service, container, host, level.
+3. 로컬에서 띄워 확인하다 두 번 깨졌다. Loki 이미지엔 셸도 wget도 없어 healthcheck가 unhealthy. docker-proxy가 네트워크 목록을 막아 Alloy가 컨테이너를 못 찾음(403). 둘 다 고친 뒤 줄 10개가 꼬리표대로 들어오고, 컨테이너 만들기는 403으로 막히는 것을 봤다.
+
+- **자세히**: ADR-079 / JOURNAL "Loki를 띄우자 healthcheck에서 unhealthy, Alloy는 컨테이너를 하나도 못 찾았다(403)" / NOTES "메트릭, 로그, 트레이스", "MDC", "구조화 로그", "Loki의 꼬리표와 본문, LogQL", "수집기(Alloy)와 Docker 소켓"
+---
+
 ## 6. 포트폴리오로 말할 거리
 
 - **복구를 실제로 해 봤다**: "백업이 있다"가 아니라 "운영 서버를 R2의 덤프로 되돌리는 데 26.5초, 사용자가 본 중단 15.9초".

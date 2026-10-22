@@ -16,4 +16,20 @@ docker compose up -d --quiet-pull --wait --wait-timeout 120
 # 설정 파일(prometheus/prometheus.yml)만 바뀌면 컨테이너가 다시 만들어지지 않는다. HUP 신호를 보내 다시 읽게 한다.
 # compose는 이걸 "Killed"라고 찍지만 프로세스는 죽지 않고 설정만 다시 읽는다
 docker compose kill -s HUP prometheus > /dev/null 2>&1
+
+# Grafana의 데이터 출처(provisioning), Loki, Alloy는 뜰 때만 설정을 읽는다. 설정 폴더가 지난번과 달라졌을 때만 다시 띄운다
+# 폴더 내용의 지문(sha256)을 .config-hash-<서비스>에 적어 두고 비교한다
+restart_if_changed() {
+  local service=$1 dir=$2
+  local now
+  now=$(find "$dir" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+  if [ "$(cat ".config-hash-$service" 2>/dev/null)" != "$now" ]; then
+    docker compose restart "$service" > /dev/null
+    echo "$now" > ".config-hash-$service"
+    echo "$service 설정이 바뀌어 다시 띄웠다"
+  fi
+}
+restart_if_changed grafana grafana/provisioning
+restart_if_changed loki loki
+restart_if_changed alloy alloy
 echo "관측 묶음이 떴다"
