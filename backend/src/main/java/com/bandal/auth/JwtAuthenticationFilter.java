@@ -1,5 +1,6 @@
 package com.bandal.auth;
 
+import com.bandal.common.RequestLogFilter;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import jakarta.servlet.FilterChain;
@@ -8,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -50,6 +52,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             var authentication = new UsernamePasswordAuthenticationToken(user.getId(), null, authorities(user));
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            // 이 요청의 로그에 누가 불렀는지 붙인다. 이메일 같은 개인정보 대신 id만 남긴다. 지우는 건 RequestLogFilter가 한다
+            MDC.put(RequestLogFilter.MDC_USER_ID, String.valueOf(user.getId()));
         }
 
         // 토큰이 없거나 못 믿을 토큰이면 그냥 비로그인 상태로 통과시킨다.

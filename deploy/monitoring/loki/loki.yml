@@ -1,0 +1,46 @@
+# Loki: 컨테이너 로그를 모아 두는 곳. Alloy가 보내 주고 Grafana가 읽는다
+# 서버 한 대라 모든 역할을 한 프로세스에서 돌리고(single binary), 로그 덩어리는 이 컨테이너의 볼륨(파일)에 둔다
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# 색인 모양. 날짜(from)는 처음 띄우는 날보다 앞이면 된다. 나중에 모양을 바꾸면 새 날짜로 한 줄을 더한다
+schema_config:
+  configs:
+    - from: 2026-10-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # 30일이 지난 로그는 지운다. 숫자(Prometheus, 200일)보다 무거워서 짧게 둔다
+  retention_period: 720h
+  # 부하 테스트처럼 로그가 몰려도 받아 낼 만큼. 넘으면 Alloy가 잠시 뒤 다시 보낸다
+  ingestion_rate_mb: 8
+  ingestion_burst_size_mb: 16
+
+# 지울 때가 된 로그를 실제로 지우는 일꾼. retention_enabled가 없으면 retention_period가 있어도 안 지운다
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false
