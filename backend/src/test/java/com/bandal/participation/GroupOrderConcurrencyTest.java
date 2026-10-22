@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -50,8 +51,9 @@ class GroupOrderConcurrencyTest {
     static final int JOINERS = 10;
     static final String FULL = "IllegalStateException: 정원이 다 찼습니다";
 
+    // 컨트롤러가 부르는 것과 같은 길(문지기 → 서비스)로 보낸다
     @Autowired
-    ParticipationService participationService;
+    ParticipationGate participationGate;
 
     @Autowired
     GroupOrderService groupOrderService;
@@ -79,6 +81,9 @@ class GroupOrderConcurrencyTest {
 
     @Autowired
     UserRepository userRepository;
+
+    @Autowired
+    TransactionTemplate transactionTemplate;
 
     University university;
     PickupSpot pickupSpot;
@@ -147,7 +152,7 @@ class GroupOrderConcurrencyTest {
     Result joinAllAtOnce(GroupOrder groupOrder) throws InterruptedException {
         List<Request> requests = new ArrayList<>();
         for (User joiner : joiners) {
-            requests.add(() -> participationService.join(groupOrder.getId(), joiner.getId()));
+            requests.add(() -> participationGate.join(groupOrder.getId(), joiner.getId()));
         }
         return sendAllAtOnce(groupOrder, requests, "동시 참여");
     }
@@ -236,7 +241,7 @@ class GroupOrderConcurrencyTest {
 
             List<Request> requests = new ArrayList<>();
             for (int i = 0; i < JOINERS; i++) {
-                requests.add(() -> participationService.join(groupOrder.getId(), joiner.getId()));
+                requests.add(() -> participationGate.join(groupOrder.getId(), joiner.getId()));
             }
             Result result = sendAllAtOnce(groupOrder, requests, "같은 사람 참여 " + (round + 1));
 
@@ -261,10 +266,10 @@ class GroupOrderConcurrencyTest {
 
             List<Request> requests = new ArrayList<>();
             for (Participation member : members) {
-                requests.add(() -> participationService.leave(member.getId(), member.getUser().getId()));
+                requests.add(() -> participationGate.leave(member.getId(), member.getUser().getId()));
             }
             for (User joiner : joiners.subList(0, 5)) {
-                requests.add(() -> participationService.join(groupOrder.getId(), joiner.getId()));
+                requests.add(() -> participationGate.join(groupOrder.getId(), joiner.getId()));
             }
             results.add(sendAllAtOnce(groupOrder, requests, "참여+나가기 " + (round + 1)));
         }
@@ -294,7 +299,7 @@ class GroupOrderConcurrencyTest {
             requests.add(() -> countedByHost.set(
                     (int) groupOrderService.close(groupOrder.getId(), host.getId()).participantCount()));
             for (User joiner : joiners.subList(0, 5)) {
-                requests.add(() -> participationService.join(groupOrder.getId(), joiner.getId()));
+                requests.add(() -> participationGate.join(groupOrder.getId(), joiner.getId()));
             }
             Result result = sendAllAtOnce(groupOrder, requests, "마감+참여 " + (round + 1));
 
@@ -429,7 +434,7 @@ class GroupOrderConcurrencyTest {
             List<Request> requests = new ArrayList<>();
             requests.add(() -> groupOrderService.expire(groupOrder.getId(), schedulerNow));
             for (User joiner : joiners.subList(0, 5)) {
-                requests.add(() -> participationService.join(groupOrder.getId(), joiner.getId()));
+                requests.add(() -> participationGate.join(groupOrder.getId(), joiner.getId()));
             }
             Result result = sendAllAtOnce(groupOrder, requests, "자동마감+참여 " + (round + 1));
 
@@ -455,7 +460,7 @@ class GroupOrderConcurrencyTest {
             List<Request> requests = new ArrayList<>();
             requests.add(() -> groupOrderService.cancel(groupOrder.getId(), host.getId(), new CancelRequest(null)));
             for (User joiner : joiners.subList(0, 5)) {
-                requests.add(() -> participationService.join(groupOrder.getId(), joiner.getId()));
+                requests.add(() -> participationGate.join(groupOrder.getId(), joiner.getId()));
             }
             Result result = sendAllAtOnce(groupOrder, requests, "취소+참여 " + (round + 1));
 
@@ -469,6 +474,43 @@ class GroupOrderConcurrencyTest {
         }
 
         assertThat(broken).as("깨진 방").isEmpty();
+    }
+
+    @Test
+    @DisplayName("이미 꽉 찬 방에 참여하면 앞사람이 방 락을 쥐고 있어도 기다리지 않고 바로 정원 초과로 거절된다")
+    void fullRoomRejectsWithoutWaitingForLock() throws Exception {
+        // 정원 4명 방에 방장 + 3명. 이미 꽉 찼다
+        GroupOrder groupOrder = roomWith(3);
+
+        // 다른 트랜잭션이 방 락을 2초 동안 쥐고 있는다. 앞사람이 참여를 처리하는 중인 셈이다
+        CountDownLatch lockHeld = new CountDownLatch(1);
+        ExecutorService holder = Executors.newSingleThreadExecutor();
+        holder.submit(() -> transactionTemplate.executeWithoutResult(status -> {
+            groupOrderRepository.findByIdForUpdate(groupOrder.getId()).orElseThrow();
+            lockHeld.countDown();
+            try {
+                Thread.sleep(2_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
+        assertThat(lockHeld.await(5, TimeUnit.SECONDS)).as("락을 쥐었다").isTrue();
+
+        long startedAt = System.nanoTime();
+        String failure = null;
+        try {
+            participationGate.join(groupOrder.getId(), joiners.get(0).getId());
+        } catch (Exception e) {
+            failure = e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
+        long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
+        holder.shutdown();
+        assertThat(holder.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        System.out.println("[꽉 찬 방 참여] " + failure + ", 걸린 시간 " + elapsedMs + "ms");
+
+        assertThat(failure).as("거절 사유").isEqualTo(FULL);
+        // 락 앞에서 기다렸다면 2초 가까이 걸린다
+        assertThat(elapsedMs).as("걸린 시간(ms)").isLessThan(1_000);
     }
 
 }
