@@ -4,6 +4,10 @@ import com.bandal.settlement.SettlementRepository;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.dto.SignUpRequest;
 import com.bandal.grouporder.GroupOrderRepository;
+import com.bandal.outbox.OutboxMessageRepository;
+import com.bandal.outbox.OutboxRelay;
+import com.bandal.outbox.OutboxStatus;
+import com.bandal.outbox.OutboxType;
 import com.bandal.participation.OrderItemRepository;
 import com.bandal.participation.ParticipationRepository;
 import com.bandal.pickupspot.PickupSpotRepository;
@@ -28,6 +32,8 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
+
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
@@ -76,6 +82,12 @@ class SignUpApiTest {
     @Autowired
     PickupSpotRepository pickupSpotRepository;
 
+    @Autowired
+    OutboxMessageRepository outboxMessageRepository;
+
+    @Autowired
+    OutboxRelay outboxRelay;
+
     // 진짜로 메일을 보내면 테스트가 SMTP 서버에 매달린다. 가짜로 바꿔 끼운다
     @MockitoBean
     JavaMailSender mailSender;
@@ -85,6 +97,7 @@ class SignUpApiTest {
     @BeforeEach
     void setUp() {
         // 정산 행이 group_order를 참조하므로 방보다 먼저 지운다
+        outboxMessageRepository.deleteAll();
         settlementRepository.deleteAll();
         orderItemRepository.deleteAll();
         participationRepository.deleteAll();
@@ -98,6 +111,11 @@ class SignUpApiTest {
 
     String json(SignUpRequest request) {
         return objectMapper.writeValueAsString(request);
+    }
+
+    // 메일은 가입 요청 안에서 나가지 않는다. 스케줄러는 꺼져 있으니 집배원을 한 바퀴 직접 돌린다
+    void deliver() {
+        outboxRelay.runAt(Instant.now());
     }
 
     SimpleMailMessage sentMail() {
@@ -147,6 +165,7 @@ class SignUpApiTest {
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
                         .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
                 .andExpect(status().isAccepted());
+        deliver();
 
         SimpleMailMessage mail = sentMail();
         assertThat(mail.getTo()).containsExactly("lee@hankuk.ac.kr");
@@ -242,11 +261,13 @@ class SignUpApiTest {
         // 대소문자를 가리면 같은 사람이 계정을 두 개 만들 수 있다
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
                 .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))));
+        deliver();
         org.mockito.Mockito.clearInvocations(mailSender);
 
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
                         .content(json(new SignUpRequest("LEE@hankuk.ac.kr", "password1234", "다른닉네임", hankuk.getId()))))
                 .andExpect(status().isAccepted());
+        deliver();
 
         assertThat(userRepository.count()).isEqualTo(1);
         // 새 인증 메일이 아니라 "이미 가입된 계정" 안내가 간다
@@ -280,17 +301,67 @@ class SignUpApiTest {
     void tellsTheOwnerInstead() throws Exception {
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
                 .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))));
-
+        // 첫 가입의 인증 메일을 먼저 내보내고 지운다. 남겨 두면 아래에서 안내 메일과 같이 나간다
+        deliver();
         org.mockito.Mockito.clearInvocations(mailSender);
 
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
                         .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "다른닉네임", hankuk.getId()))))
                 .andExpect(status().isAccepted());
+        deliver();
 
         SimpleMailMessage mail = sentMail();
         assertThat(mail.getTo()).containsExactly("lee@hankuk.ac.kr");
         // 새 인증 링크가 아니라 "이미 계정이 있다"는 안내여야 한다
         assertThat(mail.getText()).doesNotContain("token=");
+    }
+
+    @Test
+    @DisplayName("가입하면 그 사용자의 인증 메일 줄이 outbox에 대기로 남는다")
+    void queuesVerificationMail() throws Exception {
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
+                .andExpect(status().isAccepted());
+
+        User saved = userRepository.findByEmail("lee@hankuk.ac.kr").orElseThrow();
+        assertThat(outboxMessageRepository.findAll())
+                .singleElement()
+                .satisfies(message -> {
+                    assertThat(message.getType()).isEqualTo(OutboxType.VERIFICATION_MAIL);
+                    assertThat(message.getUserId()).isEqualTo(saved.getId());
+                    assertThat(message.getStatus()).isEqualTo(OutboxStatus.PENDING);
+                });
+    }
+
+    @Test
+    @DisplayName("이미 가입된 이메일이면 새 계정 없이, 이미 있는 계정 id로 안내 메일 줄이 남는다")
+    void queuesAlreadyRegisteredMail() throws Exception {
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))));
+        User owner = userRepository.findByEmail("lee@hankuk.ac.kr").orElseThrow();
+        outboxMessageRepository.deleteAll();
+
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "다른닉네임", hankuk.getId()))))
+                .andExpect(status().isAccepted());
+
+        assertThat(userRepository.count()).isEqualTo(1);
+        assertThat(outboxMessageRepository.findAll())
+                .singleElement()
+                .satisfies(message -> {
+                    assertThat(message.getType()).isEqualTo(OutboxType.ALREADY_REGISTERED_MAIL);
+                    assertThat(message.getUserId()).isEqualTo(owner.getId());
+                });
+    }
+
+    @Test
+    @DisplayName("가입이 거절되면 outbox 줄도 남지 않는다")
+    void queuesNothingOnRejection() throws Exception {
+        mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(new SignUpRequest("lee@unknown.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
+                .andExpect(status().isBadRequest());
+
+        assertThat(outboxMessageRepository.count()).isZero();
     }
 
     @Test
