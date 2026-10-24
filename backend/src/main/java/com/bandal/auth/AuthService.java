@@ -6,17 +6,20 @@ import com.bandal.auth.dto.SignUpResponse;
 import com.bandal.auth.dto.TokenResponse;
 import com.bandal.auth.dto.UserResponse;
 import com.bandal.common.UnauthorizedException;
+import com.bandal.outbox.OutboxMessage;
+import com.bandal.outbox.OutboxMessageRepository;
+import com.bandal.outbox.OutboxType;
 import com.bandal.university.University;
 import com.bandal.university.UniversityRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -30,7 +33,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final RefreshTokenStore refreshTokenStore;
-    private final ApplicationEventPublisher eventPublisher;
+    private final OutboxMessageRepository outboxMessageRepository;
 
     // 계정 열거 방지용 가짜 해시
     // 사용자를 못 찾았을 때도 이걸로 대조를 한 번 돌려서 응답 시간을 맞춘다
@@ -66,18 +69,23 @@ public class AuthService {
         if(userRepository.existsByNickname(nickname)) {
             throw new IllegalStateException("이미 쓰이고 있는 닉네임입니다");
         }
-        else if(userRepository.existsByEmail(email)) {
-            eventPublisher.publishEvent(new SignUpEvents.DuplicateSignUp(email));
+
+        // 있는 주소든 아니든 해시를 먼저 만든다. 새 주소만 해시(약 50ms)하면 있는 주소가 5ms에 돌아와 응답 시간으로 가입 여부가 샌다
+        // 있는 주소면 이 해시는 쓰지 않고 버린다
+        String hashed = passwordEncoder.encode(password);
+
+        // 이미 있는 주소(이메일)인 케이스
+        User existing = userRepository.findByEmail(email).orElse(null);
+        if(existing != null) {
+            outboxMessageRepository.save(new OutboxMessage(OutboxType.ALREADY_REGISTERED_MAIL,
+                existing.getId(), Instant.now()));
             return new SignUpResponse(SIGN_UP_MESSAGE);
         }
 
-        String hashed = passwordEncoder.encode(password);
         User user = new User(university, email, hashed, nickname);
         userRepository.save(user);
 
-        // 여기서 바로 보내지 않는다. 메일은 되돌릴 수 없으니 커밋된 뒤에 나가야 한다
-        // 실제 발송은 SignUpMailListener가 한다
-        eventPublisher.publishEvent(new SignUpEvents.UserRegistered(user.getId(), user.getEmail()));
+        outboxMessageRepository.save(new OutboxMessage(OutboxType.VERIFICATION_MAIL, user.getId(), Instant.now()));
 
         return new SignUpResponse(SIGN_UP_MESSAGE);
     }

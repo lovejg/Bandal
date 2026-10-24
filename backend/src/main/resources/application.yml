@@ -64,6 +64,14 @@ app:
     enabled: true
     # 목록은 늦어도 이만큼만 옛것이다. 지우기를 빠뜨린 곳도 이 시간이 지나면 맞아진다
     ttl-seconds: 10
+  # 가입 메일 outbox 집배원
+  outbox:
+    # 앞 실행이 끝나고 이만큼 쉰 뒤 다시 돈다. 사용자가 화면 앞에서 메일을 기다리므로 짧게
+    poll-delay-ms: 5000
+    # 첫 재시도까지 기다리는 시간. 실패할 때마다 두 배(30초, 1분, 2분, 4분)
+    retry-base-seconds: 30
+    # 한 번에 찜하는 줄 수
+    batch-size: 10
 
 management:
   endpoints:

@@ -6,6 +6,8 @@ import com.bandal.auth.dto.LoginRequest;
 import com.bandal.auth.dto.SignUpRequest;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
+import com.bandal.outbox.OutboxMessageRepository;
+import com.bandal.outbox.OutboxRelay;
 import com.bandal.participation.OrderItemRepository;
 import com.bandal.participation.ParticipationRepository;
 import com.bandal.pickupspot.PickupSpot;
@@ -91,6 +93,12 @@ class EmailVerificationApiTest {
     @Autowired
     GroupOrderRepository groupOrderRepository;
 
+    @Autowired
+    OutboxMessageRepository outboxMessageRepository;
+
+    @Autowired
+    OutboxRelay outboxRelay;
+
     @MockitoBean
     JavaMailSender mailSender;
 
@@ -102,6 +110,7 @@ class EmailVerificationApiTest {
     @BeforeEach
     void setUp() {
         // 정산 행이 group_order를 참조하므로 방보다 먼저 지운다
+        outboxMessageRepository.deleteAll();
         settlementRepository.deleteAll();
         orderItemRepository.deleteAll();
         participationRepository.deleteAll();
@@ -152,6 +161,8 @@ class EmailVerificationApiTest {
                 .andExpect(status().isAccepted());
         // 인증을 마친 뒤 방을 만들어보는 테스트가 있어서 계좌까지 붙여둔다
         giveAccount(email);
+        // 메일은 가입 요청 안에서 나가지 않는다. 스케줄러는 꺼져 있으니 집배원을 한 바퀴 직접 돌린다
+        outboxRelay.runAt(Instant.now());
     }
 
     SimpleMailMessage lastMail() {
