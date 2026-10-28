@@ -20,12 +20,15 @@ public record NotificationResponse(
         String cancelReason,
         Long amount,
         Long deliveryFee,
+        // 주문완료와 도착 예정 수정 알림에만 있다. "19시 40분 도착 예정"
+        Instant expectedArrivalAt,
         Instant occurredAt,
         boolean read
 ) {
     // 엔티티를 응답 모양으로 옮긴다. 엔티티를 그대로 내보내지 않는 건 칸이 늘 때 응답이 저절로 바뀌지 않게 하려는 것이다
     public static NotificationResponse from(Notification n) {
         return new NotificationResponse(n.getId(), n.getGroupOrderId(), n.getStoreName(), n.getKind(), n.getStatus(),
-                n.getCancelReason(), n.getAmount(), n.getDeliveryFee(), n.getOccurredAt(), n.getReadAt() != null);
+                n.getCancelReason(), n.getAmount(), n.getDeliveryFee(), n.getExpectedArrivalAt(), n.getOccurredAt(),
+                n.getReadAt() != null);
     }
 }

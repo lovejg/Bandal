@@ -52,6 +52,31 @@ export function isoToLocalInput(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+// 시각 입력(input type="time", "19:40")을 ISO 문자열로. 날짜는 고르지 않는다
+// 지금보다 이른 시각이면 다음 날로 본다. 밤 11시 50분에 주문하고 "00:30"을 넣으면 내일 0시 30분이다
+export function timeInputToIso(value: string, now = new Date()) {
+  const [h, m] = value.split(':').map(Number)
+  const d = new Date(now)
+  d.setHours(h, m, 0, 0)
+  if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1)
+  return d.toISOString()
+}
+
+// 지금부터 minutes분 뒤를 5분 단위로 올린 "HH:MM". 도착 예정 입력의 처음 값
+export function clockAfter(minutes: number, now = new Date()) {
+  const d = new Date(now.getTime() + minutes * 60000)
+  d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0)
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+// 도착 예정까지 남은 시간. "35분 뒤", "곧 도착"
+export function untilArrival(iso: string, now = Date.now()) {
+  const minutes = Math.round((new Date(iso).getTime() - now) / 60000)
+  if (minutes <= 0) return '곧 도착'
+  if (minutes < 60) return `${minutes}분 뒤`
+  return `${Math.floor(minutes / 60)}시간 ${minutes % 60}분 뒤`
+}
+
 // 알림 한 줄의 문장. 서버는 "무엇으로 바뀌었나"만 저장하고 문장은 여기서 만든다
 // 문구를 고쳐도 이미 쌓인 알림까지 새 문구로 보인다
 export function notificationText(n: AppNotification): string {
@@ -62,6 +87,11 @@ export function notificationText(n: AppNotification): string {
     const mine = n.amount === null ? '' : ` · 내 몫 ${won(n.amount)}원`
     return `${fee}${mine}. 이미 보냈다면 방장과 차액을 맞춰 주세요`
   }
+  // 도착 예정 수정도 상태가 그대로(주문완료)라 종류부터 본다
+  if (n.kind === 'ARRIVAL_CHANGED') {
+    // "19:40로/으로"는 읽는 법에 따라 조사가 달라져서 시각을 뒤에 둔다
+    return n.expectedArrivalAt ? `도착 예정이 바뀌었어요 · ${clock(n.expectedArrivalAt)} 도착` : '도착 예정 시각이 바뀌었어요'
+  }
   switch (n.status) {
     case 'CLOSED':
       return '모집이 마감됐어요. 방장이 배달비를 넣으면 정산이 시작돼요'
@@ -69,7 +99,10 @@ export function notificationText(n: AppNotification): string {
       // 금액은 정산표에 내 줄이 있을 때만 온다
       return n.amount === null ? '정산이 시작됐어요' : `정산이 시작됐어요 · 내 몫 ${won(n.amount)}원`
     case 'ORDERED':
-      return '방장이 주문했어요. 배달이 오는 중이에요'
+      // 도착 예정을 받기 전의 옛 알림에는 시각이 없다
+      return n.expectedArrivalAt
+        ? `방장이 주문했어요 · ${clock(n.expectedArrivalAt)} 도착 예정`
+        : '방장이 주문했어요. 배달이 오는 중이에요'
     case 'DELIVERED':
       return '배달이 도착했어요'
     case 'CANCELED':

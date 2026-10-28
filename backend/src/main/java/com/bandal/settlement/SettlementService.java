@@ -7,6 +7,7 @@ import com.bandal.participation.OrderItemRepository;
 import com.bandal.participation.Participation;
 import com.bandal.participation.ParticipationRepository;
 import com.bandal.settlement.dto.DeliveryFeeRequest;
+import com.bandal.settlement.dto.ExpectedArrivalRequest;
 import com.bandal.settlement.dto.OrderRequest;
 import com.bandal.settlement.dto.SettlementResponse;
 import com.bandal.user.User;
@@ -164,13 +165,26 @@ public class SettlementService {
         GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
-        groupOrder.order(requesterId, orderRequest.totalPaidAmount(), Instant.now());
+        groupOrder.order(requesterId, orderRequest.totalPaidAmount(), orderRequest.expectedArrivalAt(), Instant.now());
         groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다
 
         List<Settlement> lines = settlementRepository.findByGroupOrderId(groupOrderId);
         if(!lines.stream().allMatch(Settlement::isConfirmed)) {
             throw new IllegalStateException("입금 확인이 되지 않은 참여자가 있습니다");
         }
+
+        return find(groupOrderId, requesterId);
+    }
+
+    // 방장의 도착 예정 시각 수정(배달앱이 늦어진다고 알려 왔을 때). 참여자에게 알림이 간다
+    // 배달 완료 버튼과 같은 방 락을 잡는다. 수정과 배달완료가 동시에 와도 하나씩 돈다
+    @Transactional
+    public SettlementResponse changeExpectedArrival(Long groupOrderId, Long requesterId, ExpectedArrivalRequest request) {
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
+            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+
+        groupOrder.changeExpectedArrival(requesterId, request.expectedArrivalAt(), Instant.now());
+        groupOrderRepository.save(groupOrder); // 바뀐 기록을 사건으로 내보낸다(바뀌지 않았으면 기록이 없다)
 
         return find(groupOrderId, requesterId);
     }

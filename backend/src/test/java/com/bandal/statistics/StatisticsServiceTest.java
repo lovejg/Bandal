@@ -119,7 +119,7 @@ class StatisticsServiceTest {
     void ignoresDeliveryFeeChange() {
         statisticsService.record(100L, new GroupOrderStatusPayload(1L, DORM, "마라탕집", 1L,
                 GroupOrderStatus.SETTLING, GroupOrderStatus.SETTLING, StatusChangedBy.HOST, GroupOrderChangeKind.DELIVERY_FEE_CHANGED,
-                null, null, 4_000L, List.of(new Participant(1L, 13_500L), new Participant(2L, 9_500L)), AT));
+                null, null, 4_000L, null, List.of(new Participant(1L, 13_500L), new Participant(2L, 9_500L)), AT));
 
         assertThat(groupOrderStatRepository.findAll()).isEmpty();
     }

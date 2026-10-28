@@ -25,7 +25,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -977,13 +979,28 @@ class SettlementApiTest {
     }
 
     // 결제금액을 비우면 빈 객체를 보낸다. 본문 자체는 늘 있다
+    // 도착 예정은 늘 40분 뒤로 넣는다. 결제금액만 바꿔 가며 본다
     String orderBody(Long totalPaidAmount) {
+        String arrival = Instant.now().plus(Duration.ofMinutes(40)).toString();
         if (totalPaidAmount == null) {
-            return "{}";
+            return """
+                    {"expectedArrivalAt": "%s"}
+                    """.formatted(arrival);
         }
         return """
-                {"totalPaidAmount": %d}
-                """.formatted(totalPaidAmount);
+                {"totalPaidAmount": %d, "expectedArrivalAt": "%s"}
+                """.formatted(totalPaidAmount, arrival);
+    }
+
+    String arrivalUrl() {
+        return "/api/group-orders/" + groupOrder.getId() + "/expected-arrival";
+    }
+
+    ResultActions changeArrival(User requester, String body) throws Exception {
+        return mockMvc.perform(put(arrivalUrl())
+                .header("Authorization", bearer(requester.getId()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
     }
 
     void order(User requester, Long totalPaidAmount, int expectedStatus) throws Exception {
@@ -1040,6 +1057,52 @@ class SettlementApiTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value("ORDERED"))
                     .andExpect(jsonPath("$.lines.length()").value(2));
+        }
+
+        @Test
+        @DisplayName("도착 예정 시각이 방에 남는다")
+        void storesExpectedArrival() throws Exception {
+            startSettlement();
+            confirmMember();
+            Instant before = Instant.now();
+
+            order(host, 19_000L, 200);
+
+            // orderBody는 40분 뒤를 넣는다
+            assertThat(savedRoom().getExpectedArrivalAt()).isBetween(
+                    before.plus(Duration.ofMinutes(39)), Instant.now().plus(Duration.ofMinutes(41)));
+        }
+
+        @Test
+        @DisplayName("도착 예정 시각이 없으면 400이고 어느 필드인지 알려준다")
+        void rejectsMissingArrival() throws Exception {
+            startSettlement();
+            confirmMember();
+
+            mockMvc.perform(post(orderUrl())
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"totalPaidAmount\": 19000}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.message").value(
+                            org.hamcrest.Matchers.containsString("expectedArrivalAt")));
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("도착 예정 시각이 이미 지났으면 400이다")
+        void rejectsPastArrival() throws Exception {
+            startSettlement();
+            confirmMember();
+
+            mockMvc.perform(post(orderUrl())
+                            .header("Authorization", bearer(host.getId()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"expectedArrivalAt\": \"" + Instant.now().minus(Duration.ofMinutes(5)) + "\"}"))
+                    .andExpect(status().isBadRequest());
+
+            assertThat(savedRoom().getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
         }
 
         @Test
@@ -1160,6 +1223,74 @@ class SettlementApiTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(orderBody(19_000L)))
                     .andExpect(status().isNotFound());
+        }
+    }
+
+    // 도착 예정 수정
+    @Nested
+    @DisplayName("도착 예정 수정")
+    class ChangeArrival {
+
+        String body(Instant at) {
+            return "{\"expectedArrivalAt\": \"" + at + "\"}";
+        }
+
+        @Test
+        @DisplayName("주문완료 뒤 방장이 고치면 방의 도착 예정이 바뀌고 방 화면에도 나온다")
+        void changes() throws Exception {
+            orderedRoom();
+            Instant later = Instant.now().plus(Duration.ofMinutes(70)).truncatedTo(ChronoUnit.SECONDS);
+
+            changeArrival(host, body(later))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("ORDERED"));
+
+            assertThat(savedRoom().getExpectedArrivalAt()).isEqualTo(later);
+            mockMvc.perform(get("/api/group-orders/" + groupOrder.getId())
+                            .header("Authorization", bearer(member.getId())))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.expectedArrivalAt").value(later.toString()));
+        }
+
+        @Test
+        @DisplayName("참여자는 고칠 수 없다")
+        void rejectsNonHost() throws Exception {
+            orderedRoom();
+            Instant before = savedRoom().getExpectedArrivalAt();
+
+            changeArrival(member, body(Instant.now().plus(Duration.ofMinutes(70))))
+                    .andExpect(status().isForbidden());
+
+            assertThat(savedRoom().getExpectedArrivalAt()).isEqualTo(before);
+        }
+
+        @Test
+        @DisplayName("주문 전(정산중)에는 고칠 수 없다")
+        void rejectsBeforeOrder() throws Exception {
+            startSettlement();
+
+            changeArrival(host, body(Instant.now().plus(Duration.ofMinutes(70))))
+                    .andExpect(status().isConflict());
+
+            assertThat(savedRoom().getExpectedArrivalAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("주문 뒤 3시간보다 늦으면 400이다")
+        void rejectsTooLate() throws Exception {
+            orderedRoom();
+
+            changeArrival(host, body(Instant.now().plus(Duration.ofHours(4))))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("값이 없으면 400이다")
+        void rejectsMissing() throws Exception {
+            orderedRoom();
+
+            changeArrival(host, "{}")
+                    .andExpect(status().isBadRequest());
         }
     }
 

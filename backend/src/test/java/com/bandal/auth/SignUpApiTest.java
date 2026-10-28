@@ -1,6 +1,8 @@
 package com.bandal.auth;
 
 import com.bandal.settlement.SettlementRepository;
+import com.bandal.TestMails;
+import com.bandal.TestMails.SentMail;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.dto.SignUpRequest;
 import com.bandal.grouporder.GroupOrderRepository;
@@ -15,17 +17,16 @@ import com.bandal.university.University;
 import com.bandal.university.UniversityRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
+import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mail.MailSendException;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
@@ -107,6 +108,7 @@ class SignUpApiTest {
         universityRepository.deleteAll();
 
         hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
+        TestMails.stub(mailSender);
     }
 
     String json(SignUpRequest request) {
@@ -118,10 +120,8 @@ class SignUpApiTest {
         outboxRelay.runAt(Instant.now());
     }
 
-    SimpleMailMessage sentMail() {
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender).send(captor.capture());
-        return captor.getValue();
+    SentMail sentMail() {
+        return TestMails.only(mailSender);
     }
 
     @Test
@@ -167,7 +167,7 @@ class SignUpApiTest {
                 .andExpect(status().isAccepted());
         deliver();
 
-        SimpleMailMessage mail = sentMail();
+        SentMail mail = sentMail();
         assertThat(mail.getTo()).containsExactly("lee@hankuk.ac.kr");
         assertThat(mail.getText()).contains("token=");
     }
@@ -177,7 +177,7 @@ class SignUpApiTest {
     void survivesMailFailure() throws Exception {
         // 메일 발송이 가입 트랜잭션 안에 있으면 여기서 롤백이 나서 계정이 사라진다
         doThrow(new MailSendException("메일 서버가 죽었다"))
-                .when(mailSender).send(org.mockito.ArgumentMatchers.any(SimpleMailMessage.class));
+                .when(mailSender).send(org.mockito.ArgumentMatchers.any(MimeMessage.class));
 
         mockMvc.perform(post("/api/auth/signup").contentType(MediaType.APPLICATION_JSON)
                         .content(json(new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId()))))
@@ -229,7 +229,7 @@ class SignUpApiTest {
                 .andExpect(jsonPath("$.status").value(400));
 
         assertThat(userRepository.count()).isZero();
-        verify(mailSender, never()).send((SimpleMailMessage) org.mockito.ArgumentMatchers.any());
+        verify(mailSender, never()).send(org.mockito.ArgumentMatchers.any(MimeMessage.class));
     }
 
     @Test
@@ -310,7 +310,7 @@ class SignUpApiTest {
                 .andExpect(status().isAccepted());
         deliver();
 
-        SimpleMailMessage mail = sentMail();
+        SentMail mail = sentMail();
         assertThat(mail.getTo()).containsExactly("lee@hankuk.ac.kr");
         // 새 인증 링크가 아니라 "이미 계정이 있다"는 안내여야 한다
         assertThat(mail.getText()).doesNotContain("token=");
@@ -438,7 +438,7 @@ class SignUpApiTest {
                 .andExpect(jsonPath("$.message").value("이메일과 고른 학교가 맞지 않습니다"));
 
         assertThat(userRepository.count()).isZero();
-        verify(mailSender, never()).send((SimpleMailMessage) org.mockito.ArgumentMatchers.any());
+        verify(mailSender, never()).send(org.mockito.ArgumentMatchers.any(MimeMessage.class));
     }
 
     @Test

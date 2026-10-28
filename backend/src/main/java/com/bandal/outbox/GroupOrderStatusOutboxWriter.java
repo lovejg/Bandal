@@ -59,6 +59,7 @@ public class GroupOrderStatusOutboxWriter {
             groupOrder.getCancelType(),
             groupOrder.getCancelReason(),
             groupOrder.getDeliveryFee(),
+            groupOrder.getExpectedArrivalAt(),
             participants,
             event.occurredAt()
         );

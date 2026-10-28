@@ -21,13 +21,17 @@ public record GroupOrderStatusPayload(
         GroupOrderStatus to,
         // HOST면 방장이 눌러서, SYSTEM이면 스케줄러가 시각을 보고 바꿨다. SYSTEM이면 방장에게도 알린다
         StatusChangedBy changedBy,
-        // 무엇이 바뀌었나. 상태 변경이면 STATUS_CHANGED, 배달비 수정이면 DELIVERY_FEE_CHANGED(from, to 둘 다 SETTLING)
+        // 무엇이 바뀌었나. 상태 변경이면 STATUS_CHANGED, 배달비 수정이면 DELIVERY_FEE_CHANGED(from, to 둘 다 SETTLING),
+        // 도착 예정 수정이면 ARRIVAL_CHANGED(둘 다 ORDERED)
         GroupOrderChangeKind kind,
         // 취소일 때만 있다
         CancelType cancelType,
         String cancelReason,
         // 정산을 시작한 뒤에만 있다. 통계의 아낀 배달비, 배달비 수정 알림("4,000원으로 바뀌었어요")에 쓴다
         Long deliveryFee,
+        // 주문완료한 뒤에만 있다. 주문완료 알림("19시 40분 도착 예정")과 도착 예정 수정 알림에 쓴다
+        // 이 칸을 더하기 전에 붙인 옛 글에는 없어서 null로 풀린다
+        Instant expectedArrivalAt,
         List<Participant> participants,
         Instant occurredAt
 ) {
@@ -44,7 +48,7 @@ public record GroupOrderStatusPayload(
                                    CancelType cancelType, String cancelReason, Long deliveryFee,
                                    List<Participant> participants, Instant occurredAt) {
         this(groupOrderId, pickupSpotId, storeName, hostId, from, to, changedBy, GroupOrderChangeKind.STATUS_CHANGED,
-                cancelType, cancelReason, deliveryFee, participants, occurredAt);
+                cancelType, cancelReason, deliveryFee, null, participants, occurredAt);
     }
 
     // 참여자 한 명(방장 포함). 금액은 정산표가 있을 때만 있다(메뉴 합계 + 배달비 몫)

@@ -169,7 +169,7 @@ class MyGroupOrderApiTest {
         settlementRepository.findByGroupOrderId(room.getId()).stream()
                 .filter(s -> !s.isHost())
                 .forEach(s -> settlementService.confirm(s.getId(), hostId));
-        settlementService.order(room.getId(), hostId, new OrderRequest(null));
+        settlementService.order(room.getId(), hostId, new OrderRequest(null, Instant.now().plusSeconds(2400)));
         return reload(room);
     }
 

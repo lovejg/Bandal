@@ -119,8 +119,8 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
-      - name: compose 파일과 배포, 백업, DLT 다시 넣기, 묶음 작업 스크립트 올리기
-        run: tar -C deploy/bandal -cz compose.yml deploy.sh backup.sh restore.sh dlt-replay.sh grafana-reader.sh batch.sh | ssh "$HOST" 'mkdir -p /srv/bandal && tar -xz -C /srv/bandal'
+      - name: compose 파일과 배포, 백업, DLT 다시 넣기, 묶음 작업, 시연 데이터 스크립트 올리기
+        run: tar -C deploy/bandal -cz compose.yml deploy.sh backup.sh restore.sh dlt-replay.sh grafana-reader.sh batch.sh demo-seed.sh demo-seed.sql | ssh "$HOST" 'mkdir -p /srv/bandal && tar -xz -C /srv/bandal'
 
       # .env는 배포마다 새로 쓴다. 비밀값을 Secrets에서 바꾸면 다음 배포부터 들어간다. 다른 사용자는 읽지 못하게 600으로
       - name: .env 쓰기

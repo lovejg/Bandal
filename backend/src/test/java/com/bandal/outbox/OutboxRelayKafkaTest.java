@@ -15,6 +15,8 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.Header;
 import org.junit.jupiter.api.AfterEach;
+import com.bandal.TestMails;
+import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,7 +25,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.kafka.core.ConsumerFactory;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -115,6 +116,7 @@ class OutboxRelayKafkaTest {
         universityRepository.deleteAll();
 
         hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
+        TestMails.stub(mailSender);
 
         // 테스트마다 새 그룹이라 책갈피가 없다. 맨 앞부터 읽게 한다. 다른 테스트가 넣은 글은 키(방 id)로 걸러 낸다
         Properties props = new Properties();
@@ -209,7 +211,7 @@ class OutboxRelayKafkaTest {
 
         outboxRelay.runAt(NOW);
 
-        verify(mailSender).send(any(SimpleMailMessage.class));
+        verify(mailSender).send(any(MimeMessage.class));
         assertThat(reload(mail).getStatus()).isEqualTo(OutboxStatus.SENT);
         assertThat(reload(status).getStatus()).isEqualTo(OutboxStatus.SENT);
         assertThat(readFor(roomId, 1)).hasSize(1);

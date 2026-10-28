@@ -32,15 +32,16 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Modifying
     @Query(value = """
             insert into notification (event_id, user_id, group_order_id, store_name, kind, status, cancel_reason,
-                                      amount, delivery_fee, occurred_at)
+                                      amount, delivery_fee, expected_arrival_at, occurred_at)
             values (:eventId, :userId, :groupOrderId, :storeName, :kind, :status, :cancelReason,
-                    :amount, :deliveryFee, :occurredAt)
+                    :amount, :deliveryFee, :expectedArrivalAt, :occurredAt)
             on conflict (event_id, user_id) do nothing
             """, nativeQuery = true)
     int insertIfAbsent(@Param("eventId") Long eventId, @Param("userId") Long userId, @Param("groupOrderId") Long groupOrderId,
                        @Param("storeName") String storeName, @Param("kind") String kind, @Param("status") String status,
                        @Param("cancelReason") String cancelReason, @Param("amount") Long amount,
-                       @Param("deliveryFee") Long deliveryFee, @Param("occurredAt") Instant occurredAt);
+                       @Param("deliveryFee") Long deliveryFee, @Param("expectedArrivalAt") Instant expectedArrivalAt,
+                       @Param("occurredAt") Instant occurredAt);
 
     // ===== 알림함 API가 쓰는 것 =====
 

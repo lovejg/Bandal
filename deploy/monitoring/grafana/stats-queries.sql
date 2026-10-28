@@ -12,6 +12,9 @@
 --
 -- 블록 하나가 패널 하나다. "-- name:" 줄로 나눈다. 블록마다 SQL 문장 하나, 끝에 세미콜론을 붙이지 않는다
 -- 블록 안의 주석 줄은 테스트가 빼고 읽는다. 주석이 아닌 줄만 SQL이다
+--
+-- 시연 학교는 모든 패널에서 뺀다. 시연 학교 = 메일 도메인이 .example로 끝나는 학교(deploy/bandal/demo-seed.sql이 만든다)
+-- .example은 인터넷에서 쓸 수 없게 정해 둔 이름이라, 진짜 학교와 겹칠 일이 없다
 
 
 -- name: success_rate
@@ -20,7 +23,7 @@
 --
 -- 읽는 순서:
 --   1. from/join: 통계 줄마다 그 방의 거점, 거점의 학교를 옆에 붙인다(표에는 거점 id만 있다)
---   2. where: 기간 안에 끝난 방만 남긴다
+--   2. where: 기간 안에 끝난 방만 남긴다. 시연 학교는 뺀다
 --   3. group by: 같은 학교의 같은 거점끼리 한 묶음. 학교도 넣는 이유는 거점 이름이 학교마다 겹치기 때문이다("기숙사 로비")
 --   4. select: 묶음마다 센다
 --      count(*): 묶음의 줄 수 = 끝난 방 수
@@ -37,7 +40,7 @@ select u.name as school,
 from group_order_stat s
 join pickup_spot p on p.id = s.pickup_spot_id
 join university u on u.id = p.university_id
-where $__timeFilter(s.finished_at)
+where $__timeFilter(s.finished_at) and u.email_domain not like '%.example'
 group by u.name, p.name
 order by finished desc, school, spot
 
@@ -48,9 +51,11 @@ order by finished desc, school, spot
 -- 배달완료된 방만 센다. 정산중에 취소된 방은 배달비가 적혀 있어도 아무도 안 먹었다
 -- 열: saved(원)
 -- coalesce(값, 0): 값이 null이면 0. 배달완료 방이 하나도 없으면 sum은 0이 아니라 null을 내서 패널이 "No data"로 보인다
+-- not in (시연 학교의 거점들): 이 표에는 거점 id만 있어서, 시연 학교의 거점 id 목록을 따로 구해 뺀다
 select coalesce(sum(delivery_fee * (participant_count - 1)), 0) as saved
 from group_order_stat
 where outcome = 'DELIVERED'
+  and pickup_spot_id not in (select p.id from pickup_spot p join university u on u.id = p.university_id where u.email_domain like '%.example')
 
 
 -- name: saved_in_range
@@ -59,6 +64,7 @@ where outcome = 'DELIVERED'
 select coalesce(sum(delivery_fee * (participant_count - 1)), 0) as saved
 from group_order_stat
 where outcome = 'DELIVERED' and $__timeFilter(finished_at)
+  and pickup_spot_id not in (select p.id from pickup_spot p join university u on u.id = p.university_id where u.email_domain like '%.example')
 
 
 -- name: cancel_types
@@ -69,5 +75,6 @@ where outcome = 'DELIVERED' and $__timeFilter(finished_at)
 select cancel_type, count(*) as count
 from group_order_stat
 where outcome = 'CANCELED' and $__timeFilter(finished_at)
+  and pickup_spot_id not in (select p.id from pickup_spot p join university u on u.id = p.university_id where u.email_domain like '%.example')
 group by cancel_type
 order by count desc, cancel_type

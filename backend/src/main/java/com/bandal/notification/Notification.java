@@ -73,6 +73,9 @@ public class Notification {
     // 그때의 배달비. 정산 시작 전이면 null. 배달비 수정 알림이면 바뀐 뒤 배달비다
     private Long deliveryFee;
 
+    // 그때의 도착 예정 시각. 주문완료 알림과 도착 예정 수정 알림에만 있다
+    private Instant expectedArrivalAt;
+
     // 상태가 바뀐 시각(알림이 가리키는 일이 일어난 때). worker가 늦게 읽어도 이 시각은 그대로다
     @Column(nullable = false)
     private Instant occurredAt;
@@ -89,6 +92,12 @@ public class Notification {
 
     public Notification(Long eventId, Long userId, Long groupOrderId, String storeName, GroupOrderChangeKind kind,
                         GroupOrderStatus status, String cancelReason, Long amount, Long deliveryFee, Instant occurredAt) {
+        this(eventId, userId, groupOrderId, storeName, kind, status, cancelReason, amount, deliveryFee, null, occurredAt);
+    }
+
+    public Notification(Long eventId, Long userId, Long groupOrderId, String storeName, GroupOrderChangeKind kind,
+                        GroupOrderStatus status, String cancelReason, Long amount, Long deliveryFee,
+                        Instant expectedArrivalAt, Instant occurredAt) {
         this.eventId = eventId;
         this.userId = userId;
         this.groupOrderId = groupOrderId;
@@ -98,6 +107,7 @@ public class Notification {
         this.cancelReason = cancelReason;
         this.amount = amount;
         this.deliveryFee = deliveryFee;
+        this.expectedArrivalAt = expectedArrivalAt;
         this.occurredAt = occurredAt;
     }
 }

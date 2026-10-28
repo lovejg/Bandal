@@ -250,7 +250,7 @@ class GroupOrderStatusEventPublishTest {
         void order() {
             GroupOrder room = settledRoom();
 
-            settlementService.order(room.getId(), host.getId(), new OrderRequest(null));
+            settlementService.order(room.getId(), host.getId(), new OrderRequest(null, Instant.now().plusSeconds(2400)));
 
             assertPublishedOnce(room, GroupOrderStatus.SETTLING, GroupOrderStatus.ORDERED);
         }
@@ -259,7 +259,7 @@ class GroupOrderStatusEventPublishTest {
         @DisplayName("배달완료")
         void deliver() {
             GroupOrder room = settledRoom();
-            settlementService.order(room.getId(), host.getId(), new OrderRequest(null));
+            settlementService.order(room.getId(), host.getId(), new OrderRequest(null, Instant.now().plusSeconds(2400)));
             events.clear();
 
             settlementService.deliver(room.getId(), host.getId());

@@ -11,6 +11,7 @@ import RoomPage from './pages/Room'
 import MyRooms from './pages/MyRooms'
 import MePage from './pages/Me'
 import Notifications from './pages/Notifications'
+import Guide from './pages/Guide'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="mine" element={<MyRooms />} />
         <Route path="me" element={<MePage />} />
         <Route path="notifications" element={<Notifications />} />
+        <Route path="guide" element={<Guide />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -44,6 +46,14 @@ function Shell() {
           반달
         </Link>
         <span className="topbar__school">{me.universityName}</span>
+        {/* 유의사항. 종과 같은 모양의 네모 버튼으로 둔다 */}
+        <Link to="/guide" className="bell topbar__end" aria-label="이용 유의사항">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5V14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="12" cy="17" r="1.2" fill="currentColor" />
+          </svg>
+        </Link>
         <Bell />
         <ThemeToggle />
       </header>

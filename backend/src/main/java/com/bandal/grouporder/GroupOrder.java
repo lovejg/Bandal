@@ -58,6 +58,10 @@ public class GroupOrder {
     // 방장이 배달앱에서 실제로 결제한 금액. 주문완료 때 받는다. 통계용이고 정산식에는 쓰지 않는다
     private Long totalPaidAmount;
 
+    // 배달앱이 알려 준 도착 예정 시각. 주문완료 때 꼭 받는다. 참여자가 언제 거점으로 나갈지 이걸 보고 정한다
+    // 이 칸을 더하기 전에 주문완료된 방은 null이다
+    private Instant expectedArrivalAt;
+
     // 취소된 방에만 값이 있다. 방장이 모집중에 취소하면 사유 없이 null일 수도 있다
     private String cancelReason;
 
@@ -82,6 +86,10 @@ public class GroupOrder {
     public static final Duration CLOSED_EXPIRY = Duration.ofHours(3);
     public static final Duration SETTLING_EXPIRY = Duration.ofHours(24);
     public static final Duration ORDERED_EXPIRY = Duration.ofHours(6);
+
+    // 도착 예정 시각은 주문한 때부터 이 안이어야 한다. 배달이 이보다 오래 걸릴 일은 드물고,
+    // 주문완료 6시간 뒤 자동 배달완료(ORDERED_EXPIRY)보다 넉넉히 앞이라 도착 예정 전에 방이 끝나 버리는 일이 없다
+    public static final Duration MAX_ARRIVAL_WAIT = Duration.ofHours(3);
 
     // 이번 트랜잭션에서 바뀐 상태 기록. DB 칸이 아니다(@Transient). save 때 Spring이 꺼내 사건으로 내보낸다
     @Transient
@@ -279,8 +287,8 @@ public class GroupOrder {
     }
 
     // 방장이 배달앱에서 주문을 마쳤다. 전원 입금 확인은 줄을 모아야 알 수 있어 서비스가 본다
-    // 결제금액은 통계용이라 비워도(null) 된다
-    public void order(Long requesterId, Long totalPaidAmount, Instant now) {
+    // 결제금액은 통계용이라 비워도(null) 된다. 도착 예정 시각은 참여자가 기다리는 데 필요해서 꼭 받는다
+    public void order(Long requesterId, Long totalPaidAmount, Instant expectedArrivalAt, Instant now) {
         if(this.status != GroupOrderStatus.SETTLING) {
             throw new IllegalStateException("정산중인 방만 주문완료로 넘어갈 수 있습니다");
         }
@@ -290,9 +298,44 @@ public class GroupOrder {
         if(totalPaidAmount != null && totalPaidAmount < 0) {
             throw new IllegalArgumentException("결제금액은 0원 이상이어야 합니다");
         }
+        // 주문하는 지금이 기준이라 orderedAt 자리에 now를 넣어 검사한다
+        checkArrival(expectedArrivalAt, now, now);
         this.totalPaidAmount = totalPaidAmount;
+        this.expectedArrivalAt = expectedArrivalAt;
         changeStatus(GroupOrderStatus.ORDERED, StatusChangedBy.HOST, now);
         this.orderedAt = now;
+    }
+
+    // 배달앱의 도착 예정이 바뀌었다(지연 등). 주문완료 상태에서 방장만. 참여자에게 알림이 간다
+    public void changeExpectedArrival(Long requesterId, Instant expectedArrivalAt, Instant now) {
+        if(this.status != GroupOrderStatus.ORDERED) {
+            throw new IllegalStateException("주문완료된 방만 도착 예정 시각을 고칠 수 있습니다");
+        }
+        if(!isHost(requesterId)) {
+            throw new ForbiddenException("방장만 도착 예정 시각을 고칠 수 있습니다");
+        }
+        checkArrival(expectedArrivalAt, this.orderedAt, now);
+
+        // 같은 시각을 또 보내면(두 번 누름) 알림을 또 보내지 않는다
+        if(expectedArrivalAt.equals(this.expectedArrivalAt)) return;
+        // 상태는 그대로. 배달비 수정처럼 "상태 말고 다른 것이 바뀌었다"는 기록을 남긴다
+        statusChanges.add(new GroupOrderStatusChanged(this.id, this.status, this.status, StatusChangedBy.HOST,
+            GroupOrderChangeKind.ARRIVAL_CHANGED, now));
+        this.expectedArrivalAt = expectedArrivalAt;
+    }
+
+    // 도착 예정 시각 검사. 지금보다 뒤이고, 주문한 때부터 MAX_ARRIVAL_WAIT 안이어야 한다
+    // 지난 시각은 날짜를 잘못 고른 경우가 대부분이다(밤 11시 50분에 주문하고 "0시 30분"을 오늘로 넣는 것)
+    private static void checkArrival(Instant expectedArrivalAt, Instant orderedAt, Instant now) {
+        if(expectedArrivalAt == null) {
+            throw new IllegalArgumentException("도착 예정 시각을 입력해주세요");
+        }
+        if(!expectedArrivalAt.isAfter(now)) {
+            throw new IllegalArgumentException("도착 예정 시각은 지금보다 뒤여야 합니다");
+        }
+        if(expectedArrivalAt.isAfter(orderedAt.plus(MAX_ARRIVAL_WAIT))) {
+            throw new IllegalArgumentException("도착 예정 시각은 주문 뒤 " + MAX_ARRIVAL_WAIT.toHours() + "시간 안이어야 합니다");
+        }
     }
 
     // 음식이 도착했다. 배달앱과 연동돼있는게 아니라서 방장이 눌러야 알 수 있다
