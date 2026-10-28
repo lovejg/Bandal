@@ -47,6 +47,15 @@ spring:
       # 책갈피가 없는 새 그룹은 토픽 맨 앞부터 읽는다. 기본값(latest)이면 그룹을 처음 띄우기 전에 쌓인 글을 건너뛴다
       auto-offset-reset: earliest
 
+  batch:
+    job:
+      # 앱이 뜰 때 Job을 돌릴지. 기본값(true)이면 backend와 worker가 뜰 때마다 정리 Job이 돈다
+      # 꺼 두고, batch 컨테이너만 켜서 Job 이름(spring.batch.job.name)과 날짜 파라미터를 주고 돌린다
+      enabled: false
+    jdbc:
+      # 메타 표는 Flyway(V11__batch_metadata.sql)가 만든다. Spring Boot가 따로 만들지 않게
+      initialize-schema: never
+
   mail:
     properties:
       # 기본값은 끝없이 기다린다(timeout -1). 메일 서버가 응답하지 않으면 인증 메일을 보내던 요청이 영영 붙잡힌다

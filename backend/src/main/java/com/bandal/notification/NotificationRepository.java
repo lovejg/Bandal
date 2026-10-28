@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 
 // 알림 테이블을 읽고 쓰는 곳. 쓰는 쪽은 둘로 나뉜다
 // - worker(알림 컨슈머): insertIfAbsent로 알림을 넣는다
@@ -94,4 +95,24 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             where n.userId = :userId and n.readAt is null and n.id <= :upToId
             """)
     int markAllRead(@Param("userId") Long userId, @Param("upToId") Long upToId, @Param("now") Instant now);
+
+    // ===== 정리 배치(Spring Batch)가 쓰는 것 =====
+
+    // 읽은 지 오래된 알림을 지운다. 순진한 첫 버전: 조건에 맞는 줄을 한 문장으로 전부 지운다
+    // 지금 운영의 정리 Job은 이걸 쓰지 않는다(아래 deleteByIdIn으로 1,000개씩). 청크와 숫자를 비교하는 실험(NotificationCleanupExperimentTest)에만 남겨 둔다
+    // 1,000만 줄을 이걸로 지우면 3.7초 동안 그 줄 전부를 잠가서, 그 줄의 읽음 표시가 3.6초 기다렸다(2026-10-28 JOURNAL)
+    // 돌려주는 값: 지운 줄 수
+    // 지울 줄: 읽은 시각(readAt)이 cutoff(지금 - 30일)보다 이전인 줄. 안 읽은 줄(readAt이 null)은 비교가 참이 아니라 저절로 빠진다
+    // JPQL의 delete는 엔티티를 하나씩 꺼내 지우지 않고 DB에 delete 한 문장을 바로 보낸다(bulk delete)
+    // 그래서 100만 줄이어도 문장은 하나, 트랜잭션도 하나다.
+    @Modifying
+    @Query("delete from Notification n where n.readAt < :cutoff")
+    int deleteReadBefore(@Param("cutoff") Instant cutoff);
+
+    // 정리 Job의 Writer가 쓴다. Reader가 모은 id 목록(청크 하나, 최대 1,000개)의 알림을 한 문장으로 지운다
+    // 돌려주는 값: 지운 줄 수
+    // 위의 deleteReadBefore와 달리 조건이 아니라 id로 지운다. 한 문장이 지우는 양이 청크 크기를 넘지 않는다
+    @Modifying
+    @Query("delete from Notification n where n.id in :ids")
+    int deleteByIdIn(@Param("ids") List<Long> ids);
 }
