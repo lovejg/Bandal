@@ -6,11 +6,19 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 docker network inspect monitoring > /dev/null 2>&1 || docker network create monitoring > /dev/null
+docker network inspect stats-db > /dev/null 2>&1 || docker network create --internal stats-db > /dev/null
 
 if ! grep -q '^GRAFANA_ADMIN_PASSWORD=' .env 2>/dev/null; then
   ( umask 077; echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 16)" >> .env )
   echo "Grafana 관리자 비밀번호를 새로 만들었다(.env)"
 fi
+# 통계 표를 읽는 계정의 비밀번호. 만든 뒤 /srv/bandal/grafana-reader.sh를 한 번 돌려 DB에도 같은 값을 넣는다
+if ! grep -q '^GRAFANA_DB_PASSWORD=' .env 2>/dev/null; then
+  ( umask 077; echo "GRAFANA_DB_PASSWORD=$(openssl rand -hex 16)" >> .env )
+  echo "Grafana의 DB 읽기 계정 비밀번호를 새로 만들었다(.env). /srv/bandal/grafana-reader.sh를 돌려 DB에 넣는다"
+fi
+# 경고 메일 설정은 배포 작업이 쓴다. 없으면 경고가 조용히 안 나가니 멈춘다
+[ -f .env.alerting ] || { echo ".env.alerting이 없다(배포 작업이 만든다)"; exit 1; }
 
 docker compose up -d --quiet-pull --wait --wait-timeout 120
 # 설정 파일(prometheus/prometheus.yml)만 바뀌면 컨테이너가 다시 만들어지지 않는다. HUP 신호를 보내 다시 읽게 한다.

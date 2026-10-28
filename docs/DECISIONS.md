@@ -3907,7 +3907,7 @@ ADR-077은 "미리 보기 → 번호표" 순서로 재기로 했다. 미리 보�
 ## ADR-081. 방 상태 변경은 엔티티가 기록하고, 커밋 직전 리스너가 outbox에 적고, 집배원이 Kafka에 붙이고, worker가 알림과 통계로 나눠 읽는다
 
 - **날짜**: 2026-10-26
-- **상태**: 합의. 구현 시작(첫 단위: 엔티티에서 상태 변경을 한 메서드로 모으기)
+- **상태**: 완료(2026-10-28 운영 배포, `2b12ed5`). 남은 것: Grafana 통계 패널과 DLT 경고(읽기 전용 DB 계정이 필요해 다음 PR)
 
 **맥락**
 방 상태가 바뀌면 참여자에게 알려야 하고(마감, 송금할 금액, 주문, 도착, 취소와 사유), 통계(거점별 성사율, 아낀 배달비, 취소 사유별 건수)도 남겨야 한다.
@@ -4041,13 +4041,13 @@ DB의 방 줄은 지금 상태 하나만 알아서, 언제 무엇을 거쳐 왔�
   서비스 경로마다 사건을 세는 테스트(`ThroughService`)가 잡았고, 대조 테스트(`notPublishedWithoutSave`)를 남겼다.
 - ~~집배원이 앞 사건을 실패로 미루는 사이 같은 방의 뒤 사건을 먼저 붙이면 Kafka도 순서를 모른다.~~ 2026-10-26 재현함(JOURNAL). 결정 9.
 - ~~배달비 수정은 상태가 안 바뀌지만 금액이 바뀐다. 알릴지는 알림 컨슈머 단위에서 정한다.~~ 2026-10-28 알리기로 함. 결정 16.
-- Kafka(힙 512MB)와 worker를 더한 운영 메모리는 띄운 뒤 잰다.
+- ~~Kafka(힙 512MB)와 worker를 더한 운영 메모리는 띄운 뒤 잰다.~~ 2026-10-28 쟀다. 서버 사용량 +861MB. 수치는 ADR-082 "운영 배포".
 
 ---
 ## ADR-082. 운영에 Kafka와 worker를 같은 compose로 올린다. worker는 같은 이미지에 컨슈머만 켜고 스케줄러를 끈다
 
 - **날짜**: 2026-10-27
-- **상태**: compose 작성, 배포 전
+- **상태**: 운영 배포(2026-10-28, `2b12ed5`)
 
 **결정**
 - `deploy/bandal/compose.yml`에 `kafka`(apache/kafka:4.0.0, KRaft 한 대, ports 없음, 힙 512MB, mem_limit 1g, 볼륨 `kafka-data`)와
@@ -4075,8 +4075,63 @@ DB의 방 줄은 지금 상태 하나만 알아서, 언제 무엇을 거쳐 왔�
 - 메모리(쉬는 중, 위 흐름 뒤): worker 466MiB/768MiB, backend 485MiB/1GiB, kafka 360MiB/1GiB, postgres 71MiB, redis 9MiB.
   worker는 상한의 61%라 힙(상한의 75%)에 여유가 크지 않다. 운영(Arm)에서 다시 재고 정한다.
 
+**운영 배포(2026-10-28)** merge 뒤 CI → Deploy가 성공했다. postgres, redis는 다시 뜨지 않고 그대로다.
+- backend, worker, kafka 모두 healthy. 마이그레이션 V5~V9 성공. 토픽 둘 다 칸 3개, `retention.ms=-1`(자동 생성을 꺼 두어 앱이 만든 그대로다).
+- worker에서 notification, statistics 그룹이 칸 3개씩 배정받았다. 글 0, DLT 0. 배포 뒤 30분 동안 worker, backend, kafka에 WARN/ERROR 없음.
+- `dlt-replay.sh`가 `/srv/bandal`에 실행 권한과 함께 올라갔다(배포 작업이 compose와 함께 올린다).
+- 메모리(쉬는 중): 서버 used 1,661MB → 2,522MB(+861MB), available 10,264MB → 9,402MB(12GB 중).
+  worker 443MiB/768MiB, kafka 382MiB/1GiB, backend 435MiB/1GiB. 리허설(x86)과 거의 같다. worker는 상한의 58%라 글이 쌓일 때 다시 본다.
+- 운영에서 상태 변경 → 알림은 보지 않았다. 알림은 방장을 뺀 참여자에게 가는데 운영 테스트 계정이 하나뿐이다. 같은 흐름은 운영 compose 리허설에서 확인했다(위).
+
+---
+## ADR-083. 통계는 Grafana가 DB 표를 읽기 전용 계정으로 직접 읽는다. DLT와 worker 정지는 Grafana 경고가 메일로 알린다
+
+- **날짜**: 2026-10-28
+- **상태**: 합의. 구현 중
+
+**맥락**
+통계 컨슈머가 끝난 방마다 사실 한 줄(`group_order_stat`)을 쌓지만 아무도 보지 않는다. Grafana는 Prometheus와 Loki만 안다.
+DLT로 글이 옮겨지면 카운터(`bandal_kafka_dead_letter_total`)가 오르지만 대시보드를 열기 전에는 모른다.
+
+**결정**
+1. 통계 세 지표(거점별 성사율, 아낀 배달비, 취소 종류별 건수)는 Grafana의 PostgreSQL 데이터소스가 `group_order_stat`을 직접 읽어 SQL로 센다.
+2. Grafana는 `grafana_reader` 계정으로 붙는다. 읽을 수 있는 표는 `group_order_stat`, `pickup_spot`(거점 이름), `university`(학교 이름) 셋뿐이다.
+   `users`는 못 본다. 계정의 기본 트랜잭션은 읽기 전용이다.
+   - 역할과 권한은 Flyway 마이그레이션(V10)이 만든다. 로그인 불가(NOLOGIN) 상태로 만들고, 비밀번호와 로그인은 서버에서 스크립트(`grafana-reader.sh`)로 한 번 켠다.
+     비밀번호를 git에 두지 않으면서, 권한은 코드로 남고 테스트로 확인된다.
+   - 비밀번호는 `up.sh`가 처음 한 번 무작위로 만들어 `/srv/monitoring/.env`에 둔다(Grafana 관리자 비밀번호와 같은 방식).
+3. Grafana와 postgres만 같이 쓰는 내부 네트워크 `stats-db`를 둔다. Grafana에서 redis, kafka, backend는 보이지 않는다.
+   postgres를 이 네트워크에 붙이는 배포 한 번은 postgres 컨테이너를 다시 만든다(몇 초 끊김, 데이터는 볼륨에 그대로).
+4. 기간: 성사율과 취소 종류별 건수, "기간 안 아낀 배달비"는 대시보드 기간 선택기를 따른다(기본 최근 30일).
+   "지금까지 아낀 배달비"는 기간과 상관없이 전부 센다. 성사율 옆에는 "배달완료 n / 끝난 방 m"을 같이 둔다(방 1개짜리 거점의 100%가 튀어 보이지 않게).
+   거점은 학교 이름과 같이 보인다(거점 이름은 학교마다 겹친다).
+5. 경고는 Grafana 경고 규칙이 1분마다 Prometheus에 묻는다. "최근 5분 사이 DLT로 옮긴 글이 1건 이상", "worker가 5분 넘게 응답 없음" 두 개다.
+   worker가 죽으면 DLT 카운터를 낼 쪽이 없어서 둘째 규칙이 첫째를 받친다.
+6. 알림은 메일. 가입 메일과 같은 Resend SMTP를 쓴다. 받는 주소는 GitHub 변수 `ALERT_EMAIL`(git에는 없다).
+   SMTP 값과 받는 주소는 배포 작업이 Secrets에서 `/srv/monitoring/.env.alerting`(600)에 배포마다 새로 쓴다.
+   DLT 카운터는 앱이 뜰 때 그룹마다 0으로 만들어 둔다. 처음 DLT로 옮길 때 만들면 Prometheus에는 "없던 숫자가 1로 나타남"이라
+   `increase()`가 늘어난 것으로 세지 않아 첫 DLT에 경고가 안 울린다(알려진 동작. 재현하지 않고 피해 갔다).
+7. 패널 SQL은 사용자가 짜기로 했다가, 사용자 요청으로 Claude가 썼다(복습용 주석을 블록마다 단다). `deploy/monitoring/grafana/stats-queries.sql`이 원본이고 대시보드 JSON에 같은 SQL을 넣는다.
+   테스트가 이 파일의 SQL을 테스트 DB에 돌려 숫자를 확인하고, JSON의 SQL이 파일과 같은지 본다.
+
+**버린 대안**
+- *통계 숫자를 Loki 로그로 남기기*: Loki 보관이 30일이라 누적 숫자가 사라진다. 되감으면 같은 로그가 다시 찍혀 세면 두 배가 된다(V7 순진한 통계와 같은 문제).
+- *Prometheus 카운터로 내기*: worker가 다시 뜨면 0부터, 되감으면 다시 더해진다. 되감아도 같은 숫자인 원본(`group_order_stat`)을 두고 따로 셀 이유가 없다.
+- *worker가 표를 읽어 Prometheus 게이지로 내기*: 코드가 늘고, 거점별 숫자를 라벨로 내면 거점이 늘 때마다 시계열이 는다. Grafana가 SQL로 읽으면 끝난다.
+- *앱 계정(bandal, 최고 권한)을 Grafana에 주기*: Grafana의 SQL 창은 아무 쿼리나 친다. Grafana 비밀번호가 새면 `users`의 이메일과 비밀번호 해시가 나가고, 실수 한 번에 운영 데이터가 바뀐다.
+- *Grafana를 bandal 네트워크에 붙이기*: postgres 말고 redis(리프레시 토큰), kafka까지 닿는다.
+- *역할을 스크립트에서만 만들기*: 권한이 코드에 안 남고 테스트로 확인할 수 없다. 표를 다시 만드는 마이그레이션이 권한을 지워도 모른다.
+- *경고를 앱 스케줄러로*: Grafana가 이미 규칙을 주기적으로 돌린다. 앱이 죽으면 앱 스케줄러도 같이 죽는다.
+- *디스코드나 슬랙 웹훅*: 사용자가 메일을 골랐다. 메일은 이미 있는 Resend로 된다.
+
+**로컬 확인(2026-10-28)** 운영과 같은 `grafana/grafana:12.0.2`에 프로비저닝 폴더를 붙여 가짜 값으로 띄웠다.
+데이터소스 셋(`bandal-db`는 `bandal-postgres:5432`, `grafana_reader`), 대시보드 둘, 경고 규칙 둘, 연락처(`$ALERT_EMAIL`이 넣은 주소로 바뀜), 정책을 모두 읽었다.
+규칙 평가는 Prometheus가 없어 에러였다(`execErrState: Error`라 운영에서 Prometheus가 죽어도 경고가 간다).
+테스트: 패널 SQL 5개, 권한 6개, DLT 카운터 1개 추가. 전체 860개 통과.
+
 **확인 전**
-- 운영 서버 메모리(Kafka + worker를 더한 사용량), 배포 뒤 상태 변경 → 알림.
+- 운영에서 Resend로 경고 메일이 실제로 오는지. 배포 뒤 Grafana의 연락처 "Test" 버튼으로 본다.
+- 운영 DB로 패널이 그려지는지(`grafana-reader.sh`를 돌린 뒤).
 
 ---
 ## 아직 결정 안 한 것
