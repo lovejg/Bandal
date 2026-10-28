@@ -1,0 +1,23 @@
+# 통계 대시보드가 읽는 bandal DB. 읽기 전용 계정(grafana_reader)으로 붙는다
+# 이 계정은 group_order_stat, pickup_spot, university 세 표만 읽을 수 있다(마이그레이션 V10__grafana_reader.sql)
+# 비밀번호는 컨테이너 환경 변수 GRAFANA_DB_PASSWORD에서 읽는다($이름은 Grafana가 뜰 때 환경 변수 값으로 바꾼다)
+apiVersion: 1
+datasources:
+  - name: Bandal DB
+    uid: bandal-db
+    type: grafana-postgresql-datasource
+    access: proxy
+    # stats-db 네트워크 안에서 bandal postgres가 쓰는 이름(deploy/bandal/compose.yml)
+    url: bandal-postgres:5432
+    user: grafana_reader
+    editable: false
+    jsonData:
+      database: bandal
+      # 같은 서버 안의 내부 네트워크라 TLS 없이 붙는다. 이 네트워크에는 Grafana와 postgres만 있다
+      sslmode: disable
+      postgresVersion: 1700
+      # 대시보드 몇 개가 가끔 읽는 정도라 연결을 많이 잡지 않는다. 앱의 연결 몫을 뺏지 않게
+      maxOpenConns: 2
+      maxIdleConns: 1
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD

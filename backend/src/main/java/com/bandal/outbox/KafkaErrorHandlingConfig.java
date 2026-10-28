@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -12,6 +13,8 @@ import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.ExponentialBackOff;
 import tools.jackson.core.JacksonException;
+
+import java.util.List;
 
 // 컨슈머(알림, 통계)가 글 하나를 처리하다 예외가 났을 때 어떻게 할지
 //
@@ -31,8 +34,19 @@ import tools.jackson.core.JacksonException;
 @Configuration
 public class KafkaErrorHandlingConfig {
 
+    // DLT 카운터를 다는 컨슈머 그룹들. NotificationConsumer, StatisticsConsumer의 groupId와 같다
+    static final List<String> CONSUMER_GROUPS = List.of("notification", "statistics");
+
     @Bean
-    DefaultErrorHandler kafkaErrorHandler(KafkaTemplate<String, String> kafkaTemplate, MeterRegistry meterRegistry) {
+    DefaultErrorHandler kafkaErrorHandler(KafkaTemplate<String, String> kafkaTemplate, MeterRegistry meterRegistry,
+                                          @Value("${app.kafka.group-order-status-topic}") String topic) {
+        // 카운터를 앱이 뜰 때 0으로 미리 만들어 둔다
+        // 처음 DLT로 옮길 때 만들면 Prometheus에는 "없던 숫자가 1로 나타남"으로 보인다. 경고가 쓰는 increase()는 그걸 늘어난 것으로 세지 않아
+        // 운영에서 생긴 첫 DLT에 경고가 안 울린다. 0부터 있으면 0 → 1이 늘어난 것으로 잡힌다
+        for (String group : CONSUMER_GROUPS) {
+            deadLetterCounter(meterRegistry, topic, group);
+        }
+
         // 포기했을 때 할 일(recoverer): 글을 DLT로 옮긴다
         // 옮길 때 KafkaTemplate으로 원래 키, 값을 그대로 다시 보낸다. 헤더에는 Spring이 원래 토픽, 칸, 오프셋, 컨슈머 그룹,
         // 예외 이름과 메시지를 저절로 붙인다(kafka_dlt-로 시작하는 헤더). 사람이 원인을 볼 때 이 헤더를 본다
@@ -88,12 +102,7 @@ public class KafkaErrorHandlingConfig {
             String cause = rootCause(exception).getClass().getSimpleName();
             log.error("처리하지 못한 글을 DLT로 옮긴다 topic={} partition={} offset={} group={} cause={}",
                     record.topic(), record.partition(), record.offset(), group, cause);
-            Counter.builder("bandal.kafka.dead.letter")
-                    .description("처리하지 못해 DLT로 옮긴 글 수")
-                    .tag("topic", record.topic())
-                    .tag("group", group)
-                    .register(meterRegistry)
-                    .increment();
+            deadLetterCounter(meterRegistry, record.topic(), group).increment();
             super.accept(record, consumer, exception);
         }
 
@@ -105,5 +114,14 @@ public class KafkaErrorHandlingConfig {
             }
             return current;
         }
+    }
+
+    // 같은 이름과 태그로 register를 다시 부르면 새로 만들지 않고 이미 있는 카운터를 돌려준다
+    static Counter deadLetterCounter(MeterRegistry meterRegistry, String topic, String group) {
+        return Counter.builder("bandal.kafka.dead.letter")
+                .description("처리하지 못해 DLT로 옮긴 글 수")
+                .tag("topic", topic)
+                .tag("group", group)
+                .register(meterRegistry);
     }
 }

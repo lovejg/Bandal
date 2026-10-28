@@ -1,0 +1,104 @@
+{
+  "uid": "bandal-stats",
+  "title": "Bandal 통계",
+  "description": "끝난 방(group_order_stat)으로 센 지표와 Kafka DLT. SQL 원본은 grafana/stats-queries.sql이고, 패널 쿼리 이름(refId)이 그 파일의 블록 이름이다",
+  "editable": false,
+  "schemaVersion": 39,
+  "time": { "from": "now-30d", "to": "now" },
+  "refresh": "5m",
+  "panels": [
+    { "type": "row", "title": "아낀 배달비", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    {
+      "id": 1, "type": "stat", "title": "지금까지 아낀 배달비",
+      "description": "배달완료된 방마다 배달비 × (인원 - 1)의 합. 위 기간 선택기와 상관없이 처음부터 전부 센다",
+      "gridPos": { "x": 0, "y": 1, "w": 8, "h": 5 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
+      "fieldConfig": { "defaults": { "unit": "suffix:원", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        { "refId": "saved_total", "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
+          "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "select coalesce(sum(delivery_fee * (participant_count - 1)), 0) as saved\nfrom group_order_stat\nwhere outcome = 'DELIVERED'" }
+      ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "기간 안 아낀 배달비",
+      "description": "위 기간 선택기 안에 배달완료된 방만 센다",
+      "gridPos": { "x": 8, "y": 1, "w": 8, "h": 5 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
+      "fieldConfig": { "defaults": { "unit": "suffix:원", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        { "refId": "saved_in_range", "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
+          "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "select coalesce(sum(delivery_fee * (participant_count - 1)), 0) as saved\nfrom group_order_stat\nwhere outcome = 'DELIVERED' and $__timeFilter(finished_at)" }
+      ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "DLT로 옮긴 글 (기간 안)",
+      "description": "처리하지 못해 group-order-status-dlt로 옮긴 글 수. 0이 아니면 서버에서 /srv/bandal/dlt-replay.sh로 본다. 1건이라도 생기면 경고 메일이 간다",
+      "gridPos": { "x": 16, "y": 1, "w": 8, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0,
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "targets": [
+        { "refId": "A", "instant": true,
+          "expr": "round(sum(increase(bandal_kafka_dead_letter_total{job=\"bandal-worker\"}[$__range])))" }
+      ]
+    },
+    { "type": "row", "title": "거점과 취소", "gridPos": { "x": 0, "y": 6, "w": 24, "h": 1 }, "collapsed": false, "panels": [] },
+    {
+      "id": 4, "type": "table", "title": "거점별 성사율",
+      "description": "기간 안에 끝난 방(배달완료 + 취소) 중 배달완료의 비율. 방이 적은 거점은 비율이 크게 튀니 끝난 방 수를 같이 본다",
+      "gridPos": { "x": 0, "y": 7, "w": 14, "h": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "school" }, "properties": [ { "id": "displayName", "value": "학교" } ] },
+          { "matcher": { "id": "byName", "options": "spot" }, "properties": [ { "id": "displayName", "value": "거점" } ] },
+          { "matcher": { "id": "byName", "options": "delivered" }, "properties": [ { "id": "displayName", "value": "배달완료" } ] },
+          { "matcher": { "id": "byName", "options": "finished" }, "properties": [ { "id": "displayName", "value": "끝난 방" } ] },
+          { "matcher": { "id": "byName", "options": "rate" }, "properties": [
+            { "id": "displayName", "value": "성사율" }, { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 },
+            { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } },
+            { "id": "min", "value": 0 }, { "id": "max", "value": 100 } ] }
+        ]
+      },
+      "options": { "showHeader": true },
+      "targets": [
+        { "refId": "success_rate", "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
+          "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "select u.name as school,\n       p.name as spot,\n       count(*) filter (where s.outcome = 'DELIVERED') as delivered,\n       count(*) as finished,\n       round(100.0 * count(*) filter (where s.outcome = 'DELIVERED') / count(*), 1) as rate\nfrom group_order_stat s\njoin pickup_spot p on p.id = s.pickup_spot_id\njoin university u on u.id = p.university_id\nwhere $__timeFilter(s.finished_at)\ngroup by u.name, p.name\norder by finished desc, school, spot" }
+      ]
+    },
+    {
+      "id": 5, "type": "barchart", "title": "취소 종류별 건수",
+      "description": "기간 안에 취소된 방. 어느 단계에서 누가(방장, 시간 초과) 취소했나",
+      "gridPos": { "x": 14, "y": 7, "w": 10, "h": 10 },
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "orange" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "count" }, "properties": [ { "id": "displayName", "value": "건수" } ] },
+          { "matcher": { "id": "byName", "options": "cancel_type" }, "properties": [
+            { "id": "displayName", "value": "취소 종류" },
+            { "id": "mappings", "value": [ { "type": "value", "options": {
+              "HOST_WHILE_RECRUITING": { "text": "방장 취소(모집중)" },
+              "HOST_WHILE_CLOSED": { "text": "방장 취소(마감 뒤)" },
+              "HOST_WHILE_SETTLING": { "text": "방장 취소(정산중)" },
+              "DEADLINE_UNMET": { "text": "마감 미달" },
+              "CLOSED_TIMEOUT": { "text": "마감 뒤 시간 초과" },
+              "SETTLING_TIMEOUT": { "text": "정산중 시간 초과" } } } ] } ] }
+        ]
+      },
+      "options": { "orientation": "horizontal", "xField": "cancel_type", "showValue": "always", "legend": { "showLegend": false } },
+      "targets": [
+        { "refId": "cancel_types", "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
+          "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "select cancel_type, count(*) as count\nfrom group_order_stat\nwhere outcome = 'CANCELED' and $__timeFilter(finished_at)\ngroup by cancel_type\norder by count desc, cancel_type" }
+      ]
+    }
+  ]
+}

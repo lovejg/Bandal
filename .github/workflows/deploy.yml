@@ -90,6 +90,7 @@ jobs:
           MAIL_PORT: ${{ vars.MAIL_PORT }}
           MAIL_USERNAME: ${{ vars.MAIL_USERNAME }}
           MAIL_FROM: ${{ vars.MAIL_FROM }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
@@ -99,7 +100,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           missing=0
-          for n in DEPLOY_HOST DEPLOY_USER APP_BASE_URL R2_ENDPOINT R2_BUCKET MAIL_HOST MAIL_PORT MAIL_USERNAME MAIL_FROM \
+          for n in DEPLOY_HOST DEPLOY_USER APP_BASE_URL R2_ENDPOINT R2_BUCKET MAIL_HOST MAIL_PORT MAIL_USERNAME MAIL_FROM ALERT_EMAIL \
                    DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS \
                    DB_PASSWORD JWT_SECRET MAIL_PASSWORD R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
             if [ -z "${!n}" ]; then echo "::error::production 환경에 $n 이 없다"; missing=1; fi
@@ -119,7 +120,7 @@ jobs:
           printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
       - name: compose 파일과 배포, 백업, DLT 다시 넣기 스크립트 올리기
-        run: tar -C deploy/bandal -cz compose.yml deploy.sh backup.sh restore.sh dlt-replay.sh | ssh "$HOST" 'mkdir -p /srv/bandal && tar -xz -C /srv/bandal'
+        run: tar -C deploy/bandal -cz compose.yml deploy.sh backup.sh restore.sh dlt-replay.sh grafana-reader.sh | ssh "$HOST" 'mkdir -p /srv/bandal && tar -xz -C /srv/bandal'
 
       # .env는 배포마다 새로 쓴다. 비밀값을 Secrets에서 바꾸면 다음 배포부터 들어간다. 다른 사용자는 읽지 못하게 600으로
       - name: .env 쓰기
@@ -156,6 +157,20 @@ jobs:
 
       # 앱 배포가 끝난 뒤에 띄운다. 관측이 실패해도 앱은 이미 새 버전이고, 이 단계만 빨간불이 된다
       - name: 관측 묶음(Prometheus, Grafana) 올리고 띄우기
+        env:
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
         run: |
           tar -C deploy/monitoring -cz . | ssh "$HOST" 'tar -xz -C /srv/monitoring'
+          # Grafana 경고 메일. 가입 메일과 같은 Resend SMTP로 보내고, 받는 주소는 운영자 메일(vars.ALERT_EMAIL)이다
+          # .env처럼 배포마다 새로 쓴다. Grafana는 GF_로 시작하는 환경 변수를 설정으로 읽는다
+          {
+            echo "GF_SMTP_ENABLED=true"
+            echo "GF_SMTP_HOST=${{ vars.MAIL_HOST }}:${{ vars.MAIL_PORT }}"
+            echo "GF_SMTP_USER=${{ vars.MAIL_USERNAME }}"
+            echo "GF_SMTP_PASSWORD=${MAIL_PASSWORD}"
+            echo "GF_SMTP_FROM_ADDRESS=${{ vars.MAIL_FROM }}"
+            echo "GF_SMTP_FROM_NAME=Bandal 경고"
+            # 경고 연락처(provisioning/alerting/alerting.yml)가 이 값을 읽는다
+            echo "ALERT_EMAIL=${{ vars.ALERT_EMAIL }}"
+          } | ssh "$HOST" 'mkdir -p /srv/monitoring && umask 077 && cat > /srv/monitoring/.env.alerting'
           ssh "$HOST" 'bash /srv/monitoring/up.sh'

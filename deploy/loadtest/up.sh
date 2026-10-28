@@ -8,6 +8,8 @@ TAG=${1:?이미지 태그를 주세요. 운영의 /srv/bandal/.deployed-tag 와 
 
 docker network inspect edge > /dev/null 2>&1 || docker network create edge > /dev/null
 docker network inspect monitoring > /dev/null 2>&1 || docker network create monitoring > /dev/null
+# 운영 compose의 postgres가 붙는 네트워크. 이 서버에는 Grafana가 없어 비어 있지만, 없으면 compose가 뜨지 않는다
+docker network inspect stats-db > /dev/null 2>&1 || docker network create --internal stats-db > /dev/null
 
 # 이 서버의 사설 IP. 포트를 여기에만 연다
 export LOADTEST_BIND=$(ip -4 route get 10.0.0.1 | grep -o 'src [0-9.]*' | cut -d' ' -f2)

@@ -43,6 +43,8 @@ out/
 ### 비밀값 ###
 # 서버용 .env는 git에 올리지 않는다. 형식은 deploy/bandal/.env.example
 .env
+# 관측 묶음의 경고 메일 설정(SMTP 비밀번호). 배포 작업이 서버에만 쓴다
+.env.alerting
 # DB 덤프에는 이메일과 비밀번호 해시가 들어 있다
 *.dump
 deploy/bandal/backups/

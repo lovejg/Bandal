@@ -23,6 +23,9 @@ echo "배포: ${PREV_TAG:-없음} -> $NEW_TAG"
 
 # backend가 붙는 관측 네트워크. 관측 묶음보다 앱이 먼저 떠도 되게 여기서도 만든다
 docker network inspect monitoring > /dev/null 2>&1 || docker network create monitoring > /dev/null
+# Grafana가 통계 표를 읽으러 postgres에 오는 네트워크. internal이라 이 네트워크로는 인터넷에 나가지 못한다
+# 처음 이 네트워크가 붙는 배포 한 번은 postgres 컨테이너가 다시 만들어진다(몇 초 끊김, 데이터는 볼륨에 그대로)
+docker network inspect stats-db > /dev/null 2>&1 || docker network create --internal stats-db > /dev/null
 
 # 배포 직전 백업. 이번 마이그레이션이 데이터를 망가뜨리면 이 덤프가 바로 앞 상태다.
 # 백업이 실패하면 배포하지 않는다(set -e). 돌아갈 자리 없이 마이그레이션을 돌리지 않는다
