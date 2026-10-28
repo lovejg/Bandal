@@ -4148,7 +4148,7 @@ DLT로 글이 옮겨지면 카운터(`bandal_kafka_dead_letter_total`)가 오르
 ## ADR-084. 읽은 지 30일 지난 알림은 Spring Batch Job이 1,000줄씩 나눠 지운다. 매일 새벽 4시 30분, 돌고 꺼지는 batch 컨테이너에서
 
 - **날짜**: 2026-10-28
-- **상태**: 구현과 로컬 리허설 끝, 배포 전. 1단계(한 문장 삭제) 측정 → 2단계 offset Reader로 깨뜨림(2,500줄 중 1,500만 지우고 COMPLETED, JOURNAL)
+- **상태**: 완료(2026-10-28 운영 배포 `b85e0a9`, cron 등록, 손 실행 확인). 1단계(한 문장 삭제) 측정 → 2단계 offset Reader로 깨뜨림(2,500줄 중 1,500만 지우고 COMPLETED, JOURNAL)
   → 키셋 Reader(`JdbcPagingItemReader`, 정렬 키 id)로 고침 → 1,000만 줄 비교 → batch 컨테이너. 2단계 이후 구현은 사용자 요청으로 Claude가 했다.
 
 **측정: 한 문장 삭제 vs 청크 Job(1,000개씩)** (2026-10-28, `NotificationCleanupExperimentTest`, Testcontainers postgres, 로컬 x86. 지울 줄 + 남길 줄 20만)
@@ -4209,8 +4209,16 @@ Phase 6의 완료 기준은 "배치 실행 시간이 유의미하게 측정된�
 - *Tasklet으로 "1,000줄 지우기를 0줄이 될 때까지"*: 이 Job 하나만 보면 쿼리가 적어 더 단순하다. Batch의 중심인 청크(Reader/Writer, 읽은 수와 쓴 수 기록)를 익히는 게 이번 목적이라 청크로 했다.
 - *Job 파라미터를 지금 시각으로*: 매번 새 인스턴스라 두 번 도는 것을 막지 못하고, 다시 돌릴 때 기준이 달라진다.
 
+**운영 배포(2026-10-28, `b85e0a9`)**
+- V11 성공, 메타 표 6개. backend가 뜰 때 Job이 돌지 않았다(`spring.batch.job.enabled: false`). batch 서비스는 profile이라 배포의 `up`으로 뜨지 않았다.
+- `batch.sh`가 실행 권한 없이(`100644`) 올라갔다(JOURNAL). cron 줄은 `bash /srv/bandal/batch.sh ...`로 불러 권한과 상관없이 돌게 했다(setup.sh도 같게).
+- 사용자 허락 뒤 deploy crontab에 `30 19 * * *`(UTC) 한 줄을 넣고, 오늘 날짜로 손으로 한 번 돌렸다:
+  배포된 이미지로 batch 컨테이너가 떠 Arm 서버에서 앱 시작 17.0초, Step 75ms(운영 알림 0줄이라 지운 것 0), COMPLETED, 종료 코드 0, 전체 19초.
+  컨테이너는 `--rm`으로 지워졌고 실행 기록(job_execution 1, date=2026-10-28)이 남았다. batch.log는 실행 한 번에 약 23KB(앱 시작 로그 포함).
+
 **확인 전**
-- 운영 배포 뒤 cron 등록(사용자 허락 뒤 deploy 사용자 crontab에 한 줄)과 첫 새벽 실행의 batch.log, 실행 기록.
+- 첫 새벽 정기 실행(2026-10-29 04:30 KST)의 batch.log와 실행 기록(date=2026-10-29).
+- Job이 실패해도 지금은 batch.log와 실행 기록에만 남는다(경고 메일 없음). 실패가 실제로 생기면 healthchecks 핑(backup.sh와 같은 방식)이나 Grafana 경고를 붙인다.
 
 ---
 ## 아직 결정 안 한 것

@@ -2485,3 +2485,21 @@ DB 트리거로 둘째 청크에서 일부러 실패시키는 테스트도 더�
 - "다 지웠나"는 실행 기록이 아니라 남은 줄로 확인해야 한다. 테스트가 남은 줄을 셌기 때문에 잡혔다.
 
 **한 줄 요약** "offset으로 읽으며 읽은 줄을 지운 Job은 2,500줄 중 1,500줄만 지우고 성공으로 끝났다. 실행 기록도 1,500을 읽었다고 남겨 기록으로는 알 수 없었고, 남은 줄을 센 테스트가 잡았다."
+
+## 2026-10-28 batch.sh가 실행 권한 없이 서버에 올라갔다
+
+**상황** Phase 6 배포(`b85e0a9`) 뒤 서버를 확인했다. 배포 작업은 `deploy/bandal`의 스크립트를 tar로 묶어 `/srv/bandal`에 푼다. tar는 git에 적힌 파일 모드를 그대로 옮긴다.
+로컬에서 `chmod +x deploy/bandal/batch.sh`를 했고 로컬 파일은 `-rwxr-xr-x`였다.
+
+**증상** 서버의 `batch.sh`만 `-rw-r--r--`였다. 같은 방식으로 올라간 `dlt-replay.sh`, `grafana-reader.sh`는 실행 권한이 있었다.
+원격 main의 파일 모드: `batch.sh 100644`, `dlt-replay.sh 100755`, `grafana-reader.sh 100755`.
+setup.sh에 적은 cron 줄(`/srv/bandal/batch.sh ...`)을 그대로 넣었다면 첫 새벽 실행이 `Permission denied`로 batch.log에 한 줄만 남기고 실패했을 것이다. 등록 전에 봐서 겪지는 않았다.
+
+**원인** 커밋에 실행 비트가 들어가지 않았다(로컬 `git ls-files -s`도 `100644`). 어느 단계에서 빠졌는지는 확인하지 않았다(`core.fileMode`는 true).
+같은 목록에서 `deploy.sh`, `deploy/monitoring/up.sh`, `deploy/loadtest/up.sh`도 `100644`인데, 이 셋은 늘 `bash 스크립트`로 불러서 드러나지 않았다.
+
+**해결** cron 줄을 `bash /srv/bandal/batch.sh ...`로 불러 실행 권한과 상관없이 돌게 했다(서버 crontab, setup.sh). git의 모드도 `git update-index --chmod=+x`로 고친다.
+
+**배운 것** 파일 권한은 git에 커밋된 모드를 따라간다. 로컬에서 보이는 권한과 다를 수 있으니 서버에서 확인하고, 스크립트는 `bash 파일`로 불러 권한에 기대지 않는다.
+
+**한 줄 요약** "batch.sh가 git에 100644로 들어가 서버에 실행 권한 없이 올라갔다. cron에 넣기 전에 봐서, cron이 bash로 부르게 바꿨다."
