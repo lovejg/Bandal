@@ -131,6 +131,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           BACKUP_PING_URL: ${{ secrets.BACKUP_PING_URL }}
+          BATCH_PING_URL: ${{ secrets.BATCH_PING_URL }}
         run: |
           {
             echo "IMAGE_PREFIX=${{ needs.images.outputs.prefix }}"
@@ -149,6 +150,8 @@ jobs:
             echo "R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}"
             echo "R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}"
             echo "BACKUP_PING_URL=${BACKUP_PING_URL}"
+            # batch.sh가 읽는다
+            echo "BATCH_PING_URL=${BATCH_PING_URL}"
           } | ssh "$HOST" 'umask 077 && cat > /srv/bandal/.env'
 
       # 새 버전이 healthy가 안 되면 스크립트가 이전 버전으로 되돌리고 실패로 끝난다
