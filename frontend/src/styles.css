@@ -210,8 +210,42 @@ h2 {
   font-weight: 600;
 }
 
-.topbar .theme-toggle {
+/* 종 아이콘이 오른쪽 끝 묶음(종, 테마)의 첫째라 여기서 밀어낸다 */
+.topbar .bell {
   margin-left: auto;
+}
+
+/* 상단의 종 아이콘. 안 읽은 알림이 있으면 오른쪽 위에 주황 숫자 */
+.bell {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.bell:hover {
+  border-color: var(--ink);
+}
+
+.bell__count {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }
 
 .tabbar {
@@ -1414,6 +1448,68 @@ textarea {
 .myroom--todo .myroom__step {
   color: var(--accent-ink);
   font-weight: 700;
+}
+
+/* ---------- 알림함 ---------- */
+
+.notilist {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+/* 한 줄 전체가 버튼이다. 누르면 그 방으로 간다 */
+.noti {
+  display: block;
+  width: 100%;
+  padding: 13px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--sub);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.noti:hover {
+  border-color: var(--ink);
+}
+
+/* 안 읽은 알림은 진한 글씨에 왼쪽 주황 선(내 방 목록의 할 일 표시와 같은 말투) */
+.noti--unread {
+  color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.noti__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.noti__store {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.noti__time {
+  flex-shrink: 0;
+  color: var(--sub);
+  font-size: 12px;
+}
+
+.noti__text {
+  margin-top: 4px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.noti--unread .noti__text {
+  font-weight: 600;
 }
 
 /* ---------- 내 정보 ---------- */

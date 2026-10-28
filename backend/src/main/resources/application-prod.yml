@@ -11,6 +11,10 @@ spring:
       host: redis
       port: 6379
 
+  # 같은 Compose 안의 Kafka 컨테이너(컨테이너끼리 쓰는 문). 밖으로는 열지 않는다
+  kafka:
+    bootstrap-servers: kafka:19092
+
   # 메일은 발송 서비스(Resend)의 SMTP로 보낸다. 주소와 계정은 환경 변수로 받는다
   mail:
     host: ${MAIL_HOST}

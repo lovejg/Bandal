@@ -19,6 +19,7 @@ public class OutboxRelay {
     private final OutboxService outboxService;
     private final EmailVerificationService emailVerificationService;
     private final VerificationMailSender mailSender;
+    private final GroupOrderStatusPublisher groupOrderStatusPublisher;
 
     // 앞 실행이 끝나고 poll-delay-ms만큼 쉰 뒤 다시 돈다. 앞 실행이 길어져도 겹치지 않는다
     @Scheduled(fixedDelayString = "${app.outbox.poll-delay-ms}")
@@ -34,7 +35,8 @@ public class OutboxRelay {
                 outboxService.markSent(c.id(), now);
             } catch(Exception e) {
                 // 줄마다 따로 잡는다. 한 통이 실패해도 다음 줄로 간다. 주소는 로그에 남기지 않는다
-                log.error("가입 메일을 보내지 못했습니다. outboxId={}, userId={}", c.id(), c.userId(), e);
+                log.error("outbox 줄을 보내지 못했습니다. outboxId={}, type={}, userId={}, groupOrderId={}",
+                    c.id(), c.type(), c.userId(), c.groupOrderId(), e);
                 outboxService.markFailed(c.id(), now);
             }
         }
@@ -48,8 +50,11 @@ public class OutboxRelay {
         else if(c.type() == OutboxType.ALREADY_REGISTERED_MAIL) {
             mailSender.sendAlreadyRegistered(c.email());
         }
+        else if(c.type() == OutboxType.GROUP_ORDER_STATUS_CHANGED) {
+            groupOrderStatusPublisher.publish(c.id(), c.groupOrderId(), c.payload());
+        }
         else {
-            throw new IllegalStateException("모르는 메일 종류: " + c.type());
+            throw new IllegalStateException("모르는 outbox 종류:" + c.type());
         }
     }
 }

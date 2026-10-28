@@ -2148,3 +2148,270 @@ java.util.concurrent.TimeoutException
 둘을 바꿔 쓰면 정원이 넘치거나, 일꾼이 늘어도 한 명만 일한다.
 
 **한 줄 요약** "outbox 찜 쿼리를 FOR UPDATE로만 잠그자 두 번째 집배원이 빈 줄을 두고도 첫 번째가 끝날 때까지 멈췄다(TimeoutException). SKIP LOCKED로 바꾸자 둘이 다른 줄을 나눠 가져갔다."
+
+## 2026-10-26 방장이 서비스로 마감하자 방은 마감됐는데 상태 변경 사건은 하나도 방송되지 않았다
+
+**상황** Phase 5. `GroupOrder`의 상태 대입 10군데를 `changeStatus` 하나로 모아 "무엇에서 무엇으로 바뀌었나"를 엔티티 안 목록(`@DomainEvents`)에 남기게 했다
+(엔티티 단위 테스트 18개 통과). 이 기록은 리포지토리 `save` 때 Spring Data가 꺼내 방송한다. 우리 서비스는 상태를 바꾼 뒤 `save`를 부르지 않고 변경 감지에 맡긴다.
+`GroupOrderStatusEventPublishTest`(`@RecordApplicationEvents`)로 두 경우를 비교했다. 대조군은 테스트가 직접 `closeByHost` 뒤 `groupOrderRepository.save(room)`,
+다른 하나는 `groupOrderService.close(roomId, hostId)`.
+
+**증상** 대조군은 사건 하나(RECRUITING → CLOSED)가 방송돼 통과. 서비스로 마감한 쪽은 DB의 방이 CLOSED로 커밋됐는데 방송된 사건은 0개.
+```
+java.lang.AssertionError:
+Expected size: 1 but was: 0 in:
+[]
+```
+상태를 바꾸는 서비스 경로 7개(방장 마감, 방장 취소, 스케줄러의 모집중 마감과 멈춘 방 취소, 정산 시작, 주문완료, 배달완료)로 넓혀도 7개 모두 같은 메시지로 실패했다.
+
+**원인** Spring Data가 사건을 꺼내는 자리는 리포지토리 프록시의 `save`(와 `saveAll`, `delete` 등) 호출이다. 변경 감지는 커밋 때 Hibernate가 혼자 UPDATE를
+보내는 것이라 리포지토리 프록시를 지나지 않는다. 기록은 엔티티 목록에 남은 채 객체와 함께 버려진다. 에러도 경고도 없고 상태 변경은 정상이라, 사건을 받는 쪽이
+생기기 전에는 아무도 모른다.
+
+**해결** 상태를 바꾸는 엔티티 메서드 바로 뒤에 `groupOrderRepository.save(groupOrder)`를 넣었다(`GroupOrderService`의 close, cancel, expire 두 갈래,
+`SettlementService`의 start, order, deliver). 이미 보관함에 있는 엔티티라 `merge`로 가서 쿼리는 더 나가지 않고, 사건만 나간다. 7개 경로 모두 사건 하나씩 방송돼 통과,
+전체 780개 통과. 새 경로에서 `save`를 빠뜨리는 위험은 경로별 테스트와 `changeStatus` 위 주석으로 막는다.
+버린 것: Hibernate가 저장할 때 끼어들어 저절로 내보내기. 언제 나가는지 코드에 안 보이고 설정이 늘어난다.
+
+**배운 것** "save를 안 불러도 변경 감지가 저장해 준다"는 저장에만 맞는 말이다. 리포지토리 호출에 기대는 기능(도메인 이벤트)은 변경 감지로는 일어나지 않는다.
+사건처럼 "안 나가도 아무 데서도 안 터지는" 것은 받는 쪽보다 먼저, 나가는지부터 테스트로 본다.
+
+**한 줄 요약** "엔티티에 상태 변경 기록을 남겼는데, 서비스가 변경 감지에만 맡기고 save를 부르지 않아 방은 마감됐는데 사건은 0개 방송됐다(7개 경로 모두). 상태 변경 뒤 save를 부르자 경로마다 하나씩 나갔다."
+
+## 2026-10-26 outbox에 새 종류를 더하자 V4가 걸어 둔 type CHECK에 막혔고, 다시 읽은 jsonb는 키 순서가 바뀌어 있었다
+
+**상황** Phase 5. outbox에 방 상태 줄(`GROUP_ORDER_STATUS_CHANGED`, `group_order_id`, `payload jsonb`)을 담으려고 V5를 새로 썼다. V5는 `user_id`의 not null을 풀고,
+새 칸 둘을 null 허용으로 더하고, 종류별 필수 칸 CHECK를 걸었다. V4의 type CHECK는 일부러 손대지 않고 테스트가 어떻게 깨지는지 봤다.
+`OutboxMessageRepositoryTest`가 방 상태 줄을 진짜 Postgres에 저장하고 다시 읽는다.
+
+**증상 1** 저장에서 막혔다.
+```
+DataIntegrityViolationException: could not execute statement [ERROR: new row for relation "outbox_message" violates check constraint "outbox_message_type_check"
+  Detail: Failing row contains (5, GROUP_ORDER_STATUS_CHANGED, null, PENDING, 0, ...
+```
+**원인 1** V4의 type 칸에 `check ((type in ('VERIFICATION_MAIL','ALREADY_REGISTERED_MAIL')))`이 있다. enum을 이름 그대로(`EnumType.STRING`) 저장하는 칸에 "이 값들만 된다"를
+DB에도 걸어 둔 것이다(V1 무렵 Hibernate가 만든 DDL 모양을 그대로 옮겼다). Java enum에 값을 더해도 DB는 모른다. 컴파일도, 앱 기동의 스키마 검사(`validate`)도 통과하고 INSERT 때 처음 터진다.
+**해결 1** V5에서 `outbox_message_type_check`를 지우고 세 값으로 다시 건다. V4는 운영에서 이미 돌았으므로 고치지 않는다.
+
+**증상 2** 저장은 됐는데 다시 읽은 payload가 넣은 문자열과 달랐다(띄어쓰기를 무시하고 비교했는데도).
+```
+Expecting actual:
+  "{"to": "CLOSED", "groupOrderId": 3, "participants": ...
+```
+넣은 것은 `{"groupOrderId": 3, "to": "CLOSED", ...}`였다.
+**원인 2** jsonb는 글자를 그대로 두지 않고 풀어서 저장한다. 꺼낼 때 띄어쓰기와 키 순서를 자기 방식(짧은 키 먼저)으로 다시 만든다. 같은 키가 둘이면 마지막 것만 남는다.
+내 테스트가 "글자가 같다"를 기대한 게 틀렸다.
+**해결 2** 테스트를 JSON 내용 비교(`ObjectMapper.readTree`끼리 equals)로 바꿨다. 전체 787개 통과.
+
+**배운 것** enum에 값을 더할 때는 DB의 CHECK도 같이 본다. 컬럼 타입이 enum 이름을 담는 varchar여도 제약은 따로 산다. jsonb에서 꺼낸 문자열은 넣은 문자열과 같지 않을 수 있으니,
+받는 쪽(컨슈머)은 글자가 아니라 JSON으로 읽어야 한다.
+
+**한 줄 요약** "Java enum에 outbox 종류를 더했는데 V4의 type CHECK가 INSERT를 막았다(컴파일도 스키마 검사도 통과). V5에서 CHECK를 다시 걸었다. 다시 읽은 jsonb는 키 순서가 바뀌어 있어 테스트를 JSON 비교로 고쳤다."
+
+## 2026-10-26 outbox에 방 상태 줄이 하나 섞이자 집배원의 찜 전체가 터져 같이 찜된 가입 메일까지 못 나갔다
+
+**상황** Phase 5. outbox에 방 상태 줄(`user_id` null)이 들어가게 된 뒤, 집배원이 그 줄을 Kafka로 보내는 `OutboxRelayKafkaTest`를 먼저 썼다. `OutboxService.claim`은 아직
+가입 메일만 있던 때 모양 그대로, 찜한 줄마다 `userRepository.findByIdOrThrow(message.getUserId())`로 받을 사람을 찾는다.
+
+**증상** 방 상태 줄이 들어간 테스트 3개가 모두 같은 예외로 실패했다.
+```
+org.springframework.dao.InvalidDataAccessApiUsageException: The given id must not be null
+```
+메일 줄과 방 상태 줄을 함께 넣은 테스트에서는 가입 메일도 나가지 않았다. 예외가 `claim` 트랜잭션(줄 여러 개를 한꺼번에 찜함) 전체를 롤백해서, 같은 차례에 찜한 메일 줄까지 찜이 풀린다.
+운영이었다면 5초마다 같은 줄을 다시 집어 같은 자리에서 터지므로, 방 상태 줄 하나가 그 뒤의 가입 메일을 모두 막는다.
+
+**원인** 찜 단계가 "모든 줄에는 받을 사용자가 있다"를 전제로 했다. 줄마다 `try`로 감싼 건 보내기(`send`) 단계뿐이고, 찜 단계는 한 줄의 예외가 전부를 멈춘다.
+
+**해결** 찜할 때 종류를 보고 나눴다. 방 상태 줄은 사용자를 찾지 않고 `groupOrderId`와 `payload`만 `Claimed`에 담는다. 보내기 단계(`OutboxRelay.send`)에는
+방 상태 줄을 `GroupOrderStatusPublisher.publish`로 Kafka에 넣는 갈래를 더했다. 3개 모두 통과했다(키는 방 id, 같은 방 둘은 같은 칸에 차례대로, 메일과 섞여도 둘 다 SENT). 전체 796개 통과.
+
+**배운 것** 한 테이블에 종류가 다른 줄이 섞이면, "줄마다 있다"고 믿던 칸이 없는 줄이 생긴다. 줄마다 예외를 잡던 곳(보내기)만 보면 안전해 보이지만,
+여러 줄을 한 트랜잭션에서 다루는 곳(찜)은 한 줄의 실패가 전부의 실패다. 종류를 더할 때는 줄을 다루는 모든 단계를 다시 본다.
+
+**한 줄 요약** "outbox에 user_id 없는 방 상태 줄이 섞이자 찜 단계의 사용자 조회가 null id로 터져, 같은 차례의 가입 메일까지 롤백됐다. 찜에서 종류별로 나눠 고쳤다."
+
+## 2026-10-26 같은 방의 앞 줄이 한 번 실패하자 Kafka에 SETTLING이 CLOSED보다 먼저 들어갔다
+
+**상황** Phase 5. 같은 방의 줄은 키(방 id)가 같아 Kafka의 같은 칸에 넣은 순서대로 쌓인다. 그런데 넣는 순서는 집배원이 정한다.
+`OutboxRelayKafkaTest`에서 `GroupOrderStatusPublisher`를 spy로 감싸, 한 방의 CLOSED 줄을 넣을 때만 한 번 실패하게 했다.
+
+**증상** 두 경우 모두 칸에 쌓인 순서가 뒤집혔다.
+```
+Expecting actual:
+  ["SETTLING", "CLOSED"]
+to contain exactly (and in same order):
+  ["CLOSED", "SETTLING"]
+```
+- 차례가 다른 경우: CLOSED 실패 → 30초 뒤에 다시 시도하기로 미뤄짐 → 그 사이 생긴 SETTLING이 다음 차례에 먼저 나감 → 30초 뒤 CLOSED가 나감.
+- 한 차례에 같이 찜된 경우: 줄마다 따로 예외를 잡기 때문에 CLOSED가 실패해도 루프는 SETTLING으로 넘어가 그대로 보낸다.
+
+통계 컨슈머는 방 id마다 마지막 글로 덮어쓰기로 했으니, 실제로는 SETTLING인 방이 통계에 CLOSED로 굳는다.
+
+**원인** 찜 쿼리는 줄마다 "보낼 때가 됐나"만 본다. 같은 방에 먼저 생긴 줄이 아직 안 나갔는지는 보지 않는다. Kafka는 받은 순서만 지켜 줄 뿐, 넣기 전에 뒤집힌 순서는 고칠 수 없다.
+
+**해결** 찜 쿼리에 `not exists (같은 방, 더 작은 id, PENDING)`를 달아, 같은 방의 앞 줄이 나가기 전에는 뒤 줄을 꺼내지 않게 했다.
+뒤집히던 두 테스트 모두 `CLOSED, SETTLING` 순서로 통과하고, 막힌 방이 있어도 다른 방과 메일은 나가며, 앞 줄이 FAILED가 되면 뒤 줄이 나간다.
+
+고친 뒤 예전 테스트 하나가 깨졌다. 같은 방의 두 줄을 한 차례에 둘 다 보내길 기대했는데 `Expected size: 2 but was: 1`.
+찜하는 순간 앞 줄이 아직 PENDING이라 뒤 줄은 다음 차례(5초 뒤)에 나간다. 의도한 동작이라 테스트를 두 차례 돌리게 바꿨다. 전체 800개 통과.
+
+**배운 것** Kafka의 "칸 안 순서 보장"은 넣는 쪽이 이미 순서대로 넣었을 때만 쓸모가 있다. 재시도는 순서를 뒤집는 가장 흔한 길이다.
+순서를 지키는 대가로 같은 방은 한 차례에 한 줄씩만 나간다. 한 방의 상태가 5초 안에 두 번 바뀌는 일은 드물어서 받아들였다.
+
+**한 줄 요약** "같은 방의 CLOSED 줄이 한 번 실패한 사이 SETTLING 줄이 먼저 나가 Kafka에 순서가 뒤집혀 쌓였다. Kafka의 칸 안 순서는 넣는 쪽이 지킨 만큼만 지켜진다."
+
+## 2026-10-26 같은 글을 두 번 받자 유니크 예외를 잡았는데도 다음 사람 INSERT가 "transaction is aborted"로 터졌다
+
+**상황** Phase 5. 알림 컨슈머가 받은 상태 변경 글을 받는 사람마다 알림 행으로 저장한다. 같은 글을 두 번 받는 경우(처리 뒤 책갈피 커밋 전에 worker가 죽음)는
+(event_id, user_id) 유니크로 막고, `NotificationService.record`에서 `save`를 `try`로 감싸 `DataIntegrityViolationException`이면 그 사람을 건너뛰게 했다.
+받는 사람 여럿을 한 트랜잭션(`@Transactional`)에서 저장한다.
+
+**증상** 같은 글로 `record`를 두 번 부르는 테스트에서 두 번째 호출이 예외로 끝났다.
+```
+JpaSystemException: could not execute statement
+  [ERROR: current transaction is aborted, commands ignored until end of transaction block] [insert into notification ...]
+Caused by: PSQLException: ERROR: duplicate key value violates unique constraint "uk_notification_event_user"
+  Detail: Key (event_id, user_id)=(100, 2) already exists.
+```
+
+**원인** 첫 사람(user 2)의 INSERT가 유니크에 걸렸고 `catch`가 잡았다. 하지만 PostgreSQL은 트랜잭션 안의 문장 하나가 실패하면 그 트랜잭션을 망가진 상태로 두고,
+롤백할 때까지 모든 문장을 거절한다. 다음 사람의 INSERT는 그래서 `current transaction is aborted`로 거절됐고, 이건 `JpaSystemException`이라 `catch`에 안 걸린다.
+자바에서 예외를 잡아도 DB 트랜잭션은 되살아나지 않는다.
+
+운영이었다면 메서드가 예외로 끝나 컨슈머가 같은 글을 다시 받고, 다시 같은 자리에서 터져 재시도를 다 쓸 때까지 에러가 쌓인다.
+
+**해결** 넣다가 실패하고 잡는 대신, 넣으면서 확인하게 바꿨다. `NotificationRepository.insertIfAbsent`는
+`insert ... on conflict (event_id, user_id) do nothing` 한 문장이다. 이미 있으면 DB가 에러 없이 0줄을 넣고 끝내서 트랜잭션이 망가지지 않는다.
+`record`의 `save` + `try/catch`를 이 호출로 바꾸자 같은 글 두 번 테스트가 통과했고, 두 번째 호출 뒤에도 받는 사람은 LEE, PARK 한 벌씩이었다. 전체 807개 통과.
+
+**배운 것**
+- 자바의 `catch`는 자바 예외만 처리한다. DB 쪽 트랜잭션 상태는 따로 있고, PostgreSQL은 문장 하나가 실패하면 롤백 전까지 다음 문장을 받지 않는다.
+- 중복이 정상적으로 일어나는 곳(같은 글을 두 번 받는 컨슈머)에서는 중복을 예외로 다루지 말고 쿼리가 처음부터 건너뛰게 한다.
+
+**한 줄 요약** "중복 알림을 유니크 예외를 잡아 건너뛰려 했는데, PostgreSQL은 실패한 문장 뒤의 트랜잭션을 통째로 거절해 다음 사람의 INSERT가 터졌다.
+`on conflict do nothing`으로 넣으면서 확인하게 바꿔 고쳤다."
+## 2026-10-27 통계를 더하기(+1)로 쌓았더니 같은 글 두 번, 되감기에서 숫자가 두 배가 됐다
+
+**상황** Phase 5. 통계 컨슈머(그룹 statistics)가 끝난 방 글(배달완료, 취소)을 받을 때마다 거점별 숫자를 더하게 만들었다.
+`pickup_spot_stat` 테이블에 거점마다 한 줄(성사 수, 취소 수, 아낀 배달비 합계)을 두고, `insert ... on conflict (pickup_spot_id) do update set delivered_count = delivered_count + 1`로 더한다.
+일부러 만든 순진한 첫 버전이다. 상태 변경 번호(eventId)는 받기만 하고 쓰지 않는다.
+
+**증상** 6개 중 2개가 실패했다.
+```
+같은 글을 두 번 받아도 한 번만 센다 :: expected: 1 but was: 2
+맨 앞으로 되감아 지난 글을 전부 다시 읽어도 숫자가 그대로다 :: expected: 1 but was: 2
+```
+배달완료 세기, 취소 세기, 거점별로 따로 세기, 끝나지 않은 상태 무시는 통과했다. 한 번씩만 받으면 숫자는 맞는다.
+
+**원인** 더하기는 "이 글을 이미 셌나"를 모른다. 같은 글이 다시 오면(책갈피 커밋 전에 worker가 죽음) 한 번 더 더하고,
+그룹을 맨 앞으로 되감으면 지난 글이 전부 다시 와서 모든 숫자가 두 배가 된다. Kafka는 "적어도 한 번" 주는 것만 약속하므로
+받는 쪽이 같은 글을 몇 번 받아도 결과가 같아야(멱등) 한다.
+**해결** 숫자를 쌓지 않고 끝난 방마다 사실을 한 줄씩 두게 바꿨다(V8, `group_order_stat`: 방 id 기본 키, 거점, 결과, 취소 종류, 배달비, 인원, 끝난 시각, 상태 변경 번호).
+`insert ... on conflict (group_order_id) do update set ... = excluded....`로 "있던 값 + 1" 대신 "넣으려던 값"으로 덮어쓴다.
+같은 글을 몇 번 받아도 같은 줄이 같은 값으로 다시 써질 뿐이다. 끝에 `where group_order_stat.event_id <= excluded.event_id`를 달아
+더 작은 번호(늦게 온 옛 글)로는 덮어쓰지 않고, 같은 번호(되감아 다시 읽기)는 덮어쓴다. 아낀 배달비는 저장하지 않고 볼 때
+`sum(delivery_fee * (participant_count - 1))`로 센다. 같은 글 두 번, 되감기 테스트가 통과했고(통계 7개), 전체 833개 통과.
+되감기를 위해 상태 변경 토픽의 보관 기간을 무기한(`retention.ms=-1`)으로 두었다(기본 7일이면 지난 글이 지워진다).
+
+**배운 것**
+- Kafka는 같은 글을 두 번 줄 수 있다. 받는 쪽은 "몇 번 받아도 결과가 같게"(멱등) 만들어야 하고, 더하기는 멱등이 아니고 덮어쓰기는 멱등이다.
+- 계산한 값 대신 사실을 저장하면 계산식이 틀려도 쿼리만 고치면 된다. 되감기는 저장하지 않은 사실이 필요해질 때 쓰고, 그러려면 글이 남아 있어야 한다.
+
+**한 줄 요약** "통계를 거점별 숫자에 +1로 쌓았더니 같은 글을 두 번 받거나 되감을 때 숫자가 두 배가 됐다. 끝난 방마다 사실 한 줄을 방 id로 덮어쓰고
+지표는 볼 때 SQL로 세게 바꿔, 몇 번 받아도 같은 결과가 나오게 했다."
+## 2026-10-27 실패 처리 설정이 없을 때: 깨진 글은 로그 한 줄로 사라졌고, DB가 10초 끊기자 멀쩡한 글도 버려졌다
+
+**상황** Phase 5. 알림, 통계 컨슈머에 실패를 다루는 설정을 아무것도 넣지 않은 상태에서 진짜 Kafka(Testcontainers)로 세 경우를 넣어 봤다(`NotificationFailureKafkaTest`).
+JSON이 깨진 글 뒤에 같은 방(같은 칸)의 정상 글, `eventId` 헤더가 없는 글, 서비스가 처음 부른 때부터 정해진 시간 동안 `DataAccessResourceFailureException`을 던지는 경우(DB 끊김 흉내).
+
+**증상**
+- 깨진 글, 헤더 없는 글: DLT에 아무것도 없었다. 로그에는 그룹마다 한 줄만 남았다.
+  ```
+  ERROR o.s.kafka.listener.DefaultErrorHandler : Backoff FixedBackOffExecution[interval=0, currentAttempts=10, maxAttempts=9] exhausted for group-order-status-failure-test-0@1
+  ```
+  글 본문도 예외도 없이 "몇 번 칸의 몇 번째 글"뿐이다. 깨진 글 뒤의 정상 글은 알림이 됐다.
+- DB 2초 끊김: 통과했다. 시도마다 시각을 찍어 보니 `interval=0`인데도 시도 사이가 약 0.5초(0, 493, 997, 1500, 2003ms)라 다섯 번째에 끊김이 풀렸다.
+- DB 10초 끊김: 10번째 시도(4518ms)에서 포기하고 같은 `exhausted` 로그를 남긴 뒤 넘어갔다. 그 글의 알림은 끝내 생기지 않았다. 멀쩡한 글을 잃었다.
+
+**원인** 설정이 없으면 Spring Kafka의 `DefaultErrorHandler`가 기다림 없이 9번 더(모두 10번) 시도하고, 그래도 실패하면 로그만 남기고 그 글을 건너뛴다.
+깨진 글인지 DB 문제인지 가리지 않는다. 그래서 다시 해 봐야 소용없는 깨진 글은 10번을 헛돌고, 기다리면 될 DB 끊김은 4.5초 만에 포기한다.
+시도 사이가 0.5초인 이유는 확인하지 않았다(실패한 글로 되돌아가 다시 읽어 오는 데 드는 시간으로 보인다).
+**해결** `KafkaErrorHandlingConfig`에 실패 처리를 직접 정했다.
+- 기다리는 시간을 1초부터 두 배씩 늘리고(최대 30초 간격) 5분이 지나면 포기한다(`ExponentialBackOff`). 10초 끊김 테스트가 통과했다.
+- 다시 해도 소용없는 예외(`MalformedMessageException`, `JacksonException`, `NullPointerException`)는 기다리지 않고 바로 포기한다.
+  헤더가 없을 때 그냥 두면 `NullPointerException`이라 "글이 잘못됨"과 "코드 버그"를 가를 수 없어서, 헤더 읽기를 `GroupOrderStatusPublisher.eventIdOf()`로 모으고
+  없거나 숫자가 아니면 `MalformedMessageException`을 던지게 했다.
+- 포기한 글은 `DeadLetterPublishingRecoverer`로 DLT에 옮기고 카운터(`bandal.kafka.dead.letter`)를 올린다. 로그에는 위치와 원인 이름만 남는다.
+  ```
+  처리하지 못한 글을 DLT로 옮긴다 topic=group-order-status-failure-test partition=0 offset=1 group=notification cause=StreamReadException
+  ```
+
+고치는 중에 하나 더 겪었다. DLT 토픽을 `원래이름.DLT`로 만들었는데 테스트가 DLT에서 글을 못 찾았다. 로그는 이랬다.
+```
+WARN ...CountingDeadLetterRecoverer : Destination resolver returned non-existent partition group-order-status-failure-test-dlt-0, KafkaProducer will determine partition to use for this topic
+WARN ...NetworkClient : ... {group-order-status-failure-test-dlt=UNKNOWN_TOPIC_OR_PARTITION}
+```
+지금 Spring Kafka는 DLT 이름을 `원래이름-dlt`로 정한다(옛 버전 기본값이 `.DLT`). 글은 없는 토픽으로 갔고 브로커가 그 이름으로 칸 1개짜리 토픽을 저절로 만들었다.
+만드는 토픽 이름을 `-dlt`로 맞추고, 칸 3개, 보관 무기한인지 확인하는 테스트(`KafkaTopicConfigTest`)를 더했다. 실패 테스트 3개, 전체 837개 통과.
+
+**배운 것**
+- 실패 처리 기본값은 "조용히 버리기"다. 실패를 어떻게 다룰지 정하지 않으면 글을 잃는다.
+- 예외는 "다시 하면 달라질 수 있나"로 나눈다. 다시 해 볼 실패는 기다리는 시간을 늘려 가며, 아닌 것은 바로 따로 빼 둔다.
+- 라이브러리의 기본 이름에 기대는 곳(DLT 이름)은 테스트로 고정해 둔다. 버전이 바뀌면 조용히 달라진다.
+
+**한 줄 요약** "실패 처리를 정하지 않은 컨슈머는 깨진 글을 10번 헛돈 뒤 로그 한 줄로 버렸고, 10초짜리 DB 끊김에는 멀쩡한 글까지 버렸다.
+일시 실패는 점점 길게 기다리며 5분 동안 다시 하고, 깨진 글은 바로 DLT로 옮기게 바꿨다."
+## 2026-10-27 save를 빼자 방은 취소됐는데 상태 변경 기록은 에러 없이 사라졌다
+
+**상황** Phase 5. 방 상태 변경은 엔티티가 `@DomainEvents`로 기록하고, 리포지토리 `save`를 지날 때 Spring Data가 꺼내 방송한다고 알려져 있다.
+상태를 바꾸는 서비스 7곳에는 `save`를 넣어 두었지만 "변경 감지만으로는 안 나간다"는 직접 본 적이 없었다(ADR-081 확인 전).
+`GroupOrderService.cancel`의 `groupOrderRepository.save(groupOrder)`를 잠깐 주석으로 막고 테스트를 돌렸다.
+
+**증상** 두 테스트만 실패했다.
+```
+GroupOrderStatusOutboxTest 방장 취소 :: Expected size: 1 but was: 0 in: []
+GroupOrderStatusEventPublishTest$ThroughService 방장 취소 :: Expected size: 1 but was: 0 in: []
+```
+방장 취소 API 테스트를 포함한 나머지는 모두 통과했다. 방은 정상으로 취소됐고 응답도 같았다. 상태 변경 기록만 사라졌고, 로그에 에러도 경고도 없었다.
+
+**원인** 상태는 커밋할 때 Hibernate의 변경 감지가 UPDATE로 반영한다. 엔티티에 쌓인 상태 기록은 Spring Data가 리포지토리 `save`(와 `saveAll`, `delete`)를
+부를 때만 꺼내 방송한다. `save`를 빠뜨리면 DB는 바뀌는데 outbox 줄이 없어 알림과 통계가 조용히 빠진다.
+
+**해결** `save`를 되돌렸다. 빠뜨림은 이미 서비스 경로마다 "사건이 하나 나가고 상태도 바뀌었나"를 보는 테스트(`ThroughService`)가 잡아냈다.
+`save` 없이 상태만 바꾸면 상태는 커밋되고 사건은 없다는 대조 테스트(`notPublishedWithoutSave`)를 남겼다. 전체 838개 통과.
+
+**배운 것** 변경 감지와 도메인 이벤트 방송은 길이 다르다. 상태 변경을 서비스 경로마다 테스트로 묶어 두어야 `save` 하나를 빠뜨린 게 드러난다.
+빠뜨려도 기능 테스트는 초록이라, 사건을 직접 세는 테스트가 없으면 운영에서 알림이 빠진 뒤에야 안다.
+
+**한 줄 요약** "save를 빼자 방은 변경 감지로 취소됐지만 @DomainEvents는 save를 지날 때만 나가서 상태 변경 기록이 에러 없이 사라졌다. 서비스 경로마다 사건을 세는 테스트가 잡았다."
+
+## 2026-10-28 "5분 뒤 포기"로 정한 재시도가 DB가 꺼지자 13분 뒤에 포기했다
+
+**상황** Phase 5. DLT 다시 넣기 스크립트(`deploy/bandal/dlt-replay.sh`)를 운영과 같은 compose의 로컬 리허설에서 훈련했다.
+postgres를 내린 채 정상 글 하나와 `eventId` 헤더가 없는 글 하나를 붙이고, 둘이 DLT로 옮겨지길 기다렸다.
+재시도는 1초부터 두 배씩, 최대 30초 간격, `setMaxElapsedTime(5분)`이다(ADR-081 결정 15). 5분 남짓이면 옮겨질 줄 알았다.
+
+**증상** 헤더 없는 글은 받자마자 두 그룹에서 DLT로 갔다. 정상 글은 5분이 지나도, 9분이 지나도 DLT에 없었다. 옮겨진 건 약 12분 반 뒤다.
+```
+05:30:20 처리하지 못한 글을 DLT로 옮긴다 ... partition=2 offset=0 group=notification cause=MalformedMessageException
+05:42:58 처리하지 못한 글을 DLT로 옮긴다 ... partition=1 offset=0 group=notification cause=UnknownHostException
+```
+그 사이 worker 로그에는 시도마다 이 경고가 찍혔다.
+```
+HikariPool-1 - Connection is not available, request timed out after 30000ms (total=0, active=0, idle=0, waiting=3)
+```
+
+**원인** `ExponentialBackOff`의 최대 경과 시간은 시계로 잰 시간이 아니라 **기다린 간격만 더한 값**이다. 시도 자체에 걸린 시간은 들어가지 않는다.
+DB 컨테이너가 꺼지면 시도마다 Hikari가 커넥션을 30초 기다리다 실패한다. 간격 합 5분(1+2+4+8+16초, 그다음 30초씩)에 이르는 시도가 15번쯤이라
+30초 × 15 ≈ 7분이 더해져 약 13분이 됐다. 테스트의 DB 끊김 흉내는 예외를 바로 던져서 이 차이가 안 보였다.
+
+**해결** 설정은 그대로 두고 주석과 ADR을 고쳤다. DB가 꺼진 동안에는 그 칸의 뒤 글도 어차피 처리할 수 없어서, 13분 동안 칸이 멈추는 것이 5분 멈추는 것보다 나쁘지 않다.
+오히려 그만큼 덜 DLT로 간다. 시계 시간으로 꼭 끊어야 하면 worker의 커넥션 대기를 줄이는 방법이 있지만, 그러면 DB가 느린 순간에 일반 처리가 실패한다.
+DB를 살린 뒤 `dlt-replay.sh replay`로 다시 넣자 알림 1줄(방장 빼고 참여자 1명)과 통계 1줄이 생겼다. 두 그룹 몫 2건을 다 넣어도 늘지 않았고, 다시 replay하면 "다시 넣을 글이 없다"였다.
+헤더 없는 글 2건은 건너뛰었다.
+
+**배운 것**
+- 라이브러리가 말하는 "경과 시간"이 무엇을 세는지 확인해야 한다. 기다린 시간과 걸린 시간은 다르다.
+- 예외를 바로 던지는 흉내는 "시도 하나가 오래 걸리는" 실패를 못 보여 준다. 진짜로 DB를 내려 봐야 드러난다.
+
+**한 줄 요약** "재시도를 5분으로 정했는데 DB를 진짜로 내리자 13분 뒤에 포기했다. 최대 경과 시간은 쉰 간격만 더하고, 시도마다 커넥션을 30초 기다린 시간은 세지 않았다."

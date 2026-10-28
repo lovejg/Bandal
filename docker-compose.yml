@@ -45,5 +45,41 @@ services:
       - "1025:1025"  # SMTP - 앱이 여기로 메일을 보낸다
       - "8025:8025"  # 웹 UI - 사람이 여기서 확인한다
 
+  # 방 상태 변경 사건을 붙여 두는 게시판. ZooKeeper 없이 혼자 뜬다(KRaft, 브로커와 컨트롤러를 한 몸에)
+  kafka:
+    image: apache/kafka:4.0.0
+    container_name: bandal-kafka
+    ports:
+      # 다른 프로젝트가 9092를 쓰고 있어서 밖으로는 9094로 연다. 내 컴퓨터의 앱은 localhost:9094로 붙는다
+      - "9094:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # 문 세 개: 컨테이너끼리(19092), 컨트롤러끼리(9093), 내 컴퓨터에서(9092, 밖으로는 9094)
+      KAFKA_LISTENERS: INTERNAL://:19092,CONTROLLER://:9093,HOST://:9092
+      # 붙은 쪽에 "앞으로는 이 주소로 오라"고 알려 주는 주소. 문마다 찾아올 수 있는 주소가 다르다
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092,HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      # 브로커가 한 대라 복제본도 하나뿐이다. 기본값(3)이면 내부 토픽을 못 만든다
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # 컨슈머가 붙자마자 바로 칸을 나눠 준다. 기본 3초를 기다리면 실습이 답답하다
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+      # 붙인 글을 디스크에 두는 곳. 아래 볼륨에 두어야 컨테이너를 지워도 글이 남는다
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - bandal-kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:19092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
 volumes:
   bandal-postgres-data:
+  bandal-kafka-data:

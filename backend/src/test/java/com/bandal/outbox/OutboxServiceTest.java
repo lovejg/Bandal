@@ -83,7 +83,7 @@ class OutboxServiceTest {
     }
 
     OutboxMessage queued(OutboxType type, User user, Instant at) {
-        return outboxMessageRepository.save(new OutboxMessage(type, user.getId(), at));
+        return outboxMessageRepository.save(OutboxMessage.mail(type, user.getId(), at));
     }
 
     OutboxMessage reload(OutboxMessage message) {

@@ -95,7 +95,7 @@ class OutboxRelayTest {
     }
 
     OutboxMessage queued(OutboxType type, User user) {
-        return outboxMessageRepository.save(new OutboxMessage(type, user.getId(), NOW.minusSeconds(10)));
+        return outboxMessageRepository.save(OutboxMessage.mail(type, user.getId(), NOW.minusSeconds(10)));
     }
 
     OutboxMessage reload(OutboxMessage message) {

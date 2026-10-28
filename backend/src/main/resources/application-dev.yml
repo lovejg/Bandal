@@ -18,6 +18,10 @@ spring:
       host: localhost
       port: 6380
 
+  kafka:
+    # docker-compose.yml에서 9094로 열었다. 9092는 다른 프로젝트가 쓴다
+    bootstrap-servers: localhost:9094
+
   mail:
     # Mailpit. 밖으로 나가지 않고 http://localhost:8025 에 쌓인다
     host: localhost

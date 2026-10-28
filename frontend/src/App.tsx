@@ -1,6 +1,6 @@
-import { useEffect } from 'react'
-import { Link, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom'
-import { api } from './api'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, NavLink, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { api, NOTIFICATIONS_CHANGED_EVENT } from './api'
 import { useAuth } from './auth'
 import { ThemeToggle, useAction } from './components'
 import Login from './pages/Login'
@@ -10,6 +10,7 @@ import NewRoom from './pages/NewRoom'
 import RoomPage from './pages/Room'
 import MyRooms from './pages/MyRooms'
 import MePage from './pages/Me'
+import Notifications from './pages/Notifications'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         <Route path="rooms/:id" element={<RoomPage />} />
         <Route path="mine" element={<MyRooms />} />
         <Route path="me" element={<MePage />} />
+        <Route path="notifications" element={<Notifications />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -42,6 +44,7 @@ function Shell() {
           반달
         </Link>
         <span className="topbar__school">{me.universityName}</span>
+        <Bell />
         <ThemeToggle />
       </header>
       <nav className="tabbar" aria-label="주요 메뉴">
@@ -56,6 +59,57 @@ function Shell() {
         <Outlet />
       </main>
     </div>
+  )
+}
+
+// 안 읽은 알림 수를 다시 묻는 주기. 서버가 밀어주지 않아서(SSE 없음) 화면이 주기적으로 묻는다
+const BELL_POLL_MS = 30_000
+
+// 상단의 종 아이콘. 안 읽은 알림이 있으면 빨간 숫자를 단다
+// 숫자를 다시 묻는 때: 30초마다(탭이 보일 때만), 이 탭으로 돌아왔을 때, 화면을 옮길 때, 알림을 읽음으로 바꿨을 때
+function Bell() {
+  const [count, setCount] = useState(0)
+  const location = useLocation()
+
+  // 실패하면 숫자를 그대로 둔다. 종 숫자 때문에 에러를 띄울 일은 아니다
+  const refresh = useCallback(() => {
+    api
+      .unreadNotificationCount()
+      .then(setCount)
+      .catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh, location.pathname])
+
+  useEffect(() => {
+    // 다른 탭을 보고 있는 동안에는 묻지 않는다. 돌아오면 focus에서 바로 묻는다
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refresh()
+    }, BELL_POLL_MS)
+    window.addEventListener('focus', refresh)
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, refresh)
+    }
+  }, [refresh])
+
+  return (
+    <Link to="/notifications" className="bell" aria-label={count > 0 ? `알림, 안 읽은 알림 ${count}개` : '알림'}>
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+        <path
+          d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2Z M10 20a2 2 0 0 0 4 0"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {count > 0 && <span className="bell__count">{count > 99 ? '99+' : count}</span>}
+    </Link>
   )
 }
 

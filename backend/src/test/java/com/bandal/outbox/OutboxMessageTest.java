@@ -18,7 +18,7 @@ class OutboxMessageTest {
     static final Duration RETRY_BASE = Duration.ofSeconds(30);
 
     OutboxMessage newMessage() {
-        return new OutboxMessage(OutboxType.VERIFICATION_MAIL, USER_ID, NOW);
+        return OutboxMessage.mail(OutboxType.VERIFICATION_MAIL, USER_ID, NOW);
     }
 
     // 찜하고 실패하기를 n번 되풀이한다. 실패할 때마다 1분씩 지난 것으로 한다
