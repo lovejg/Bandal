@@ -37,6 +37,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-mail'
     // 방 상태 변경을 Kafka 토픽에 넣고(집배원), worker가 읽는다
     implementation 'org.springframework.boot:spring-boot-starter-kafka'
+    // 정리, 집계 같은 묶음 작업(Spring Batch). 실행 기록(메타 표)을 DB에 남기는 JDBC 판이다
+    implementation 'org.springframework.boot:spring-boot-starter-batch-jdbc'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     compileOnly 'org.projectlombok:lombok'

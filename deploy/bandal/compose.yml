@@ -97,6 +97,29 @@ services:
       kafka:
         condition: service_healthy
 
+  # 묶음 작업(Spring Batch Job)을 하나 돌리고 꺼지는 컨테이너. 계속 떠 있지 않는다
+  # 서버 cron이 매일 batch.sh로 띄운다: docker compose run --rm batch (Job 이름과 날짜는 batch.sh가 넘긴다)
+  # profiles: 이름을 콕 집어 부를 때만 뜬다. 배포의 docker compose up은 이 서비스를 띄우지 않는다
+  # 따로 띄우는 이유: Job이 메모리나 DB 커넥션을 많이 써도 웹 요청을 받는 backend는 흔들리지 않는다(worker와 같은 이유)
+  batch:
+    image: ${IMAGE_PREFIX:-bandal}-backend:${IMAGE_TAG:-local}
+    profiles: [batch]
+    # 하루 몇 초~몇 분 도는 동안만 쓴다
+    mem_limit: 512m
+    environment:
+      <<: *backend-env
+      # 웹 서버를 띄우지 않는다. 8080을 열지 않고, Job이 끝나면 꺼진다
+      SPRING_MAIN_WEB_APPLICATION_TYPE: none
+      # 자동 마감, outbox 집배원은 backend가 한다. 여기서 또 돌면 두 번씩 돈다
+      APP_SCHEDULING_ENABLED: "false"
+      # 뜰 때 Job을 돌린다(backend, worker는 꺼 둔다). 돌릴 Job 이름(SPRING_BATCH_JOB_NAME)은 batch.sh가 준다
+      SPRING_BATCH_JOB_ENABLED: "true"
+      # Job이 끝나면 앱을 끄고 결과를 종료 코드로 알린다(BandalApplication.main)
+      APP_BATCH_EXIT_WHEN_DONE: "true"
+    # ports가 없고 웹 서버도 없다. postgres(와 Kafka 토픽 확인)만 쓴다
+    networks:
+      default:
+
   # 방 상태 변경 글을 붙여 두는 Kafka. ZooKeeper 없이 혼자 뜬다(KRaft, 브로커와 컨트롤러를 한 몸에)
   # 로컬(docker-compose.yml)과 같은 설정에서 내 컴퓨터용 문(HOST)만 뺐다. ports가 없어서 bandal 네트워크 밖에서는 닿지 않는다
   kafka:

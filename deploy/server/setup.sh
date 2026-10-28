@@ -85,6 +85,8 @@ step "cron"
 crontab -u "$DEPLOY_USER" - <<'EOF'
 # 서버 시계는 UTC다. 19시 = 한국 새벽 4시
 0 19 * * * [ -f /srv/bandal/.deployed-tag ] && /srv/bandal/backup.sh daily >> /srv/bandal/backups/backup.log 2>&1
+# 19시 30분 = 한국 새벽 4시 30분. 백업(4시)이 끝난 뒤 읽은 지 30일 지난 알림을 지운다
+30 19 * * * [ -f /srv/bandal/.deployed-tag ] && /srv/bandal/batch.sh notificationCleanupJob >> /srv/bandal/batch.log 2>&1
 17 3,15 * * * [ -d /srv/edge/letsencrypt/live ] && /srv/edge/cert.sh renew >> /srv/edge/cert.log 2>&1
 EOF
 
