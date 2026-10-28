@@ -115,6 +115,21 @@ export interface MyRoom {
   awaitingConfirmCount: number | null
 }
 
+// 알림함의 한 줄. 서버는 사실(상태, 금액, 사유)만 주고 문장은 화면이 만든다(format.ts의 notificationText)
+export interface AppNotification {
+  id: number
+  groupOrderId: number
+  storeName: string
+  // 무엇이 바뀌었나. 배달비 수정이면 status는 정산중 그대로다
+  kind: 'STATUS_CHANGED' | 'DELIVERY_FEE_CHANGED'
+  status: Status
+  cancelReason: string | null
+  amount: number | null
+  deliveryFee: number | null
+  occurredAt: string
+  read: boolean
+}
+
 export interface PickupSpot {
   id: number
   name: string
@@ -304,4 +319,18 @@ export const api = {
   myActive: () => get<{ rooms: MyRoom[]; hasNext: boolean }>('/api/users/me/group-orders/active'),
   myDone: (page: number, size: number) =>
     get<{ rooms: MyRoom[]; hasNext: boolean }>(`/api/users/me/group-orders/done?page=${page}&size=${size}`),
+
+  // 알림 목록은 페이지 번호가 아니라 "이 알림보다 오래된 것"(before)으로 다음 묶음을 받는다
+  // 처음엔 before 없이, "더 보기"는 받은 목록의 마지막 줄 id를 넣는다
+  notifications: (before: number | null, size: number) =>
+    get<{ notifications: AppNotification[]; hasNext: boolean }>(
+      `/api/notifications?size=${size}${before === null ? '' : `&before=${before}`}`,
+    ),
+  unreadNotificationCount: () => get<{ count: number }>('/api/notifications/unread-count').then((r) => r.count),
+  readNotification: (id: number) => post<void>(`/api/notifications/${id}/read`),
+  // upToId: 화면에 보인 가장 최신 알림 id. 그 뒤에 들어온 알림은 안 읽음으로 남는다
+  readAllNotifications: (upToId: number) => post<void>('/api/notifications/read-all', { upToId }),
 }
+
+// 알림을 읽음으로 바꾼 뒤 이 이벤트를 쏘면 종 아이콘이 다음 주기를 기다리지 않고 숫자를 다시 묻는다
+export const NOTIFICATIONS_CHANGED_EVENT = 'bandal:notifications-changed'

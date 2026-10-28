@@ -30,7 +30,10 @@ public class OutboxService {
 
     // 찜한 줄 하나를 보내는 데 필요한 것만 담는다. 엔티티를 넘기지 않는다(트랜잭션이 끝나면 보관함 밖 객체가 된다)
     // 이메일은 메모리에서만 잠깐 들고 있다가 버린다. outbox 표에는 남지 않는다
-    public record Claimed(Long id, OutboxType type, Long userId, String email, boolean verified) {
+    // 메일 줄은 userId, email, verified만, 방 상태 줄은 groupOrderId, payload만 채운다. 나머지는 null(verified는 false)
+    public record Claimed(Long id, OutboxType type,
+                          Long userId, String email, boolean verified,
+                          Long groupOrderId, String payload) {
     }
 
     // 찜하기
@@ -40,9 +43,17 @@ public class OutboxService {
         List<Claimed> claimed = new ArrayList<>();
         for (OutboxMessage message : due) {
             message.claim(now);
-            User user = userRepository.findByIdOrThrow(message.getUserId());
-            claimed.add(new Claimed(message.getId(), message.getType(), user.getId(), user.getEmail(),
-                user.getEmailVerifiedAt() != null));
+            if(message.getType() == OutboxType.GROUP_ORDER_STATUS_CHANGED) {
+                // 방(Kafka로 들어감)
+                claimed.add(new Claimed(message.getId(), message.getType(), null, null, false,
+                    message.getGroupOrderId(), message.getPayload()));
+            }
+            else {
+                // 메일
+                User user = userRepository.findByIdOrThrow(message.getUserId());
+                claimed.add(new Claimed(message.getId(), message.getType(), user.getId(), user.getEmail(),
+                user.getEmailVerifiedAt() != null, null, null));
+            }
         }
         return claimed;
     }

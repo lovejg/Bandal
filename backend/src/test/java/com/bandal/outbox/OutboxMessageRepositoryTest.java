@@ -11,6 +11,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
@@ -43,7 +44,23 @@ class OutboxMessageRepositoryTest {
 
     // 새 줄은 nextAttemptAt이 만든 시각이다. 시각을 다르게 주면 차례가 먼저 된 순서가 정해진다
     OutboxMessage pending(long userId, Instant createdAt) {
-        return outboxMessageRepository.save(new OutboxMessage(OutboxType.VERIFICATION_MAIL, userId, createdAt));
+        return outboxMessageRepository.save(OutboxMessage.mail(OutboxType.VERIFICATION_MAIL, userId, createdAt));
+    }
+
+    @Test
+    @DisplayName("방 상태 줄을 진짜 DB에 저장하고 다시 읽으면 방 id와 내용(jsonb)이 그대로다")
+    void savesGroupOrderStatusRow() {
+        String payload = "{\"groupOrderId\": 3, \"to\": \"CLOSED\", \"participants\": [{\"userId\": 7, \"totalAmount\": 13000}]}";
+
+        Long id = outboxMessageRepository.save(OutboxMessage.groupOrderStatus(3L, payload, NOW)).getId();
+
+        OutboxMessage found = outboxMessageRepository.findById(id).orElseThrow();
+        assertThat(found.getType()).isEqualTo(OutboxType.GROUP_ORDER_STATUS_CHANGED);
+        assertThat(found.getGroupOrderId()).isEqualTo(3L);
+        assertThat(found.getUserId()).isNull();
+        // jsonb는 저장할 때 띄어쓰기와 키 순서를 자기 식으로 바꾼다("to"가 "groupOrderId"보다 앞에 온다). 글자 대신 JSON 내용이 같은지 본다
+        ObjectMapper objectMapper = new ObjectMapper();
+        assertThat(objectMapper.readTree(found.getPayload())).isEqualTo(objectMapper.readTree(payload));
     }
 
     List<Long> ids(List<OutboxMessage> messages) {

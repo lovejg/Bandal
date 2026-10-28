@@ -131,6 +131,7 @@ public class GroupOrderService {
         long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
 
         groupOrder.closeByHost(requesterId, participantCount, menuTotalAmount, Instant.now());
+        groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다. 변경 감지만으로는 안 나간다
         roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
 
         return GroupOrderResponse.of(groupOrder, participantCount, menuTotalAmount,
@@ -144,6 +145,7 @@ public class GroupOrderService {
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.cancelByHost(requesterId, request.reason(), Instant.now());
+        groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다
         roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
 
         return toResponse(groupOrder, requesterId);
@@ -160,11 +162,13 @@ public class GroupOrderService {
             long participantCount = participationRepository.countByGroupOrderId(groupOrderId);
             long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
             groupOrder.closeAtDeadline(participantCount, menuTotalAmount, now);
+            groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다
             roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
             return;
         }
 
         groupOrder.expireIfStale(now); // 모집중이 아닌 방은 방 목록에 안 뜨니까 캐시 지울 필요 X
+        groupOrderRepository.save(groupOrder); // 기간이 덜 차 안 바뀌었으면 기록이 없어 아무것도 안 나간다
     }
 
     // 방 상세 응답. 인원, 메뉴 합계, 보는 사람의 참여 id는 엔티티가 모르는 값이라 여기서 센다

@@ -7,9 +7,13 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.domain.AfterDomainEventPublication;
+import org.springframework.data.domain.DomainEvents;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 // 공구방. 같은 거점에서 같은 가게에 함께 주문한다.
@@ -79,6 +83,23 @@ public class GroupOrder {
     public static final Duration SETTLING_EXPIRY = Duration.ofHours(24);
     public static final Duration ORDERED_EXPIRY = Duration.ofHours(6);
 
+    // 이번 트랜잭션에서 바뀐 상태 기록. DB 칸이 아니다(@Transient). save 때 Spring이 꺼내 사건으로 내보낸다
+    @Transient
+    @Getter(AccessLevel.NONE)
+    private final List<GroupOrderStatusChanged> statusChanges = new ArrayList<>();
+
+    // save 때 Spring이 이 메서드로 내보낼 사건을 가져간다
+    @DomainEvents
+    public List<GroupOrderStatusChanged> statusChanges() {
+        return List.copyOf(statusChanges);
+    }
+
+    // 내보낸 뒤 Spring이 부른다. 다음 save 때 같은 사건이 또 나가지 않게 비운다
+    @AfterDomainEventPublication
+    void clearStatusChanges() {
+        statusChanges.clear();
+    }
+
     public GroupOrder(User host, PickupSpot pickupSpot, String storeName,
                       long minOrderAmount, Instant deadlineAt, int capacity) {
         if(host == null) throw new IllegalArgumentException("방장 정보가 없습니다");
@@ -146,7 +167,7 @@ public class GroupOrder {
                     "최소주문금액에 " + (minOrderAmount - menuTotalAmount) + "원 모자랍니다");
         }
 
-        status = GroupOrderStatus.CLOSED; // 마감
+        changeStatus(GroupOrderStatus.CLOSED, StatusChangedBy.HOST, now); // 마감
         this.closedAt = now;
     }
 
@@ -166,13 +187,13 @@ public class GroupOrder {
         }
 
         if(cancelReason != null) {
-            status = GroupOrderStatus.CANCELED;
+            changeStatus(GroupOrderStatus.CANCELED, StatusChangedBy.SYSTEM, now);
             cancelType = CancelType.DEADLINE_UNMET;
             this.canceledAt = now;
             return;
         }
 
-        status = GroupOrderStatus.CLOSED; // 마감
+        changeStatus(GroupOrderStatus.CLOSED, StatusChangedBy.SYSTEM, now); // 마감
         this.closedAt = now;
     }
 
@@ -203,7 +224,7 @@ public class GroupOrder {
             cancelType = CancelType.HOST_WHILE_SETTLING;
         }
         cancelReason = reason;
-        status = GroupOrderStatus.CANCELED; // 취소
+        changeStatus(GroupOrderStatus.CANCELED, StatusChangedBy.HOST, now); // 취소
         this.canceledAt = now;
     }
 
@@ -220,7 +241,7 @@ public class GroupOrder {
         }
 
         this.deliveryFee = deliveryFee;
-        status = GroupOrderStatus.SETTLING; // 정산중
+        changeStatus(GroupOrderStatus.SETTLING, StatusChangedBy.HOST, now); // 정산중
         this.settlementStartedAt = now;
     }
 
@@ -238,7 +259,7 @@ public class GroupOrder {
     }
 
     // 방장이 배달비를 고친다. 정산중에서만 받고 상태는 그대로다
-    public void changeDeliveryFee(Long requesterId, long deliveryFee) {
+    public void changeDeliveryFee(Long requesterId, long deliveryFee, Instant now) {
         if(this.status != GroupOrderStatus.SETTLING) {
             throw new IllegalStateException("정산중인 방만 배달비를 수정할 수 있습니다");
         }
@@ -248,6 +269,11 @@ public class GroupOrder {
         if(deliveryFee < 0) {
             throw new IllegalArgumentException("배달비는 0원 이상이어야 합니다");
         }
+
+        // status는 그대로
+        if(this.deliveryFee != null && this.deliveryFee == deliveryFee) return;
+        statusChanges.add(new GroupOrderStatusChanged(this.id, this.status, this.status, StatusChangedBy.HOST,
+            GroupOrderChangeKind.DELIVERY_FEE_CHANGED, now));
 
         this.deliveryFee = deliveryFee;
     }
@@ -265,7 +291,7 @@ public class GroupOrder {
             throw new IllegalArgumentException("결제금액은 0원 이상이어야 합니다");
         }
         this.totalPaidAmount = totalPaidAmount;
-        this.status = GroupOrderStatus.ORDERED;
+        changeStatus(GroupOrderStatus.ORDERED, StatusChangedBy.HOST, now);
         this.orderedAt = now;
     }
 
@@ -277,7 +303,7 @@ public class GroupOrder {
         if(!isHost(requesterId)) {
             throw new ForbiddenException("방장만 배달완료로 넘어갈 수 있습니다");
         }
-        this.status = GroupOrderStatus.DELIVERED;
+        changeStatus(GroupOrderStatus.DELIVERED, StatusChangedBy.HOST, now);
         this.deliveredAt = now;
     }
 
@@ -288,20 +314,27 @@ public class GroupOrder {
             if(now.isBefore(this.closedAt.plus(CLOSED_EXPIRY))) return;
             this.cancelType = CancelType.CLOSED_TIMEOUT;
             this.cancelReason = "방장이 3시간 동안 배달비를 입력하지 않았습니다";
-            this.status = GroupOrderStatus.CANCELED;
+            changeStatus(GroupOrderStatus.CANCELED, StatusChangedBy.SYSTEM, now);
             this.canceledAt = now;
         }
         else if(this.status == GroupOrderStatus.SETTLING) {
             if(now.isBefore(this.settlementStartedAt.plus(SETTLING_EXPIRY))) return;
             this.cancelType = CancelType.SETTLING_TIMEOUT;
             this.cancelReason = "방장이 24시간 동안 주문을 하지 않았습니다";
-            this.status = GroupOrderStatus.CANCELED;
+            changeStatus(GroupOrderStatus.CANCELED, StatusChangedBy.SYSTEM, now);
             this.canceledAt = now;
         }
         else if(this.status == GroupOrderStatus.ORDERED) {
             if(now.isBefore(this.orderedAt.plus(ORDERED_EXPIRY))) return;
-            this.status = GroupOrderStatus.DELIVERED;
+            changeStatus(GroupOrderStatus.DELIVERED, StatusChangedBy.SYSTEM, now);
             this.deliveredAt = now;
         }
+    }
+
+    // 상태 바꾸기 헬퍼
+    // 상태를 바꾼 서비스는 리포지토리 save를 불러야 이 기록이 사건으로 나간다. 변경 감지만으로는 안 나간다
+    private void changeStatus(GroupOrderStatus next, StatusChangedBy changedBy, Instant now) {
+        statusChanges.add(new GroupOrderStatusChanged(this.id, this.status, next, changedBy, now));
+        this.status = next;
     }
 }

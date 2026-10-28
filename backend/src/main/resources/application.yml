@@ -28,6 +28,25 @@ spring:
       # 캐시는 빨리 포기하고 DB로 가는 게 낫다
       timeout: 500ms
 
+  kafka:
+    producer:
+      # 키(방 id)와 내용(JSON)은 문자열로 넣는다
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # 브로커가 디스크에 적었다고 답해야 성공으로 친다(브로커가 한 대라 그 한 대)
+      acks: all
+      properties:
+        # 기본값은 브로커를 못 찾으면 60초, 답을 못 받으면 2분까지 기다린다. 집배원이 한 줄에 그만큼 묶이지 않게 줄인다
+        # 실패하면 outbox 줄이 재시도로 다시 보낸다
+        "[max.block.ms]": 5000
+        "[request.timeout.ms]": 5000
+        "[delivery.timeout.ms]": 10000
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # 책갈피가 없는 새 그룹은 토픽 맨 앞부터 읽는다. 기본값(latest)이면 그룹을 처음 띄우기 전에 쌓인 글을 건너뛴다
+      auto-offset-reset: earliest
+
   mail:
     properties:
       # 기본값은 끝없이 기다린다(timeout -1). 메일 서버가 응답하지 않으면 인증 메일을 보내던 요청이 영영 붙잡힌다
@@ -72,6 +91,11 @@ app:
     retry-base-seconds: 30
     # 한 번에 찜하는 줄 수
     batch-size: 10
+  kafka:
+    # 방 상태 변경을 넣는 토픽. 칸 3개, 키는 방 id라 같은 방은 늘 같은 칸에 줄을 선다
+    group-order-status-topic: group-order-status
+    # 컨슈머(알림, 통계)를 켤지. 웹 서버는 끄고 worker 컨테이너만 켠다. 컨슈머가 멈추거나 느려져도 웹은 흔들리지 않게
+    consumers-enabled: false
 
 management:
   endpoints:

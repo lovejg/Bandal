@@ -835,7 +835,7 @@ class GroupOrderTest {
         void changes() {
             startSettlement();
 
-            groupOrder.changeDeliveryFee(HOST_ID, 3_000);
+            groupOrder.changeDeliveryFee(HOST_ID, 3_000, BEFORE_DEADLINE);
 
             assertThat(groupOrder.getDeliveryFee()).isEqualTo(3_000);
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
@@ -846,7 +846,7 @@ class GroupOrderTest {
         void allowsZero() {
             startSettlement();
 
-            groupOrder.changeDeliveryFee(HOST_ID, 0);
+            groupOrder.changeDeliveryFee(HOST_ID, 0, BEFORE_DEADLINE);
 
             assertThat(groupOrder.getDeliveryFee()).isZero();
         }
@@ -857,7 +857,7 @@ class GroupOrderTest {
             // 수정은 정산표가 있어야 할 수 있다. 마감에서는 POST(처음 입력)를 쓴다
             groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
 
-            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(HOST_ID, 3_000))
+            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(HOST_ID, 3_000, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
 
             assertThat(groupOrder.getDeliveryFee()).isNull();
@@ -867,7 +867,7 @@ class GroupOrderTest {
         @Test
         @DisplayName("모집중인 방은 고칠 수 없다")
         void rejectsRecruiting() {
-            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(HOST_ID, 3_000))
+            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(HOST_ID, 3_000, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
         }
 
@@ -877,7 +877,7 @@ class GroupOrderTest {
             startSettlement();
             ReflectionTestUtils.setField(groupOrder, "status", GroupOrderStatus.ORDERED);
 
-            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(HOST_ID, 3_000))
+            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(HOST_ID, 3_000, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
 
             assertThat(groupOrder.getDeliveryFee()).isEqualTo(3_500);
@@ -888,7 +888,7 @@ class GroupOrderTest {
         void rejectsNonHost() {
             startSettlement();
 
-            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(OTHER_ID, 3_000))
+            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(OTHER_ID, 3_000, BEFORE_DEADLINE))
                     .isInstanceOf(ForbiddenException.class);
 
             assertThat(groupOrder.getDeliveryFee()).isEqualTo(3_500);
@@ -899,7 +899,7 @@ class GroupOrderTest {
         void rejectsNegative() {
             startSettlement();
 
-            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(HOST_ID, -1))
+            assertThatThrownBy(() -> groupOrder.changeDeliveryFee(HOST_ID, -1, BEFORE_DEADLINE))
                     .isInstanceOf(IllegalArgumentException.class);
 
             assertThat(groupOrder.getDeliveryFee()).isEqualTo(3_500);

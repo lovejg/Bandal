@@ -42,6 +42,7 @@ public class SettlementService {
                 .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.startSettlement(requesterId, request.deliveryFee(), Instant.now());
+        groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다. 변경 감지만으로는 안 나간다
 
         return createLines(groupOrder, request.deliveryFee());
     }
@@ -108,7 +109,9 @@ public class SettlementService {
         GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
-        groupOrder.changeDeliveryFee(requesterId, request.deliveryFee());
+        groupOrder.changeDeliveryFee(requesterId, request.deliveryFee(), Instant.now());
+        // dirty checking과 별개로 명시적으로 save를 해서 다른 서비스들처럼 상태 변경 기록을 event로 내보낸다
+        groupOrderRepository.save(groupOrder);
 
         List<Settlement> lines = settlementRepository.findByGroupOrderIdForUpdate(groupOrderId);
         if(lines.stream().anyMatch(Settlement::hasPaymentRecord)) {
@@ -162,6 +165,7 @@ public class SettlementService {
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.order(requesterId, orderRequest.totalPaidAmount(), Instant.now());
+        groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다
 
         List<Settlement> lines = settlementRepository.findByGroupOrderId(groupOrderId);
         if(!lines.stream().allMatch(Settlement::isConfirmed)) {
@@ -178,6 +182,7 @@ public class SettlementService {
             .orElseThrow(() -> new NotFoundException("없는 방입니다"));
 
         groupOrder.deliver(requesterId, Instant.now());
+        groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다
 
         return find(groupOrderId, requesterId);
     }

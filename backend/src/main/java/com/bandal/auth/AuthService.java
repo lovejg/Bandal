@@ -77,7 +77,7 @@ public class AuthService {
         // 이미 있는 주소(이메일)인 케이스
         User existing = userRepository.findByEmail(email).orElse(null);
         if(existing != null) {
-            outboxMessageRepository.save(new OutboxMessage(OutboxType.ALREADY_REGISTERED_MAIL,
+            outboxMessageRepository.save(OutboxMessage.mail(OutboxType.ALREADY_REGISTERED_MAIL,
                 existing.getId(), Instant.now()));
             return new SignUpResponse(SIGN_UP_MESSAGE);
         }
@@ -85,7 +85,7 @@ public class AuthService {
         User user = new User(university, email, hashed, nickname);
         userRepository.save(user);
 
-        outboxMessageRepository.save(new OutboxMessage(OutboxType.VERIFICATION_MAIL, user.getId(), Instant.now()));
+        outboxMessageRepository.save(OutboxMessage.mail(OutboxType.VERIFICATION_MAIL, user.getId(), Instant.now()));
 
         return new SignUpResponse(SIGN_UP_MESSAGE);
     }

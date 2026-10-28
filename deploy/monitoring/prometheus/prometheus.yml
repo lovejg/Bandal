@@ -13,6 +13,16 @@ scrape_configs:
         labels:
           env: prod
 
+  # Kafka 컨슈머만 도는 worker(deploy/bandal/compose.yml). backend와 같은 앱이지만 job을 나눈다.
+  # 같은 job에 넣으면 응답 시간 같은 웹 숫자 그래프에 worker의 숫자(healthcheck 요청뿐)가 섞인다
+  # 여기서 볼 것: DLT로 옮긴 글 수(bandal_kafka_dead_letter_total), 컨슈머 지연, JVM 메모리
+  - job_name: bandal-worker
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["bandal-worker:8080"]
+        labels:
+          env: prod
+
   - job_name: node
     static_configs:
       - targets: ["node-exporter:9100"]

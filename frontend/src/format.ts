@@ -1,4 +1,4 @@
-import type { MyRoom, RefundStatus, Status } from './api'
+import type { AppNotification, MyRoom, RefundStatus, Status } from './api'
 
 export const won = (n: number) => n.toLocaleString('ko-KR')
 
@@ -50,6 +50,43 @@ export function localInputToIso(value: string) {
 
 export function isoToLocalInput(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+// 알림 한 줄의 문장. 서버는 "무엇으로 바뀌었나"만 저장하고 문장은 여기서 만든다
+// 문구를 고쳐도 이미 쌓인 알림까지 새 문구로 보인다
+export function notificationText(n: AppNotification): string {
+  // 배달비 수정은 상태가 그대로라 상태로는 가릴 수 없다. 종류부터 본다
+  // 아무도 "보냈어요"를 누르기 전에만 고칠 수 있지만, 은행 앱으로 먼저 보낸 사람이 있을 수 있어 차액 안내를 붙인다
+  if (n.kind === 'DELIVERY_FEE_CHANGED') {
+    const fee = n.deliveryFee === null ? '배달비가 바뀌었어요' : `배달비가 ${won(n.deliveryFee)}원으로 바뀌었어요`
+    const mine = n.amount === null ? '' : ` · 내 몫 ${won(n.amount)}원`
+    return `${fee}${mine}. 이미 보냈다면 방장과 차액을 맞춰 주세요`
+  }
+  switch (n.status) {
+    case 'CLOSED':
+      return '모집이 마감됐어요. 방장이 배달비를 넣으면 정산이 시작돼요'
+    case 'SETTLING':
+      // 금액은 정산표에 내 줄이 있을 때만 온다
+      return n.amount === null ? '정산이 시작됐어요' : `정산이 시작됐어요 · 내 몫 ${won(n.amount)}원`
+    case 'ORDERED':
+      return '방장이 주문했어요. 배달이 오는 중이에요'
+    case 'DELIVERED':
+      return '배달이 도착했어요'
+    case 'CANCELED':
+      return n.cancelReason ? `방이 취소됐어요 · ${n.cancelReason}` : '방이 취소됐어요'
+    case 'RECRUITING':
+      return '모집 중이에요'
+  }
+}
+
+// "3분 전", "2시간 전"처럼. 하루가 넘으면 날짜와 시각
+export function ago(iso: string, now = Date.now()) {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60000)
+  if (minutes < 1) return '방금'
+  if (minutes < 60) return `${minutes}분 전`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}시간 전`
+  return dateClock(iso)
 }
 
 // 내 방 목록 한 줄에서 "지금 할 일"을 문구로. 서버는 상태값만 주고 문구는 화면이 정한다
