@@ -238,7 +238,7 @@ class GroupOrderStatusOutboxTest {
         // 참여자 입금이 확인되지 않았다. 엔티티는 주문완료로 바꾸고 save까지 했지만, 서비스가 뒤에서 거절해 트랜잭션 전체가 롤백된다
         GroupOrder room = settlingRoom();
 
-        assertThatThrownBy(() -> settlementService.order(room.getId(), host.getId(), new OrderRequest(null)))
+        assertThatThrownBy(() -> settlementService.order(room.getId(), host.getId(), new OrderRequest(null, Instant.now().plusSeconds(2400))))
                 .isInstanceOf(IllegalStateException.class);
 
         assertThat(outboxMessageRepository.findAll()).isEmpty();

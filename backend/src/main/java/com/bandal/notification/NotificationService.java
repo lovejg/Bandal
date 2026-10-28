@@ -39,7 +39,7 @@ public class NotificationService {
             // 배달비 수정 글도 같은 길이다. 상태 대신 kind가 다르고, 금액이 새로 계산된 금액이다
             notificationRepository.insertIfAbsent(eventId, p.userId(), payload.groupOrderId(), payload.storeName(),
                     payload.kind().name(), payload.to().name(), payload.cancelReason(), p.totalAmount(),
-                    payload.deliveryFee(), payload.occurredAt());
+                    payload.deliveryFee(), payload.expectedArrivalAt(), payload.occurredAt());
         }
     }
 

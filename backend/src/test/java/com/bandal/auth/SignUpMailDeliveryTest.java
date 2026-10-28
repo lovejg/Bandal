@@ -1,7 +1,9 @@
 package com.bandal.auth;
 
+import com.bandal.TestMails;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.dto.SignUpRequest;
+import jakarta.mail.internet.MimeMessage;
 import com.bandal.grouporder.GroupOrderRepository;
 import com.bandal.outbox.OutboxMessageRepository;
 import com.bandal.participation.OrderItemRepository;
@@ -21,7 +23,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mail.MailSendException;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -100,6 +101,7 @@ class SignUpMailDeliveryTest {
         universityRepository.deleteAll();
 
         hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
+        TestMails.stub(mailSender);
     }
 
     @Test
@@ -108,7 +110,7 @@ class SignUpMailDeliveryTest {
         // 첫 발송은 실패하고(Resend가 멈춘 순간), 그 뒤로는 성공한다(살아났다)
         doThrow(new MailSendException("메일 서버가 멈췄다"))
                 .doNothing()
-                .when(mailSender).send(any(SimpleMailMessage.class));
+                .when(mailSender).send(any(MimeMessage.class));
 
         SignUpRequest request = new SignUpRequest("lee@hankuk.ac.kr", "password1234", "마라탕러버", hankuk.getId());
         mockMvc.perform(post("/api/auth/signup")
@@ -117,10 +119,10 @@ class SignUpMailDeliveryTest {
                 .andExpect(status().isAccepted());
 
         // 실패한 한 번 + 다시 보낸 한 번. 10초 안에 두 번째가 와야 한다
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
         verify(mailSender, timeout(10_000).times(2)).send(captor.capture());
 
-        SimpleMailMessage delivered = captor.getAllValues().get(1);
+        TestMails.SentMail delivered = TestMails.SentMail.of(captor.getAllValues().get(1));
         assertThat(delivered.getTo()).containsExactly("lee@hankuk.ac.kr");
         assertThat(delivered.getText()).contains("token=");
     }

@@ -21,6 +21,8 @@ public record GroupOrderResponse(
         long menuTotalAmount,
         String cancelReason,
         String cancelType,
+        // 주문완료 뒤에만 있다. 방 화면 맨 위에 "19시 40분 도착 예정"으로 보인다
+        Instant expectedArrivalAt,
         // 보는 사람의 참여 id. 참여 안 했으면 null
         // 프론트는 이 값으로 "참여하기"와 "메뉴 담기" 중 어느 버튼을 띄울지 고르고, 메뉴 주소에 쓴다
         Long myParticipationId
@@ -44,6 +46,7 @@ public record GroupOrderResponse(
                 menuTotalAmount,
                 groupOrder.getCancelReason(),
                 groupOrder.getCancelType() == null ? null : groupOrder.getCancelType().name(),
+                groupOrder.getExpectedArrivalAt(),
                 myParticipationId
         );
     }

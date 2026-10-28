@@ -1,6 +1,8 @@
 package com.bandal.auth;
 
 import com.bandal.settlement.SettlementRepository;
+import com.bandal.TestMails;
+import com.bandal.TestMails.SentMail;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.dto.LoginRequest;
 import com.bandal.auth.dto.SignUpRequest;
@@ -20,7 +22,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,7 +29,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -122,6 +122,7 @@ class EmailVerificationApiTest {
         // 지난 테스트가 남긴 토큰과 재전송 횟수를 지운다
         redisTemplate.delete(redisTemplate.keys("verify:*"));
         Mockito.clearInvocations(mailSender);
+        TestMails.stub(mailSender);
 
         hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
         pickupSpot = pickupSpotRepository.save(new PickupSpot(hankuk, "제1기숙사 로비", null));
@@ -165,14 +166,12 @@ class EmailVerificationApiTest {
         outboxRelay.runAt(Instant.now());
     }
 
-    SimpleMailMessage lastMail() {
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        Mockito.verify(mailSender, Mockito.atLeastOnce()).send(captor.capture());
-        List<SimpleMailMessage> sent = captor.getAllValues();
+    SentMail lastMail() {
+        List<SentMail> sent = TestMails.all(mailSender);
         return sent.get(sent.size() - 1);
     }
 
-    String tokenFrom(SimpleMailMessage mail) {
+    String tokenFrom(SentMail mail) {
         Matcher matcher = TOKEN.matcher(mail.getText());
         assertThat(matcher.find()).as("메일 본문에 인증 링크가 있어야 한다").isTrue();
         return matcher.group(1);

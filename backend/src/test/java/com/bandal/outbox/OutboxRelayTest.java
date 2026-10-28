@@ -1,5 +1,7 @@
 package com.bandal.outbox;
 
+import com.bandal.TestMails;
+import com.bandal.TestMails.SentMail;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.grouporder.GroupOrderRepository;
 import com.bandal.participation.OrderItemRepository;
@@ -10,15 +12,14 @@ import com.bandal.university.University;
 import com.bandal.university.UniversityRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
+import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.mail.MailSendException;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -88,6 +89,7 @@ class OutboxRelayTest {
         universityRepository.deleteAll();
 
         hankuk = universityRepository.save(new University("한국대학교", "hankuk.ac.kr"));
+        TestMails.stub(mailSender);
     }
 
     User user(String email, String nickname) {
@@ -102,10 +104,8 @@ class OutboxRelayTest {
         return outboxMessageRepository.findById(message.getId()).orElseThrow();
     }
 
-    SimpleMailMessage sentMail() {
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender).send(captor.capture());
-        return captor.getValue();
+    SentMail sentMail() {
+        return TestMails.only(mailSender);
     }
 
     @Test
@@ -115,9 +115,11 @@ class OutboxRelayTest {
 
         outboxRelay.runAt(NOW);
 
-        SimpleMailMessage mail = sentMail();
+        SentMail mail = sentMail();
         assertThat(mail.getTo()).containsExactly("lee@hankuk.ac.kr");
         assertThat(mail.getText()).contains("token=");
+        // 글자 본문만 있으면 주소를 링크로 바꿔 주지 않는 메일 앱에서 눌리지 않는다. HTML 본문에 진짜 링크(a href)가 있어야 한다
+        assertThat(mail.getHtml()).contains("<a href=\"http://localhost:8080/api/auth/verify?token=");
         assertThat(reload(message).getStatus()).isEqualTo(OutboxStatus.SENT);
         assertThat(reload(message).getSentAt()).isEqualTo(NOW);
     }
@@ -129,9 +131,11 @@ class OutboxRelayTest {
 
         outboxRelay.runAt(NOW);
 
-        SimpleMailMessage mail = sentMail();
+        SentMail mail = sentMail();
         assertThat(mail.getTo()).containsExactly("lee@hankuk.ac.kr");
         assertThat(mail.getSubject()).contains("이미 가입된");
+        // 로그인 버튼은 사이트 첫 화면으로 간다
+        assertThat(mail.getHtml()).contains("<a href=\"http://localhost:8080/\"");
         assertThat(reload(message).getStatus()).isEqualTo(OutboxStatus.SENT);
     }
 
@@ -145,7 +149,7 @@ class OutboxRelayTest {
 
         outboxRelay.runAt(NOW);
 
-        verify(mailSender, never()).send(any(SimpleMailMessage.class));
+        verify(mailSender, never()).send(any(MimeMessage.class));
         assertThat(reload(message).getStatus()).isEqualTo(OutboxStatus.SENT);
     }
 
@@ -155,11 +159,11 @@ class OutboxRelayTest {
         OutboxMessage broken = queued(OutboxType.VERIFICATION_MAIL, user("broken@hankuk.ac.kr", "닉네임1"));
         OutboxMessage fine = queued(OutboxType.VERIFICATION_MAIL, user("fine@hankuk.ac.kr", "닉네임2"));
         doThrow(new MailSendException("메일 서버가 멈췄다"))
-                .when(mailSender).send(argThat((SimpleMailMessage m) -> m.getTo()[0].equals("broken@hankuk.ac.kr")));
+                .when(mailSender).send(argThat((MimeMessage m) -> TestMails.recipient(m).equals("broken@hankuk.ac.kr")));
 
         outboxRelay.runAt(NOW);
 
-        verify(mailSender, times(2)).send(any(SimpleMailMessage.class));
+        verify(mailSender, times(2)).send(any(MimeMessage.class));
         OutboxMessage failed = reload(broken);
         assertThat(failed.getStatus()).isEqualTo(OutboxStatus.PENDING);
         assertThat(failed.getAttempts()).isEqualTo(1);
@@ -171,7 +175,7 @@ class OutboxRelayTest {
     @DisplayName("다섯 번째 실패에서 실패로 끝나고, 더는 찜되지 않는다")
     void givesUpAfterMaxAttempts() {
         OutboxMessage message = queued(OutboxType.VERIFICATION_MAIL, user("lee@hankuk.ac.kr", "마라탕러버"));
-        doThrow(new MailSendException("메일 서버가 멈췄다")).when(mailSender).send(any(SimpleMailMessage.class));
+        doThrow(new MailSendException("메일 서버가 멈췄다")).when(mailSender).send(any(MimeMessage.class));
 
         // 매번 미뤄진 시각보다 넉넉히 뒤에 돌린다(30초, 1분, 2분, 4분)
         Instant at = NOW;
@@ -182,6 +186,6 @@ class OutboxRelayTest {
         assertThat(reload(message).getStatus()).isEqualTo(OutboxStatus.FAILED);
 
         outboxRelay.runAt(at.plusSeconds(3600));
-        verify(mailSender, times(OutboxMessage.MAX_ATTEMPTS)).send(any(SimpleMailMessage.class));
+        verify(mailSender, times(OutboxMessage.MAX_ATTEMPTS)).send(any(MimeMessage.class));
     }
 }

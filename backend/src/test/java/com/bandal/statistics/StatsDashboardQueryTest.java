@@ -197,6 +197,25 @@ class StatsDashboardQueryTest {
     }
 
     @Test
+    @DisplayName("시연 학교(.example 도메인)의 방은 어느 패널에도 세지 않는다")
+    void excludesDemoSchool() throws IOException {
+        long realSpot = spot(university("가대학"), "기숙사 로비");
+        long demoSchool = jdbcTemplate.queryForObject(
+                "insert into university (name, email_domain) values ('반달대학교', ?) returning id",
+                Long.class, UUID.randomUUID() + ".example");
+        long demoSpot = spot(demoSchool, "학생회관 앞");
+        delivered(realSpot, 3_000, 4, IN_RANGE);
+        // 시연 데이터. 시연용 방이 끝나도 진짜 숫자에 섞이면 안 된다
+        delivered(demoSpot, 5_000, 5, IN_RANGE);
+        canceled(demoSpot, "DEADLINE_UNMET", null, 1, IN_RANGE);
+
+        assertThat(run("success_rate")).extracting(r -> r.get("school")).containsExactly("가대학");
+        assertThat(((Number) run("saved_total").get(0).get("saved")).longValue()).isEqualTo(9_000L);
+        assertThat(((Number) run("saved_in_range").get(0).get("saved")).longValue()).isEqualTo(9_000L);
+        assertThat(run("cancel_types")).isEmpty();
+    }
+
+    @Test
     @DisplayName("대시보드 JSON의 SQL이 stats-queries.sql과 같다(한쪽만 고치지 않았다)")
     void dashboardMatchesQueries() throws IOException {
         Map<String, String> queries = queries();

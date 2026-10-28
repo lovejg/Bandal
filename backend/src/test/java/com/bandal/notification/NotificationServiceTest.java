@@ -120,7 +120,7 @@ class NotificationServiceTest {
     void deliveryFeeChanged() {
         notificationService.record(200L, new GroupOrderStatusPayload(ROOM_ID, 10L, "마라탕집", HOST,
                 GroupOrderStatus.SETTLING, GroupOrderStatus.SETTLING, StatusChangedBy.HOST, GroupOrderChangeKind.DELIVERY_FEE_CHANGED,
-                null, null, 4_000L,
+                null, null, 4_000L, null,
                 List.of(new Participant(HOST, 13_500L), new Participant(LEE, 9_500L), new Participant(PARK, 11_500L)), AT));
 
         assertThat(recipients()).containsExactly(LEE, PARK);
@@ -130,6 +130,23 @@ class NotificationServiceTest {
         assertThat(lee.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
         assertThat(lee.getDeliveryFee()).isEqualTo(4_000L);
         assertThat(lee.getAmount()).isEqualTo(9_500L);
+    }
+
+    @Test
+    @DisplayName("도착 예정 수정 글을 받으면 참여자마다 종류와 바뀐 도착 예정 시각이 담긴 알림이 생긴다")
+    void arrivalChanged() {
+        Instant arrival = AT.plusSeconds(3600);
+        notificationService.record(300L, new GroupOrderStatusPayload(ROOM_ID, 10L, "마라탕집", HOST,
+                GroupOrderStatus.ORDERED, GroupOrderStatus.ORDERED, StatusChangedBy.HOST, GroupOrderChangeKind.ARRIVAL_CHANGED,
+                null, null, 3_000L, arrival,
+                List.of(new Participant(HOST, 13_000L), new Participant(LEE, 9_000L)), AT));
+
+        Notification lee = notificationRepository.findAll().stream().filter(n -> n.getUserId().equals(LEE))
+                .findFirst().orElseThrow();
+        assertThat(recipients()).containsExactly(LEE);
+        assertThat(lee.getKind()).isEqualTo(GroupOrderChangeKind.ARRIVAL_CHANGED);
+        assertThat(lee.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+        assertThat(lee.getExpectedArrivalAt()).isEqualTo(arrival);
     }
 
     @Test

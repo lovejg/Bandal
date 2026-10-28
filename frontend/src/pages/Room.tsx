@@ -12,7 +12,7 @@ import {
 } from '../api'
 import { useAuth } from '../auth'
 import { Card, CopyButton, Progress, Row, StatusChip, useAction } from '../components'
-import { clock, REFUND_LABEL, remaining, serial, won } from '../format'
+import { clock, clockAfter, REFUND_LABEL, remaining, serial, timeInputToIso, untilArrival, won } from '../format'
 
 const REFUND_CANCEL_TYPES = ['HOST_WHILE_SETTLING', 'SETTLING_TIMEOUT']
 
@@ -104,11 +104,20 @@ export default function RoomPage() {
           {isHost && <span className="badge">나</span>}
         </p>
         <div className="facts">
-          <div className="fact">
-            <span className="fact__label">마감</span>
-            <span className="fact__value num">{clock(room.deadlineAt)}</span>
-            {room.status === 'RECRUITING' && <span className="fact__hint">{remaining(room.deadlineAt)}</span>}
-          </div>
+          {/* 주문한 뒤에는 마감 시각보다 도착 예정이 궁금하다. 그 자리를 도착 예정으로 바꾼다 */}
+          {room.status === 'ORDERED' && room.expectedArrivalAt ? (
+            <div className="fact fact--accent">
+              <span className="fact__label">도착 예정</span>
+              <span className="fact__value num">{clock(room.expectedArrivalAt)}</span>
+              <span className="fact__hint">{untilArrival(room.expectedArrivalAt)}</span>
+            </div>
+          ) : (
+            <div className="fact">
+              <span className="fact__label">마감</span>
+              <span className="fact__value num">{clock(room.deadlineAt)}</span>
+              {room.status === 'RECRUITING' && <span className="fact__hint">{remaining(room.deadlineAt)}</span>}
+            </div>
+          )}
           <div className="fact">
             <span className="fact__label">인원</span>
             <span className="fact__value num">
@@ -201,7 +210,8 @@ export default function RoomPage() {
           onCancel={(reason) => act(() => api.cancelRoom(room.id, reason), '방을 취소했어요')}
           onStart={(fee) => act(() => api.startSettlement(room.id, fee), '정산을 시작했어요')}
           onChangeFee={(fee) => act(() => api.changeDeliveryFee(room.id, fee), '배달비를 고쳤어요')}
-          onOrder={(paid) => act(() => api.order(room.id, paid), '주문 완료!')}
+          onOrder={(paid, arrival) => act(() => api.order(room.id, paid, arrival), '주문 완료!')}
+          onChangeArrival={(arrival) => act(() => api.changeArrival(room.id, arrival), '도착 예정을 고쳤어요')}
           onDeliver={() => act(() => api.deliver(room.id), '배달 완료!')}
         />
       )}
@@ -242,6 +252,9 @@ function PayCard({ line, settlement, busy, onMarkPaid }: { line: SettlementLine;
           <button className="btn btn--dark btn--block btn--lg" disabled={busy} onClick={onMarkPaid}>
             보냈어요
           </button>
+          <Link to="/guide" className="textbtn">
+            보내기 전에 예금주 확인하는 법 →
+          </Link>
         </>
       )}
       {sent && (
@@ -586,6 +599,7 @@ function HostPanel({
   onStart,
   onChangeFee,
   onOrder,
+  onChangeArrival,
   onDeliver,
 }: {
   room: Room
@@ -594,11 +608,15 @@ function HostPanel({
   onCancel: (reason: string | null) => Promise<boolean>
   onStart: (fee: number) => Promise<boolean>
   onChangeFee: (fee: number) => Promise<boolean>
-  onOrder: (paid: number | null) => Promise<boolean>
+  onOrder: (paid: number | null, arrival: string) => Promise<boolean>
+  onChangeArrival: (arrival: string) => Promise<boolean>
   onDeliver: () => Promise<boolean>
 }) {
   const [fee, setFee] = useState('')
   const [paid, setPaid] = useState('')
+  // 배달앱은 보통 30~50분을 말한다. 40분 뒤로 채워 두고 방장이 앱에 뜬 시각으로 고친다
+  const [arrival, setArrival] = useState(() => clockAfter(40))
+  const [arrivalOpen, setArrivalOpen] = useState(false)
   const [feeOpen, setFeeOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [reason, setReason] = useState('')
@@ -646,9 +664,14 @@ function HostPanel({
               className="stack stack--tight"
               onSubmit={(e) => {
                 e.preventDefault()
-                void onOrder(paid ? Number(paid) : null)
+                void onOrder(paid ? Number(paid) : null, timeInputToIso(arrival))
               }}
             >
+              <label className="field">
+                <span className="field__label">배달앱에 뜬 도착 예정 시각</span>
+                <input className="num" type="time" value={arrival} onChange={(e) => setArrival(e.target.value)} required />
+                <span className="field__hint">참여자들이 이 시각에 맞춰 수령 장소에 나와요.</span>
+              </label>
               <label className="field">
                 <span className="field__label">실제 결제한 금액 · 선택</span>
                 <div className="suffix">
@@ -687,9 +710,35 @@ function HostPanel({
         )}
 
         {room.status === 'ORDERED' && (
-          <button className="btn btn--dark btn--block btn--lg" disabled={busy} onClick={onDeliver}>
-            배달 왔어요
-          </button>
+          <>
+            <button className="btn btn--dark btn--block btn--lg" disabled={busy} onClick={onDeliver}>
+              배달 왔어요
+            </button>
+            {!arrivalOpen ? (
+              <button
+                className="textbtn"
+                onClick={() => {
+                  setArrival(room.expectedArrivalAt ? clock(room.expectedArrivalAt) : clockAfter(20))
+                  setArrivalOpen(true)
+                }}
+              >
+                도착이 늦어진대요?
+              </button>
+            ) : (
+              <form
+                className="spotpick"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  void onChangeArrival(timeInputToIso(arrival)).then((ok) => ok && setArrivalOpen(false))
+                }}
+              >
+                <input className="num" type="time" value={arrival} onChange={(e) => setArrival(e.target.value)} required />
+                <button className="btn btn--primary btn--sm" disabled={busy}>
+                  고치기
+                </button>
+              </form>
+            )}
+          </>
         )}
 
         {cancellable && !cancelOpen && (

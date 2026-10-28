@@ -611,7 +611,7 @@ class GroupOrderTest {
         @DisplayName("주문완료 뒤에는 이미 결제가 나가서 취소할 수 없다")
         void rejectsOrdered() {
             startSettlement();
-            groupOrder.order(HOST_ID, null, DEADLINE);
+            groupOrder.order(HOST_ID, null, DEADLINE.plusSeconds(2400), DEADLINE);
 
             assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, REASON, DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
@@ -624,7 +624,7 @@ class GroupOrderTest {
         @DisplayName("배달완료 뒤에도 취소할 수 없다")
         void rejectsDelivered() {
             startSettlement();
-            groupOrder.order(HOST_ID, null, DEADLINE);
+            groupOrder.order(HOST_ID, null, DEADLINE.plusSeconds(2400), DEADLINE);
             groupOrder.deliver(HOST_ID, DEADLINE);
 
             assertThatThrownBy(() -> groupOrder.cancelByHost(HOST_ID, REASON, DEADLINE))
@@ -921,7 +921,7 @@ class GroupOrderTest {
         void orders() {
             startSettlement();
 
-            groupOrder.order(HOST_ID, 22_000L, DEADLINE);
+            groupOrder.order(HOST_ID, 22_000L, DEADLINE.plusSeconds(2400), DEADLINE);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
             assertThat(groupOrder.getTotalPaidAmount()).isEqualTo(22_000);
@@ -932,7 +932,7 @@ class GroupOrderTest {
         void allowsNoPaidAmount() {
             startSettlement();
 
-            groupOrder.order(HOST_ID, null, DEADLINE);
+            groupOrder.order(HOST_ID, null, DEADLINE.plusSeconds(2400), DEADLINE);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
             assertThat(groupOrder.getTotalPaidAmount()).isNull();
@@ -943,7 +943,7 @@ class GroupOrderTest {
         void allowsZeroPaidAmount() {
             startSettlement();
 
-            groupOrder.order(HOST_ID, 0L, DEADLINE);
+            groupOrder.order(HOST_ID, 0L, DEADLINE.plusSeconds(2400), DEADLINE);
 
             assertThat(groupOrder.getTotalPaidAmount()).isZero();
         }
@@ -953,7 +953,7 @@ class GroupOrderTest {
         void rejectsClosed() {
             groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
 
-            assertThatThrownBy(() -> groupOrder.order(HOST_ID, 22_000L, DEADLINE))
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, 22_000L, DEADLINE.plusSeconds(2400), DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.CLOSED);
@@ -964,9 +964,9 @@ class GroupOrderTest {
         @DisplayName("이미 주문완료된 방은 다시 주문할 수 없다")
         void rejectsOrdered() {
             startSettlement();
-            groupOrder.order(HOST_ID, 22_000L, DEADLINE);
+            groupOrder.order(HOST_ID, 22_000L, DEADLINE.plusSeconds(2400), DEADLINE);
 
-            assertThatThrownBy(() -> groupOrder.order(HOST_ID, 30_000L, DEADLINE))
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, 30_000L, DEADLINE.plusSeconds(2400), DEADLINE))
                     .isInstanceOf(IllegalStateException.class);
 
             assertThat(groupOrder.getTotalPaidAmount()).isEqualTo(22_000);
@@ -977,7 +977,7 @@ class GroupOrderTest {
         void rejectsNonHost() {
             startSettlement();
 
-            assertThatThrownBy(() -> groupOrder.order(OTHER_ID, 22_000L, DEADLINE))
+            assertThatThrownBy(() -> groupOrder.order(OTHER_ID, 22_000L, DEADLINE.plusSeconds(2400), DEADLINE))
                     .isInstanceOf(ForbiddenException.class);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
@@ -988,11 +988,142 @@ class GroupOrderTest {
         void rejectsNegativePaidAmount() {
             startSettlement();
 
-            assertThatThrownBy(() -> groupOrder.order(HOST_ID, -1L, DEADLINE))
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, -1L, DEADLINE.plusSeconds(2400), DEADLINE))
                     .isInstanceOf(IllegalArgumentException.class);
 
             assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
             assertThat(groupOrder.getTotalPaidAmount()).isNull();
+        }
+
+        @Test
+        @DisplayName("도착 예정 시각이 방에 남는다")
+        void storesArrival() {
+            startSettlement();
+
+            groupOrder.order(HOST_ID, null, DEADLINE.plus(Duration.ofMinutes(40)), DEADLINE);
+
+            assertThat(groupOrder.getExpectedArrivalAt()).isEqualTo(DEADLINE.plus(Duration.ofMinutes(40)));
+        }
+
+        @Test
+        @DisplayName("도착 예정 시각이 없으면 주문완료로 넘길 수 없다")
+        void rejectsMissingArrival() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, null, null, DEADLINE))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("도착 예정");
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("도착 예정이 지금이거나 지났으면 받지 않는다")
+        void rejectsPastArrival() {
+            // 밤 11시 50분에 주문하고 "0시 30분"을 오늘 날짜로 넣으면 이렇게 된다
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, null, DEADLINE, DEADLINE))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, null, DEADLINE.minus(Duration.ofMinutes(20)), DEADLINE))
+                    .isInstanceOf(IllegalArgumentException.class);
+
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.SETTLING);
+        }
+
+        @Test
+        @DisplayName("도착 예정은 주문 뒤 3시간까지 받는다")
+        void limitsArrivalToThreeHours() {
+            startSettlement();
+
+            assertThatThrownBy(() -> groupOrder.order(HOST_ID, null,
+                    DEADLINE.plus(GroupOrder.MAX_ARRIVAL_WAIT).plusSeconds(1), DEADLINE))
+                    .isInstanceOf(IllegalArgumentException.class);
+
+            // 딱 3시간은 된다
+            groupOrder.order(HOST_ID, null, DEADLINE.plus(GroupOrder.MAX_ARRIVAL_WAIT), DEADLINE);
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+        }
+    }
+
+    // 도착 예정 수정. 배달앱이 늦어진다고 알려 왔을 때
+    @Nested
+    @DisplayName("도착 예정 수정")
+    class ChangeArrival {
+
+        final Instant arrival = DEADLINE.plus(Duration.ofMinutes(40));
+
+        void order() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
+            groupOrder.startSettlement(HOST_ID, 3_500, DEADLINE);
+            groupOrder.order(HOST_ID, null, arrival, DEADLINE);
+        }
+
+        @Test
+        @DisplayName("주문완료된 방에서 방장이 고치면 바뀌고 상태는 그대로다")
+        void changes() {
+            order();
+            Instant later = arrival.plus(Duration.ofMinutes(25));
+
+            groupOrder.changeExpectedArrival(HOST_ID, later, DEADLINE.plus(Duration.ofMinutes(30)));
+
+            assertThat(groupOrder.getExpectedArrivalAt()).isEqualTo(later);
+            assertThat(groupOrder.getStatus()).isEqualTo(GroupOrderStatus.ORDERED);
+        }
+
+        @Test
+        @DisplayName("3시간은 주문한 때부터 잰다. 고치는 지금부터 다시 세지 않는다")
+        void limitCountsFromOrder() {
+            // 주문 2시간 뒤에 "2시간 더 늦어요"를 받아 주면 주문 4시간 뒤가 된다. 6시간 자동 배달완료에 점점 가까워진다
+            order();
+            Instant twoHoursLater = DEADLINE.plus(Duration.ofHours(2));
+
+            assertThatThrownBy(() -> groupOrder.changeExpectedArrival(HOST_ID,
+                    twoHoursLater.plus(Duration.ofHours(2)), twoHoursLater))
+                    .isInstanceOf(IllegalArgumentException.class);
+
+            assertThat(groupOrder.getExpectedArrivalAt()).isEqualTo(arrival);
+        }
+
+        @Test
+        @DisplayName("주문 전에는 고칠 수 없다")
+        void rejectsBeforeOrder() {
+            groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
+            groupOrder.startSettlement(HOST_ID, 3_500, DEADLINE);
+
+            assertThatThrownBy(() -> groupOrder.changeExpectedArrival(HOST_ID, arrival, DEADLINE))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("배달완료된 방은 고칠 수 없다")
+        void rejectsDelivered() {
+            order();
+            groupOrder.deliver(HOST_ID, arrival);
+
+            assertThatThrownBy(() -> groupOrder.changeExpectedArrival(HOST_ID, arrival.plusSeconds(600), arrival))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+
+        @Test
+        @DisplayName("방장이 아니면 고칠 수 없다")
+        void rejectsNonHost() {
+            order();
+
+            assertThatThrownBy(() -> groupOrder.changeExpectedArrival(OTHER_ID, arrival.plusSeconds(600), DEADLINE))
+                    .isInstanceOf(ForbiddenException.class);
+
+            assertThat(groupOrder.getExpectedArrivalAt()).isEqualTo(arrival);
+        }
+
+        @Test
+        @DisplayName("이미 지난 시각으로는 고칠 수 없다")
+        void rejectsPast() {
+            order();
+            Instant now = DEADLINE.plus(Duration.ofMinutes(50));
+
+            assertThatThrownBy(() -> groupOrder.changeExpectedArrival(HOST_ID, now.minusSeconds(60), now))
+                    .isInstanceOf(IllegalArgumentException.class);
         }
     }
 
@@ -1004,7 +1135,7 @@ class GroupOrderTest {
         void order() {
             groupOrder.closeByHost(HOST_ID, 3, 20_000, BEFORE_DEADLINE);
             groupOrder.startSettlement(HOST_ID, 3_500, DEADLINE);
-            groupOrder.order(HOST_ID, null, DEADLINE);
+            groupOrder.order(HOST_ID, null, DEADLINE.plusSeconds(2400), DEADLINE);
         }
 
         @Test
@@ -1132,7 +1263,7 @@ class GroupOrderTest {
             groupOrder.closeByHost(HOST_ID, 2, 20_000, CLOSED_AT);
             groupOrder.startSettlement(HOST_ID, 3_500, SETTLED_AT);
 
-            groupOrder.order(HOST_ID, null, ORDERED_AT);
+            groupOrder.order(HOST_ID, null, ORDERED_AT.plusSeconds(2400), ORDERED_AT);
             groupOrder.deliver(HOST_ID, DELIVERED_AT);
 
             assertThat(groupOrder.getOrderedAt()).isEqualTo(ORDERED_AT);
@@ -1197,7 +1328,7 @@ class GroupOrderTest {
 
         void order() {
             settle();
-            groupOrder.order(HOST_ID, null, ORDERED_AT);
+            groupOrder.order(HOST_ID, null, ORDERED_AT.plusSeconds(2400), ORDERED_AT);
         }
 
         @Test

@@ -125,7 +125,7 @@ class NotificationCleanupExperimentTest {
                 marked[0] = transactionTemplate.execute(s -> notificationRepository.markRead(targetId, targetUser, now))));
         // worker가 새 알림을 넣었다. 다른 줄이라 기다리지 않을 것이다
         long insertMs = millis(() -> transactionTemplate.execute(s -> notificationRepository.insertIfAbsent(
-                9_999_999L, 1L, 1L, "새 가게", "STATUS_CHANGED", "CLOSED", null, null, null, now)));
+                9_999_999L, 1L, 1L, "새 가게", "STATUS_CHANGED", "CLOSED", null, null, null, null, now)));
         // 다른 사용자가 알림 목록을 봤다. 읽기는 잠금을 기다리지 않는다(MVCC: 지우기 전 모습을 본다)
         long listMs = millis(() -> jdbcTemplate.queryForList(
                 "select id from notification where user_id = ? order by id desc limit 20", 7L));

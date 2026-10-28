@@ -6,5 +6,7 @@ public enum GroupOrderChangeKind {
     // 상태가 바뀌었다(마감, 정산 시작, 주문, 배달완료, 취소). from과 to가 다르다
     STATUS_CHANGED,
     // 정산중에 방장이 배달비를 고쳤다. 상태는 그대로라 from과 to가 둘 다 SETTLING이다. 사람마다 낼 돈이 바뀐다
-    DELIVERY_FEE_CHANGED
+    DELIVERY_FEE_CHANGED,
+    // 주문완료 뒤 방장이 도착 예정 시각을 고쳤다(배달앱이 늦어진다고 알려 왔을 때). 상태는 ORDERED 그대로다
+    ARRIVAL_CHANGED
 }

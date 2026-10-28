@@ -56,7 +56,7 @@ class GroupOrderStatusChangeTest {
     // 주문완료까지. 기록 3개
     void toOrdered(Instant now) {
         toSettling(BEFORE_DEADLINE);
-        groupOrder.order(HOST_ID, null, now);
+        groupOrder.order(HOST_ID, null, now.plusSeconds(2400), now);
     }
 
     GroupOrderStatusChanged last() {
@@ -286,6 +286,29 @@ class GroupOrderStatusChangeTest {
         assertThat(groupOrder.statusChanges()).hasSize(3);
         assertThat(last()).isEqualTo(new GroupOrderStatusChanged(ROOM_ID, GroupOrderStatus.SETTLING, GroupOrderStatus.SETTLING,
                 StatusChangedBy.HOST, GroupOrderChangeKind.DELIVERY_FEE_CHANGED, changedAt));
+    }
+
+    @Test
+    @DisplayName("도착 예정 수정: 상태는 그대로(주문완료 → 주문완료)이고 종류가 도착 예정 수정인 기록이 하나 더 남는다")
+    void changeExpectedArrival() {
+        toOrdered(BEFORE_DEADLINE);
+        Instant changedAt = BEFORE_DEADLINE.plusSeconds(600);
+
+        groupOrder.changeExpectedArrival(HOST_ID, BEFORE_DEADLINE.plusSeconds(3600), changedAt);
+
+        assertThat(groupOrder.statusChanges()).hasSize(4);
+        assertThat(last()).isEqualTo(new GroupOrderStatusChanged(ROOM_ID, GroupOrderStatus.ORDERED, GroupOrderStatus.ORDERED,
+                StatusChangedBy.HOST, GroupOrderChangeKind.ARRIVAL_CHANGED, changedAt));
+    }
+
+    @Test
+    @DisplayName("같은 도착 예정을 또 보내면 기록이 없다. 참여자에게 같은 알림이 두 번 가지 않는다")
+    void sameArrivalNoRecord() {
+        toOrdered(BEFORE_DEADLINE);
+
+        groupOrder.changeExpectedArrival(HOST_ID, BEFORE_DEADLINE.plusSeconds(2400), BEFORE_DEADLINE.plusSeconds(60));
+
+        assertThat(groupOrder.statusChanges()).hasSize(3);
     }
 
     @Test

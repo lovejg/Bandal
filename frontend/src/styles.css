@@ -210,8 +210,8 @@ h2 {
   font-weight: 600;
 }
 
-/* 종 아이콘이 오른쪽 끝 묶음(종, 테마)의 첫째라 여기서 밀어낸다 */
-.topbar .bell {
+/* 오른쪽 끝 묶음(유의사항, 종, 테마)의 첫째를 여기서 밀어낸다 */
+.topbar__end {
   margin-left: auto;
 }
 
@@ -477,6 +477,98 @@ h2 {
   font-weight: 700;
 }
 
+/* ---------- 유의사항 ---------- */
+
+.guidehead {
+  padding: 6px 0 2px;
+}
+
+.guidehead__title {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* 방의 순서. 번호를 주황 숫자로 */
+.steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  line-height: 1.6;
+}
+
+.steps li {
+  position: relative;
+  padding-left: 30px;
+  counter-increment: step;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  top: 1px;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--accent-ink);
+  border-radius: 2px;
+  color: var(--accent-ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.steps b:first-child {
+  margin-right: 6px;
+}
+
+/* 시간 규칙. 왼쪽에 "언제", 오른쪽에 "무슨 일" */
+.rules {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rules li {
+  display: grid;
+  grid-template-columns: 9.5em 1fr;
+  gap: 10px;
+  padding: 10px 0;
+  line-height: 1.55;
+}
+
+.rules li + li {
+  border-top: 1px dashed var(--line);
+}
+
+.rules__when {
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 420px) {
+  .rules li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+.dots {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.6;
+}
+
 /* ---------- 카드 ---------- */
 
 .card {
@@ -711,6 +803,12 @@ h2 {
   color: var(--sub);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* 입력 칸 아래 한 줄 안내 */
+.field__hint {
+  color: var(--sub);
+  font-size: 12px;
 }
 
 input,
@@ -1144,6 +1242,11 @@ textarea {
   color: var(--accent-ink);
   font-size: 11px;
   font-weight: 700;
+}
+
+/* 주문 뒤의 도착 예정 칸. 지금 가장 궁금한 숫자라 주황으로 */
+.fact--accent .fact__value {
+  color: var(--accent-ink);
 }
 
 /* 메뉴 목록. 줄 구분은 메뉴 사이에만 */

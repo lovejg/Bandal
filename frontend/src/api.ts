@@ -43,6 +43,8 @@ export interface Room {
   menuTotalAmount: number
   cancelReason: string | null
   cancelType: string | null
+  // 주문완료 뒤에만 있다. 배달앱이 알려 준 도착 예정 시각
+  expectedArrivalAt: string | null
   myParticipationId: number | null
 }
 
@@ -120,12 +122,13 @@ export interface AppNotification {
   id: number
   groupOrderId: number
   storeName: string
-  // 무엇이 바뀌었나. 배달비 수정이면 status는 정산중 그대로다
-  kind: 'STATUS_CHANGED' | 'DELIVERY_FEE_CHANGED'
+  // 무엇이 바뀌었나. 배달비 수정이면 status는 정산중, 도착 예정 수정이면 주문완료 그대로다
+  kind: 'STATUS_CHANGED' | 'DELIVERY_FEE_CHANGED' | 'ARRIVAL_CHANGED'
   status: Status
   cancelReason: string | null
   amount: number | null
   deliveryFee: number | null
+  expectedArrivalAt: string | null
   occurredAt: string
   read: boolean
 }
@@ -312,8 +315,10 @@ export const api = {
     put<Settlement>(`/api/group-orders/${roomId}/delivery-fee`, { deliveryFee }),
   lineAction: (lineId: number, action: 'mark-paid' | 'confirm' | 'unconfirm' | 'send-refund' | 'deny-payment' | 'receive-refund') =>
     post<Settlement>(`/api/settlements/${lineId}/${action}`),
-  order: (roomId: number, totalPaidAmount: number | null) =>
-    post<Settlement>(`/api/group-orders/${roomId}/order`, { totalPaidAmount }),
+  order: (roomId: number, totalPaidAmount: number | null, expectedArrivalAt: string) =>
+    post<Settlement>(`/api/group-orders/${roomId}/order`, { totalPaidAmount, expectedArrivalAt }),
+  changeArrival: (roomId: number, expectedArrivalAt: string) =>
+    put<Settlement>(`/api/group-orders/${roomId}/expected-arrival`, { expectedArrivalAt }),
   deliver: (roomId: number) => post<Settlement>(`/api/group-orders/${roomId}/deliver`),
 
   myActive: () => get<{ rooms: MyRoom[]; hasNext: boolean }>('/api/users/me/group-orders/active'),

@@ -144,7 +144,7 @@ class GroupOrderExpiryTest {
     // 지금 주문완료된 방
     GroupOrder orderedRoom() {
         GroupOrder room = settlingRoom();
-        room.order(host.getId(), null, now);
+        room.order(host.getId(), null, now.plusSeconds(2400), now);
         return groupOrderRepository.saveAndFlush(room);
     }
 

@@ -18,7 +18,7 @@
       "targets": [
         { "refId": "saved_total", "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
           "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "select coalesce(sum(delivery_fee * (participant_count - 1)), 0) as saved\nfrom group_order_stat\nwhere outcome = 'DELIVERED'" }
+          "rawSql": "select coalesce(sum(delivery_fee * (participant_count - 1)), 0) as saved\nfrom group_order_stat\nwhere outcome = 'DELIVERED'\n  and pickup_spot_id not in (select p.id from pickup_spot p join university u on u.id = p.university_id where u.email_domain like '%.example')" }
       ]
     },
     {
@@ -31,7 +31,7 @@
       "targets": [
         { "refId": "saved_in_range", "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
           "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "select coalesce(sum(delivery_fee * (participant_count - 1)), 0) as saved\nfrom group_order_stat\nwhere outcome = 'DELIVERED' and $__timeFilter(finished_at)" }
+          "rawSql": "select coalesce(sum(delivery_fee * (participant_count - 1)), 0) as saved\nfrom group_order_stat\nwhere outcome = 'DELIVERED' and $__timeFilter(finished_at)\n  and pickup_spot_id not in (select p.id from pickup_spot p join university u on u.id = p.university_id where u.email_domain like '%.example')" }
       ]
     },
     {
@@ -70,7 +70,7 @@
       "targets": [
         { "refId": "success_rate", "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
           "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "select u.name as school,\n       p.name as spot,\n       count(*) filter (where s.outcome = 'DELIVERED') as delivered,\n       count(*) as finished,\n       round(100.0 * count(*) filter (where s.outcome = 'DELIVERED') / count(*), 1) as rate\nfrom group_order_stat s\njoin pickup_spot p on p.id = s.pickup_spot_id\njoin university u on u.id = p.university_id\nwhere $__timeFilter(s.finished_at)\ngroup by u.name, p.name\norder by finished desc, school, spot" }
+          "rawSql": "select u.name as school,\n       p.name as spot,\n       count(*) filter (where s.outcome = 'DELIVERED') as delivered,\n       count(*) as finished,\n       round(100.0 * count(*) filter (where s.outcome = 'DELIVERED') / count(*), 1) as rate\nfrom group_order_stat s\njoin pickup_spot p on p.id = s.pickup_spot_id\njoin university u on u.id = p.university_id\nwhere $__timeFilter(s.finished_at) and u.email_domain not like '%.example'\ngroup by u.name, p.name\norder by finished desc, school, spot" }
       ]
     },
     {
@@ -97,7 +97,7 @@
       "targets": [
         { "refId": "cancel_types", "datasource": { "type": "grafana-postgresql-datasource", "uid": "bandal-db" },
           "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "select cancel_type, count(*) as count\nfrom group_order_stat\nwhere outcome = 'CANCELED' and $__timeFilter(finished_at)\ngroup by cancel_type\norder by count desc, cancel_type" }
+          "rawSql": "select cancel_type, count(*) as count\nfrom group_order_stat\nwhere outcome = 'CANCELED' and $__timeFilter(finished_at)\n  and pickup_spot_id not in (select p.id from pickup_spot p join university u on u.id = p.university_id where u.email_domain like '%.example')\ngroup by cancel_type\norder by count desc, cancel_type" }
       ]
     }
   ]

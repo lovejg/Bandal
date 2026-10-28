@@ -1,6 +1,7 @@
 package com.bandal.settlement;
 
 import com.bandal.settlement.dto.DeliveryFeeRequest;
+import com.bandal.settlement.dto.ExpectedArrivalRequest;
 import com.bandal.settlement.dto.OrderRequest;
 import com.bandal.settlement.dto.SettlementResponse;
 import jakarta.validation.Valid;
@@ -71,12 +72,20 @@ public class SettlementController {
     }
 
     // 방장의 "주문했어요". 전원의 입금을 확인했을 때만 주문완료로 넘어간다
-    // 결제금액은 비워도 되지만 본문은 늘 받는다. 비울 때는 {}를 보낸다
+    // 결제금액은 비워도 되지만 도착 예정 시각은 꼭 보낸다
     @PostMapping("/api/group-orders/{groupOrderId}/order")
     public SettlementResponse order(@PathVariable Long groupOrderId,
                                     @AuthenticationPrincipal Long userId,
                                     @Valid @RequestBody OrderRequest request) {
         return settlementService.order(groupOrderId, userId, request);
+    }
+
+    // 방장의 도착 예정 시각 수정. 방에 값이 하나뿐이라 배달비 재입력처럼 PUT이다. 같은 값을 두 번 보내도 결과가 같다
+    @PutMapping("/api/group-orders/{groupOrderId}/expected-arrival")
+    public SettlementResponse changeExpectedArrival(@PathVariable Long groupOrderId,
+                                                    @AuthenticationPrincipal Long userId,
+                                                    @Valid @RequestBody ExpectedArrivalRequest request) {
+        return settlementService.changeExpectedArrival(groupOrderId, userId, request);
     }
 
     // 방장의 "돌려줬어요". 정산중에 취소된 방의 환불 대상 줄에만 받는다
