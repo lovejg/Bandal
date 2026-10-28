@@ -2495,11 +2495,18 @@ DB 트리거로 둘째 청크에서 일부러 실패시키는 테스트도 더�
 원격 main의 파일 모드: `batch.sh 100644`, `dlt-replay.sh 100755`, `grafana-reader.sh 100755`.
 setup.sh에 적은 cron 줄(`/srv/bandal/batch.sh ...`)을 그대로 넣었다면 첫 새벽 실행이 `Permission denied`로 batch.log에 한 줄만 남기고 실패했을 것이다. 등록 전에 봐서 겪지는 않았다.
 
-**원인** 커밋에 실행 비트가 들어가지 않았다(로컬 `git ls-files -s`도 `100644`). 어느 단계에서 빠졌는지는 확인하지 않았다(`core.fileMode`는 true).
+**원인** 커밋에 실행 비트가 들어가지 않았다(로컬 `git ls-files -s`도 `100644`). 이때는 어느 단계에서 빠졌는지 몰랐다(`core.fileMode`는 true). 아래 "뒤이어"에서 찾았다.
 같은 목록에서 `deploy.sh`, `deploy/monitoring/up.sh`, `deploy/loadtest/up.sh`도 `100644`인데, 이 셋은 늘 `bash 스크립트`로 불러서 드러나지 않았다.
 
 **해결** cron 줄을 `bash /srv/bandal/batch.sh ...`로 불러 실행 권한과 상관없이 돌게 했다(서버 crontab, setup.sh). git의 모드도 `git update-index --chmod=+x`로 고친다.
 
+**뒤이어(같은 날)** `update-index`는 커밋에 들어가지 않았다. 디스크의 파일이 644인 채라 다음 `git add`가 다시 644로 덮은 것으로 보인다.
+그래서 WSL에서 여섯 개 파일에 `chmod +x`를 하고 `git add`로 커밋했다(`026c00b`, `mode change 100644 => 100755` 여섯 줄).
+그 뒤 배치 감시를 붙이려고 Windows 쪽 편집기(Claude의 파일 편집, `\\wsl.localhost` 경로)로 `batch.sh`를 고쳤더니 `git diff --summary`에 `mode change 100755 => 100644`가 다시 나왔다.
+원인은 이것이다. Windows에서 WSL 파일을 새로 쓰면 실행 비트가 없는 파일이 된다. Claude가 만든 스크립트가 처음부터 644였던 것도 같은 이유다.
+고칠 때마다 WSL에서 `chmod +x`를 다시 하고, 커밋 전에 `git diff --summary`에 `mode change`가 없는지 본다.
+
 **배운 것** 파일 권한은 git에 커밋된 모드를 따라간다. 로컬에서 보이는 권한과 다를 수 있으니 서버에서 확인하고, 스크립트는 `bash 파일`로 불러 권한에 기대지 않는다.
+Windows와 WSL을 함께 쓰면 Windows 쪽 쓰기가 실행 비트를 지운다.
 
 **한 줄 요약** "batch.sh가 git에 100644로 들어가 서버에 실행 권한 없이 올라갔다. cron에 넣기 전에 봐서, cron이 bash로 부르게 바꿨다."
