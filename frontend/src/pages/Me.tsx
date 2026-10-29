@@ -38,7 +38,7 @@ export default function MePage() {
 
       <Card>
         <Row label="메일 인증" value={me.emailVerified ? '완료' : '대기 중'} />
-        <Row label="신뢰도" value={me.trustScore} />
+        {/* 신뢰도는 점수가 움직이는 규칙이 아직 없어 늘 50이다. 규칙이 생기면 다시 보여 준다 */}
         <Row label="돈 받을 계좌" value={me.hasAccount ? '등록됨' : '없음'} />
       </Card>
 

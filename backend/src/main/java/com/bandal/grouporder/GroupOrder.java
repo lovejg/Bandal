@@ -356,14 +356,14 @@ public class GroupOrder {
         if(this.status == GroupOrderStatus.CLOSED) {
             if(now.isBefore(this.closedAt.plus(CLOSED_EXPIRY))) return;
             this.cancelType = CancelType.CLOSED_TIMEOUT;
-            this.cancelReason = "방장이 3시간 동안 배달비를 입력하지 않았습니다";
+            this.cancelReason = "방장이 " + CLOSED_EXPIRY.toHours() + "시간 동안 배달비를 입력하지 않았습니다";
             changeStatus(GroupOrderStatus.CANCELED, StatusChangedBy.SYSTEM, now);
             this.canceledAt = now;
         }
         else if(this.status == GroupOrderStatus.SETTLING) {
             if(now.isBefore(this.settlementStartedAt.plus(SETTLING_EXPIRY))) return;
             this.cancelType = CancelType.SETTLING_TIMEOUT;
-            this.cancelReason = "방장이 24시간 동안 주문을 하지 않았습니다";
+            this.cancelReason = "방장이 " + SETTLING_EXPIRY.toHours() + "시간 동안 주문을 하지 않았습니다";
             changeStatus(GroupOrderStatus.CANCELED, StatusChangedBy.SYSTEM, now);
             this.canceledAt = now;
         }

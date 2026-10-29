@@ -112,16 +112,17 @@ public class AuthService {
 
     // 액세스 토큰이 만료됐을 때 새로 받는다. 다시 로그인하지 않아도 된다
     public TokenResponse refresh(String refreshToken) {
-        Long userId = refreshTokenStore.consume(refreshToken); // 꺼내면서 지우고(revoke를 따로 하지 않음)
+        Long userId = refreshTokenStore.consume(refreshToken); // 꺼내면서 지운다(revoke를 따로 하지 않음)
         if(userId == null) {
             throw new UnauthorizedException("다시 로그인해주세요");
         }
-        return new TokenResponse(jwtProvider.createAccessToken(userId), refreshTokenStore.issue(userId)); // 발급하기
+        // 리프레시 토큰도 새로 준다. 옛 토큰은 위에서 지워져 한 번만 쓸 수 있다
+        return new TokenResponse(jwtProvider.createAccessToken(userId), refreshTokenStore.issue(userId));
     }
 
     // 로그아웃. 리프레시 토큰을 지우면 더는 갱신할 수 없다
     // 이미 발급된 액세스 토큰은 만료(15분)까지 살아 있다
-    // 없는 토큰이여도 조용히 있는다(정보가 새지 않기 위해)
+    // 없는 토큰이어도 에러 없이 끝낸다(토큰이 있었는지 알려 주지 않는다)
     public void logout(String refreshToken) {
         refreshTokenStore.revoke(refreshToken);
     }

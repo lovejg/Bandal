@@ -39,8 +39,7 @@ public class SettlementService {
     // 방장의 정산(배달비 입력 및 정산표)
     @Transactional
     public SettlementResponse start(Long groupOrderId, Long requesterId, DeliveryFeeRequest request) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
-                .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdateOrThrow(groupOrderId);
 
         groupOrder.startSettlement(requesterId, request.deliveryFee(), Instant.now());
         groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다. 변경 감지만으로는 안 나간다
@@ -67,14 +66,14 @@ public class SettlementService {
             Settlement mine = all.stream()
                 .filter(s -> Objects.equals(s.getUser().getId(), requesterId))
                 .findFirst()
-                .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+                .orElseThrow(() -> new NotFoundException("이 방의 정산 대상이 아닙니다"));
             result = List.of(mine);
         }
 
         return SettlementResponse.of(groupOrder, menuTotalAmount, result);
     }
 
-    // 참여자가 입금하고 나서 입금확인 버튼
+    // 참여자가 송금하고 누르는 "보냈어요"
     @Transactional
     public SettlementResponse markPaid(Long settlementId, Long requesterId) {
         Settlement settlement = findLine(settlementId);
@@ -84,7 +83,7 @@ public class SettlementService {
         return find(settlement.getGroupOrder().getId(), requesterId);
     }
 
-    // 방장이 받고 나서 확인 버튼
+    // 방장이 입금을 보고 누르는 "받았어요"
     @Transactional
     public SettlementResponse confirm(Long settlementId, Long requesterId) {
         Settlement settlement = findLine(settlementId);
@@ -107,8 +106,7 @@ public class SettlementService {
     // 방장의 배달비 수정
     @Transactional
     public SettlementResponse changeDeliveryFee(Long groupOrderId, Long requesterId, DeliveryFeeRequest request) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
-            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdateOrThrow(groupOrderId);
 
         groupOrder.changeDeliveryFee(requesterId, request.deliveryFee(), Instant.now());
         // dirty checking과 별개로 명시적으로 save를 해서 다른 서비스들처럼 상태 변경 기록을 event로 내보낸다
@@ -161,13 +159,13 @@ public class SettlementService {
 
     // 방장의 주문 완료 버튼(전원 입금 확인됐을 때)
     @Transactional
-    public SettlementResponse order(Long groupOrderId, Long requesterId, OrderRequest orderRequest) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
-            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+    public SettlementResponse order(Long groupOrderId, Long requesterId, OrderRequest request) {
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdateOrThrow(groupOrderId);
 
-        groupOrder.order(requesterId, orderRequest.totalPaidAmount(), orderRequest.expectedArrivalAt(), Instant.now());
+        groupOrder.order(requesterId, request.totalPaidAmount(), request.expectedArrivalAt(), Instant.now());
         groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다
 
+        // 엔티티 검사(상태, 방장인지, 도착 예정)가 먼저 답하게 상태를 바꾼 뒤에 본다. 여기서 거절되면 트랜잭션째 되돌아가 사건도 나가지 않는다
         List<Settlement> lines = settlementRepository.findByGroupOrderId(groupOrderId);
         if(!lines.stream().allMatch(Settlement::isConfirmed)) {
             throw new IllegalStateException("입금 확인이 되지 않은 참여자가 있습니다");
@@ -180,8 +178,7 @@ public class SettlementService {
     // 배달 완료 버튼과 같은 방 락을 잡는다. 수정과 배달완료가 동시에 와도 하나씩 돈다
     @Transactional
     public SettlementResponse changeExpectedArrival(Long groupOrderId, Long requesterId, ExpectedArrivalRequest request) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
-            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdateOrThrow(groupOrderId);
 
         groupOrder.changeExpectedArrival(requesterId, request.expectedArrivalAt(), Instant.now());
         groupOrderRepository.save(groupOrder); // 바뀐 기록을 사건으로 내보낸다(바뀌지 않았으면 기록이 없다)
@@ -192,8 +189,7 @@ public class SettlementService {
     // 방장의 배달 완료 버튼(배달 앱을 통해 도착했는지 직접 확인)
     @Transactional
     public SettlementResponse deliver(Long groupOrderId, Long requesterId) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
-            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdateOrThrow(groupOrderId);
 
         groupOrder.deliver(requesterId, Instant.now());
         groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다

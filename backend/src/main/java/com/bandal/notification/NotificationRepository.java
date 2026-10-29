@@ -101,7 +101,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     // 읽은 지 오래된 알림을 지운다. 순진한 첫 버전: 조건에 맞는 줄을 한 문장으로 전부 지운다
     // 지금 운영의 정리 Job은 이걸 쓰지 않는다(아래 deleteByIdIn으로 1,000개씩). 청크와 숫자를 비교하는 실험(NotificationCleanupExperimentTest)에만 남겨 둔다
-    // 1,000만 줄을 이걸로 지우면 3.7초 동안 그 줄 전부를 잠가서, 그 줄의 읽음 표시가 3.6초 기다렸다(2026-10-28 JOURNAL)
+    // 1,000만 줄을 이걸로 지우면 3.6초 동안 그 줄 전부를 잠가서, 그 줄의 읽음 표시가 3.5초 기다렸다(2026-10-28 JOURNAL)
     // 돌려주는 값: 지운 줄 수
     // 지울 줄: 읽은 시각(readAt)이 cutoff(지금 - 30일)보다 이전인 줄. 안 읽은 줄(readAt이 null)은 비교가 참이 아니라 저절로 빠진다
     // JPQL의 delete는 엔티티를 하나씩 꺼내 지우지 않고 DB에 delete 한 문장을 바로 보낸다(bulk delete)

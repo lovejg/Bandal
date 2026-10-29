@@ -6,6 +6,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.Locale;
+
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -41,7 +43,8 @@ public class PickupSpot {
         }
         this.university = university;
         this.name = name;
-        this.normalizedName = name.replaceAll("[^a-zA-Z0-9가-힣]", "").toLowerCase();
+        // Locale.ROOT: 서버 언어 설정과 상관없이 같은 결과(가입 이메일 소문자와 같은 이유)
+        this.normalizedName = name.replaceAll("[^a-zA-Z0-9가-힣]", "").toLowerCase(Locale.ROOT);
         if(normalizedName.isBlank()) throw new IllegalArgumentException("수령지 이름 형식이 잘못됐습니다");
         this.description = description;
     }

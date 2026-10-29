@@ -35,11 +35,12 @@ loki.source.docker "containers" {
   forward_to    = [loki.process.levels.receiver]
 }
 
-// Spring 앱(backend)의 로그는 JSON이다. 레벨만 꺼내 꼬리표로 단다(INFO, WARN, ERROR 정도라 종류가 적다)
+// Spring 앱의 로그는 JSON이다. 레벨만 꺼내 꼬리표로 단다(INFO, WARN, ERROR 정도라 종류가 적다)
+// backend와 같은 이미지인 worker(컨슈머), batch(묶음 작업)도 같은 JSON이라 같이 단다. 처음에는 backend만 골라 worker의 ERROR를 레벨로 거를 수 없었다
 // JSON이 아닌 줄(시작 배너 같은 것)은 레벨 없이 그대로 지나간다
 loki.process "levels" {
   stage.match {
-    selector = "{service=\"backend\"}"
+    selector = "{service=~\"backend|worker|batch\"}"
 
     stage.json {
       expressions = { level = "level" }

@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "management.health.mail.enabled=false",
         // 다른 테스트는 스케줄러를 끈다. 여기서는 다시 보내는 일꾼이 저절로 돌아야 한다
         "app.scheduling.enabled=true",
-        // 운영 값(5초마다, 첫 재시도 30초 뒤)이면 테스트가 너무 오래 걸린다. 짧게 줄인다
+        // 운영 값(1초마다, 첫 재시도 30초 뒤)이면 테스트가 너무 오래 걸린다. 짧게 줄인다
         "app.outbox.poll-delay-ms=300",
         "app.outbox.retry-base-seconds=1"
 })

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Card } from '../components'
 
-// 이용 유의사항. 숫자(3시간, 24시간, 6시간)는 서버 규칙(GroupOrder의 *_EXPIRY, MAX_ARRIVAL_WAIT)과 같아야 한다
+// 이용 유의사항. 숫자(3시간, 24시간, 6시간)는 서버 규칙(GroupOrder의 *_EXPIRY)과 같아야 한다
 // 규칙을 바꾸면 여기도 같이 고친다
 export default function Guide() {
   return (
@@ -61,7 +61,7 @@ export default function Guide() {
         <ul className="dots">
           <li>방장은 주문하기 전(모집중, 마감, 정산중)에만 방을 취소할 수 있어요. 주문한 뒤에는 취소할 수 없어요.</li>
           <li>마감 뒤에 취소할 때는 방장이 사유를 꼭 적어야 하고, 참여자 모두에게 보여요.</li>
-          <li>정산중에 취소되면 방장이 보낸 돈을 돌려줘요. 방장이 "돌려줬어요"를 누르면, 받은 사람이 "돌려받았어요"를 눌러야 환불이 끝나요.</li>
+          <li>정산중에 취소되면 참여자가 보낸 돈을 방장이 돌려줘요. 방장이 "돌려줬어요"를 누르면, 받은 사람이 "돌려받았어요"를 눌러야 환불이 끝나요.</li>
           <li>배달비는 아무도 "보냈어요"를 누르기 전에만 고칠 수 있어요. 은행 앱으로 먼저 보냈다면 차액은 방장과 직접 맞춰 주세요.</li>
         </ul>
       </Card>

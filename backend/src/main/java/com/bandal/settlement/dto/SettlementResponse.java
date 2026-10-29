@@ -11,7 +11,7 @@ public record SettlementResponse(
         Long groupOrderId,
         String status,
         long deliveryFee,
-        // 방 전체 메뉴 합계. 모든 줄의 totalAmount 합이 이 값 + 배달비와 같아야 한다
+        // 방 전체 메뉴 합계. 방장이 보는 전원 줄의 totalAmount 합이 이 값 + 배달비와 같다
         long menuTotalAmount,
         HostAccountResponse hostAccount,
         List<SettlementLineResponse> lines

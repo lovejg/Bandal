@@ -52,13 +52,13 @@ public class Notification {
     @Column(nullable = false)
     private String storeName;
 
-    // 무엇이 바뀌었나. 상태 변경이면 STATUS_CHANGED, 배달비 수정이면 DELIVERY_FEE_CHANGED
+    // 무엇이 바뀌었나. 상태 변경이면 STATUS_CHANGED, 배달비 수정이면 DELIVERY_FEE_CHANGED, 도착 예정 수정이면 ARRIVAL_CHANGED
     // 화면은 먼저 이걸 보고, 상태 변경이면 status로 문장을 고른다
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private GroupOrderChangeKind kind;
 
-    // 바뀐 뒤 상태. 화면이 이걸 보고 문장을 고른다(CLOSED → "마감됐어요"). 배달비 수정이면 SETTLING 그대로다
+    // 바뀐 뒤 상태. 화면이 이걸 보고 문장을 고른다(CLOSED → "마감됐어요"). 배달비 수정이면 SETTLING, 도착 예정 수정이면 ORDERED 그대로다
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private GroupOrderStatus status;
@@ -66,8 +66,8 @@ public class Notification {
     // 취소일 때만. 방장이 적은 사유 또는 스케줄러가 정한 사유
     private String cancelReason;
 
-    // 정산 시작일 때 이 사람이 보낼 돈. 정산표가 아직 없으면(마감, 모집중 취소) null
-    // 배달비 수정 알림이면 새로 계산된 금액이다
+    // 이 사람이 보낼 돈(정산표의 내 줄). 정산표가 아직 없으면(마감, 모집중 취소) null
+    // 배달비 수정 알림이면 새로 계산된 금액이다. 화면은 정산 시작과 배달비 수정 알림에만 보여 준다
     private Long amount;
 
     // 그때의 배달비. 정산 시작 전이면 null. 배달비 수정 알림이면 바뀐 뒤 배달비다

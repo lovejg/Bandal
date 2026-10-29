@@ -21,7 +21,7 @@ public class OutboxService {
     private final OutboxMessageRepository outboxMessageRepository;
     private final UserRepository userRepository;
 
-    // 한번에 찜할 수 있는 최대 개수(10)
+    // 한 번에 찜할 수 있는 최대 개수
     @Value("${app.outbox.batch-size}")
     private int batchSize;
 

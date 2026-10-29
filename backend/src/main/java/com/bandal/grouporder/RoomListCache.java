@@ -32,7 +32,7 @@ public class RoomListCache {
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
 
-    // Phase 4에서 켜고 끄며 비교한다
+    // 끄면 늘 DB에서 만든다. Phase 4 부하 테스트에서 켜고 끄며 비교했다
     @Value("${app.room-list-cache.enabled}")
     private boolean enabled;
 

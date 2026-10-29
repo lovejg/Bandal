@@ -12,7 +12,8 @@ cd "$(dirname "$0")"
 read -ra COMPOSE <<< "${COMPOSE:-docker compose}"
 ENV_FILE=${ENV_FILE:-.env}
 PW=${DEMO_PASSWORD:?시연 계정 비밀번호를 DEMO_PASSWORD로 주세요}
-if [ ${#PW} -lt 8 ]; then echo "비밀번호는 8자 이상이어야 로그인 화면이 받는다"; exit 1; fi
+# 가입 규칙(8자 이상)과 맞춘다. 시연 계정이라고 더 약한 비밀번호를 두지 않는다
+if [ ${#PW} -lt 8 ]; then echo "비밀번호는 8자 이상으로 주세요(가입 규칙과 같다)"; exit 1; fi
 # .env가 없는 로컬은 docker-compose.yml의 계정(bandal)
 DB_USER=$(grep -m1 '^DB_USERNAME=' "$ENV_FILE" 2> /dev/null | cut -d= -f2- || true)
 DB_USER=${DB_USER:-bandal}
