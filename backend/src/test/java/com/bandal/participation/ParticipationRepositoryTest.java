@@ -172,12 +172,12 @@ class ParticipationRepositoryTest {
         participationRepository.save(new Participation(otherGroupOrder, host, JOINED_AT));
         entityManager.flush();
 
-        List<GroupOrderStat> stats = participationRepository.countByGroupOrderIds(
+        List<GroupOrderValue> stats = participationRepository.countByGroupOrderIds(
                 List.of(groupOrder.getId(), otherGroupOrder.getId()));
 
         assertThat(stats).containsExactlyInAnyOrder(
-                new GroupOrderStat(groupOrder.getId(), 2),
-                new GroupOrderStat(otherGroupOrder.getId(), 1));
+                new GroupOrderValue(groupOrder.getId(), 2),
+                new GroupOrderValue(otherGroupOrder.getId(), 1));
     }
 
     @Test
@@ -187,9 +187,9 @@ class ParticipationRepositoryTest {
         participationRepository.save(new Participation(otherGroupOrder, host, JOINED_AT));
         entityManager.flush();
 
-        List<GroupOrderStat> stats = participationRepository.countByGroupOrderIds(List.of(groupOrder.getId()));
+        List<GroupOrderValue> stats = participationRepository.countByGroupOrderIds(List.of(groupOrder.getId()));
 
-        assertThat(stats).containsExactly(new GroupOrderStat(groupOrder.getId(), 1));
+        assertThat(stats).containsExactly(new GroupOrderValue(groupOrder.getId(), 1));
     }
 
     @Test

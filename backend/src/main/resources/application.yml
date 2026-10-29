@@ -79,7 +79,7 @@ jwt:
   # 리프레시 토큰은 길게. 이건 Redis에 저장해서 로그아웃 때 지운다
   refresh-token-days: 14
 
-# 이메일 인증 설정
+# 앱 설정(이메일 인증, 방 목록 캐시, outbox 집배원, Kafka)
 app:
   # 메일은 사람이 여는 매체라 액세스 토큰(15분)보다 길게 준다
   verification-token-minutes: 30
@@ -88,11 +88,11 @@ app:
   resend-window-minutes: 60
   # 방 목록 첫 페이지 캐시
   room-list-cache:
-    # Phase 4 부하 테스트에서 끄고 켜며 비교한다
+    # 끄면 늘 DB에서 만든다. Phase 4 부하 테스트에서 끄고 켜며 비교했다
     enabled: true
     # 목록은 늦어도 이만큼만 옛것이다. 지우기를 빠뜨린 곳도 이 시간이 지나면 맞아진다
     ttl-seconds: 10
-  # 가입 메일 outbox 집배원
+  # outbox 집배원(가입 메일, 방 변경을 Kafka로)
   outbox:
     # 앞 실행이 끝나고 이만큼 쉰 뒤 다시 돈다. 사용자가 화면 앞에서 메일을 기다리므로 짧게
     # 5초일 때 운영에서 가입부터 보냄까지 4.6초였고, 대부분이 이 대기였다. 1초로 줄였다

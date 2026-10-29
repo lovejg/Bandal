@@ -27,7 +27,7 @@ dependencies {
     // Flyway 10부터 DB마다 모듈이 따로 있다
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    // 리프레시 토큰 저장소. 나중에 캐싱에도 쓴다
+    // 리프레시 토큰, 메일 인증 토큰, 방 목록 캐시
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     // JWT 발급과 검증
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'

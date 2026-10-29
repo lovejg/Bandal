@@ -23,7 +23,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # 리프레시 토큰, 로그아웃 블랙리스트, 이메일 인증 토큰을 둔다.
+  # 리프레시 토큰, 이메일 인증 토큰, 방 목록 캐시를 둔다.
   redis:
     image: redis:7-alpine
     container_name: bandal-redis

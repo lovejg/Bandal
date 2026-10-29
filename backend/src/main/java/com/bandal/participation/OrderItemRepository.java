@@ -48,12 +48,12 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
 
     // 방 목록 조회에서 사용. 한 번에 조건에 맞는 방의 메뉴 총 금액 합계를 모두 가져옴으로써 N+1 문제를 방지
     @Query("""
-        SELECT new com.bandal.participation.GroupOrderStat(oi.participation.groupOrder.id, SUM(oi.unitPrice * oi.quantity))
+        SELECT new com.bandal.participation.GroupOrderValue(oi.participation.groupOrder.id, SUM(oi.unitPrice * oi.quantity))
         FROM OrderItem oi
         WHERE oi.participation.groupOrder.id IN :groupOrderIds
         GROUP BY oi.participation.groupOrder.id
             """)
-    List<GroupOrderStat> sumAmountByGroupOrderIds(@Param("groupOrderIds") List<Long> groupOrderIds);
+    List<GroupOrderValue> sumAmountByGroupOrderIds(@Param("groupOrderIds") List<Long> groupOrderIds);
 
     // 한 참여자의 메뉴를 전부 지운다
     // 메뉴가 참여 행을 외래 키로 가리켜서, 메뉴가 남아 있으면 참여 행을 지울 수 없다

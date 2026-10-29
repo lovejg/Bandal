@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// 방 상태가 바뀌거나 배달비가 고쳐지면 그 순간의 사실을 outbox에 한 줄 적는다
+// 방 상태가 바뀌거나 배달비, 도착 예정이 고쳐지면 그 순간의 사실을 outbox에 한 줄 적는다
 // 커밋 직전(BEFORE_COMMIT)에 상태를 바꾼 서비스의 트랜잭션 안에서 돈다. 그래서 정산표처럼 서비스가 뒤에 만든 것도 읽을 수 있고,
 // 상태 변경과 이 줄은 함께 커밋되거나 함께 사라진다. 여기서 예외가 나면 상태 변경도 롤백된다
 @Component
@@ -55,7 +55,7 @@ public class GroupOrderStatusOutboxWriter {
             event.from(),
             event.to(),
             event.changedBy(),
-            event.kind(), // 상태 변경인지 배달비 수정인지. 배달비 수정이면 위 정산표 금액이 새로 계산된 금액이다
+            event.kind(), // 무엇이 바뀌었나. 배달비 수정이면 위 정산표 금액이 새로 계산된 금액이다
             groupOrder.getCancelType(),
             groupOrder.getCancelReason(),
             groupOrder.getDeliveryFee(),
@@ -65,6 +65,6 @@ public class GroupOrderStatusOutboxWriter {
         );
 
         outboxMessageRepository.save(OutboxMessage.groupOrderStatus(
-            groupOrder.getId(), objectMapper.writeValueAsString(payload), event.occurredAt())); // objectMapper 이용해서 직렬화
+            groupOrder.getId(), objectMapper.writeValueAsString(payload), event.occurredAt()));
     }
 }

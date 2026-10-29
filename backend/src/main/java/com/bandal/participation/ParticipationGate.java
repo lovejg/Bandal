@@ -1,6 +1,5 @@
 package com.bandal.participation;
 
-import com.bandal.common.NotFoundException;
 import com.bandal.grouporder.GroupOrder;
 import com.bandal.grouporder.GroupOrderRepository;
 import com.bandal.participation.dto.ParticipationResponse;
@@ -21,15 +20,14 @@ public class ParticipationGate {
     // 방 참여
     public ParticipationResponse join(Long groupOrderId, Long requesterId) {
         // 방 락을 잡기 전에 인원을 락 없이 미리 보고, 이미 꽉 찼으면 줄 서지 않고 바로 거절한다
-        GroupOrder peek = groupOrderRepository.findById(groupOrderId)
-            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        GroupOrder peek = groupOrderRepository.findByIdOrThrow(groupOrderId);
         if(peek.getParticipantCount() >= peek.getCapacity()) {
             throw new IllegalStateException("정원이 다 찼습니다");
         }
         return participationService.join(groupOrderId, requesterId);
     }
 
-    // 방 나가기. 지금은 그대로 넘긴다. 번호표를 붙이면 커밋이 끝난 이 자리에서 표를 돌려준다
+    // 방 나가기. 거를 것이 없어 그대로 넘긴다. 참여와 같은 입구로 두어, 번호표(보류)를 붙이게 되면 커밋이 끝난 이 자리에서 표를 돌려준다
     public void leave(Long participationId, Long requesterId) {
         participationService.leave(participationId, requesterId);
     }

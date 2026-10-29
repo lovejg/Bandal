@@ -21,10 +21,15 @@ public interface GroupOrderRepository extends JpaRepository<GroupOrder, Long> {
         return findById(id).orElseThrow(() -> new NotFoundException("없는 방입니다"));
     }
 
-    // 비관적 락
+    // 비관적 락. 방의 상태나 인원을 바꾸는 요청은 이걸로 읽어서 같은 방의 요청을 한 줄로 세운다
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT go FROM GroupOrder go WHERE go.id = :id")
     Optional<GroupOrder> findByIdForUpdate(@Param("id") Long id);
+
+    // 락을 잡고 읽되, 없으면 404. findByIdOrThrow와 같은 이유로 둔다
+    default GroupOrder findByIdForUpdateOrThrow(Long id) {
+        return findByIdForUpdate(id).orElseThrow(() -> new NotFoundException("없는 방입니다"));
+    }
 
     // 이 사람이 방장인 방 중에 이 상태인 방이 하나라도 있는지. 정산중인 방장의 계좌 변경을 막을 때 쓴다
     // 메서드 이름으로 만드는 쿼리다. host.id와 status로 찾고, exists라 하나만 찾으면 멈춘다

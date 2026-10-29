@@ -31,7 +31,7 @@ jwt:
   secret: bandal-local-dev-secret-key-change-me-in-production
 
 app:
-  # 메일에 들어갈 링크의 앞부분. 프론트가 생기면 이 줄만 프론트 주소로 바꾼다
+  # 메일에 들어갈 링크의 앞부분. 링크는 백엔드가 직접 받아 작은 HTML로 답한다(운영은 APP_BASE_URL/api/auth/verify)
   verify-link-base: http://localhost:8080/api/auth/verify
   mail-from: no-reply@bandal.local
 

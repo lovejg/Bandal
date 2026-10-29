@@ -14,7 +14,7 @@ public class KafkaTopicConfig {
 
     @Bean
     NewTopic groupOrderStatusTopic(@Value("${app.kafka.group-order-status-topic}") String name) {
-        // 이름은 "상태"지만 방에 생긴 변경을 다 싣는다. 상태 변경과 배달비 수정(상태는 그대로)을 글의 kind로 가린다
+        // 이름은 "상태"지만 방에 생긴 변경을 다 싣는다. 상태 변경과 배달비, 도착 예정 수정(상태는 그대로)을 글의 kind로 가린다
         // 같은 방의 두 변경이 한 칸에 순서대로 서야 해서 토픽을 나누지 않았다
         // 칸 3개: worker가 늘면 칸을 나눠 읽는다. 브로커가 한 대라 복제본은 1
         // 보관 기간 무기한(-1): 기본은 7일이 지나면 글을 지운다. 통계에 새 칸이 필요해져 맨 앞으로 되감을 때 지난 글이 남아 있어야 한다

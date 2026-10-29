@@ -1,6 +1,6 @@
 package com.bandal.settlement;
 
-import com.bandal.participation.GroupOrderStat;
+import com.bandal.participation.GroupOrderValue;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -47,7 +47,7 @@ public interface SettlementRepository extends JpaRepository<Settlement, Long> {
 
     // 내 방 목록의 방장 칸. 방마다 확인을 기다리는 참여자 수
     @Query("""
-        SELECT new com.bandal.participation.GroupOrderStat(s.groupOrder.id, COUNT(s)) FROM Settlement s
+        SELECT new com.bandal.participation.GroupOrderValue(s.groupOrder.id, COUNT(s)) FROM Settlement s
         WHERE s.groupOrder.id IN :groupOrderIds
         AND s.groupOrder.status = com.bandal.grouporder.GroupOrderStatus.SETTLING
         AND s.host = false
@@ -55,5 +55,5 @@ public interface SettlementRepository extends JpaRepository<Settlement, Long> {
         AND s.confirmedPaidAt IS NULL
         GROUP BY s.groupOrder.id
         """)
-    List<GroupOrderStat> countAwaitingConfirmByGroupOrderIds(@Param("groupOrderIds") List<Long> groupOrderIds);
+    List<GroupOrderValue> countAwaitingConfirmByGroupOrderIds(@Param("groupOrderIds") List<Long> groupOrderIds);
 }

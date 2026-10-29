@@ -36,7 +36,7 @@ public class NotificationService {
             // 스케줄러가 한 일(SYSTEM: 자동 마감, 시간 초과 취소)이면 방장도 몰랐던 일이라 받는다
             if(payload.changedBy() == StatusChangedBy.HOST && p.userId().equals(payload.hostId())) continue;
             // 이미 받은 글이면 DB가 조용히 건너뛴다. 금액(p.totalAmount())은 정산표가 생긴 뒤에만 있다
-            // 배달비 수정 글도 같은 길이다. 상태 대신 kind가 다르고, 금액이 새로 계산된 금액이다
+            // 배달비 수정, 도착 예정 수정 글도 같은 길이다. 상태 대신 kind가 다르다(배달비 수정이면 금액이 새로 계산된 금액이다)
             notificationRepository.insertIfAbsent(eventId, p.userId(), payload.groupOrderId(), payload.storeName(),
                     payload.kind().name(), payload.to().name(), payload.cancelReason(), p.totalAmount(),
                     payload.deliveryFee(), payload.expectedArrivalAt(), payload.occurredAt());

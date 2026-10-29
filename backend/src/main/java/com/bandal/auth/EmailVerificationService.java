@@ -29,7 +29,7 @@ public class EmailVerificationService {
     }
 
     // 사용자가 "메일 다시 보내기"를 눌렀다. 로그인은 되어 있다
-    @Transactional(readOnly = true)
+    // 트랜잭션을 걸지 않는다. 메일 서버를 기다리는 몇 초 동안 DB 커넥션을 붙잡지 않게(집배원과 같은 이유). 사용자는 한 번 읽고 끝이다
     public void resend(Long userId) {
         User user = userRepository.findByIdOrThrow(userId);
         if(user.isEmailVerified()) throw new IllegalStateException("이미 인증된 계정입니다");

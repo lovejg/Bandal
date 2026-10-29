@@ -1,8 +1,7 @@
 package com.bandal.grouporder;
 
-import com.bandal.common.NotFoundException;
 import com.bandal.grouporder.dto.*;
-import com.bandal.participation.GroupOrderStat;
+import com.bandal.participation.GroupOrderValue;
 import com.bandal.participation.OrderItemRepository;
 import com.bandal.participation.Participation;
 import com.bandal.participation.ParticipationRepository;
@@ -47,7 +46,7 @@ public class GroupOrderService {
             request.minOrderAmount(), request.deadlineAt(), request.capacity());
 
         groupOrderRepository.save(groupOrder);
-        roomListCache.evict(pickupSpot.getUniversity().getId()); // 캐시 지우기(스레드한테 커밋 이후에 지워달라고 요청하기)
+        roomListCache.evict(pickupSpot.getUniversity().getId()); // 목록 캐시는 커밋 뒤에 지워진다
 
         Participation participation = new Participation(groupOrder, host, Instant.now());
         participationRepository.save(participation);
@@ -124,15 +123,14 @@ public class GroupOrderService {
     // 방장 마감
     @Transactional
     public GroupOrderResponse close(Long groupOrderId, Long requesterId) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
-            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdateOrThrow(groupOrderId);
 
         long participantCount = participationRepository.countByGroupOrderId(groupOrderId);
         long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
 
         groupOrder.closeByHost(requesterId, participantCount, menuTotalAmount, Instant.now());
         groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다. 변경 감지만으로는 안 나간다
-        roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
+        roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId());
 
         return GroupOrderResponse.of(groupOrder, participantCount, menuTotalAmount,
             myParticipationId(groupOrderId, requesterId));
@@ -141,12 +139,11 @@ public class GroupOrderService {
     // 방장 취소
     @Transactional
     public GroupOrderResponse cancel(Long groupOrderId, Long requesterId, CancelRequest request) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
-            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdateOrThrow(groupOrderId);
 
         groupOrder.cancelByHost(requesterId, request.reason(), Instant.now());
         groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다
-        roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
+        roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId());
 
         return toResponse(groupOrder, requesterId);
     }
@@ -154,8 +151,7 @@ public class GroupOrderService {
     // 스케줄러가 방 하나씩 부른다. 멈춘 방을 다음 상태로 넘긴다
     @Transactional
     public void expire(Long groupOrderId, Instant now) {
-        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdate(groupOrderId)
-            .orElseThrow(() -> new NotFoundException("없는 방입니다"));
+        GroupOrder groupOrder = groupOrderRepository.findByIdForUpdateOrThrow(groupOrderId);
 
         // 모집중은 추가 정보(participantCount와 menuTotalAmount)가 필요해서 따로
         if(groupOrder.getStatus() == GroupOrderStatus.RECRUITING) {
@@ -163,11 +159,11 @@ public class GroupOrderService {
             long menuTotalAmount = orderItemRepository.sumAmountByGroupOrderId(groupOrderId);
             groupOrder.closeAtDeadline(participantCount, menuTotalAmount, now);
             groupOrderRepository.save(groupOrder); // 상태 변경 기록을 사건으로 내보낸다
-            roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId()); // 캐시 지우기
+            roomListCache.evict(groupOrder.getPickupSpot().getUniversity().getId());
             return;
         }
 
-        groupOrder.expireIfStale(now); // 모집중이 아닌 방은 방 목록에 안 뜨니까 캐시 지울 필요 X
+        groupOrder.expireIfStale(now); // 모집중이 아닌 방은 방 목록에 없어서 캐시를 지울 필요가 없다
         groupOrderRepository.save(groupOrder); // 기간이 덜 차 안 바뀌었으면 기록이 없어 아무것도 안 나간다
     }
 
@@ -217,7 +213,7 @@ public class GroupOrderService {
     }
 
     // 방 id와 숫자 한 쌍의 목록을 방 id로 찾는 Map으로
-    private Map<Long, Long> toMap(List<GroupOrderStat> stats) {
-        return stats.stream().collect(Collectors.toMap(GroupOrderStat::groupOrderId, GroupOrderStat::value));
+    private Map<Long, Long> toMap(List<GroupOrderValue> values) {
+        return values.stream().collect(Collectors.toMap(GroupOrderValue::groupOrderId, GroupOrderValue::value));
     }
 }

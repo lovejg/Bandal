@@ -9,7 +9,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
 
-    boolean existsByEmail(String email);
     boolean existsByNickname(String nickname);
 
     // 없으면 404. 토큰은 멀쩡한데 계정이 지워진 경우 같은 것

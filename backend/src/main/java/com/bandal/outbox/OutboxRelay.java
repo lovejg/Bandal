@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 
-// 집배원. 몇 초마다 보낼 편지함을 열어 찜한 줄을 보내고 결과를 적는다
+// 집배원. 1초(app.outbox.poll-delay-ms)마다 보낼 편지함을 열어 찜한 줄을 보내고 결과를 적는다
 // 여기에는 @Transactional을 두지 않는다. 메일 서버를 기다리는 동안 DB 커넥션을 붙잡지 않게, 트랜잭션은 OutboxService에서만 짧게 연다
 @Component
 @RequiredArgsConstructor

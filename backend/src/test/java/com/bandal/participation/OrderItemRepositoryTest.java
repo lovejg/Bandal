@@ -176,13 +176,13 @@ class OrderItemRepositoryTest {
         orderItemRepository.save(otherRoomParticipation.addItem(hostId, "치킨", "양념", 20_000, 1, JOINED_AT));
         entityManager.flush();
 
-        List<GroupOrderStat> stats = orderItemRepository.sumAmountByGroupOrderIds(
+        List<GroupOrderValue> stats = orderItemRepository.sumAmountByGroupOrderIds(
                 List.of(groupOrder.getId(), emptyGroupOrder.getId()));
 
         // groupOrder: 12,000 * 1 + 9,000 * 2 / emptyGroupOrder: 20,000 * 1
         assertThat(stats).containsExactlyInAnyOrder(
-                new GroupOrderStat(groupOrder.getId(), 30_000),
-                new GroupOrderStat(emptyGroupOrder.getId(), 20_000));
+                new GroupOrderValue(groupOrder.getId(), 30_000),
+                new GroupOrderValue(emptyGroupOrder.getId(), 20_000));
     }
 
     @Test
@@ -191,11 +191,11 @@ class OrderItemRepositoryTest {
         orderItemRepository.save(memberParticipation.addItem(memberId, "마라탕", null, 9_000, 1, JOINED_AT));
         entityManager.flush();
 
-        List<GroupOrderStat> stats = orderItemRepository.sumAmountByGroupOrderIds(
+        List<GroupOrderValue> stats = orderItemRepository.sumAmountByGroupOrderIds(
                 List.of(groupOrder.getId(), emptyGroupOrder.getId()));
 
         // 0으로 나오는 게 아니라 빠진다. 서비스가 0으로 채워야 한다
-        assertThat(stats).containsExactly(new GroupOrderStat(groupOrder.getId(), 9_000));
+        assertThat(stats).containsExactly(new GroupOrderValue(groupOrder.getId(), 9_000));
     }
 
     @Test

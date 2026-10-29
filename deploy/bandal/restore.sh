@@ -19,7 +19,8 @@ pg() { "${COMPOSE[@]}" exec -T postgres "$@"; }
 pg pg_restore -l < "$FILE" > /dev/null || { echo "읽을 수 없는 덤프다: $FILE"; exit 1; }
 
 # 2. 앱을 멈춘다. 되돌리는 도중에 들어온 쓰기는 어느 쪽에도 남지 않는다
-"${COMPOSE[@]}" stop web backend
+# worker(알림, 통계 컨슈머)도 DB에 쓴다. 이 스크립트는 worker가 생기기 전에 써서 web, backend만 멈추고 있었다
+"${COMPOSE[@]}" stop web backend worker
 
 # 3. 지금 DB를 남긴다
 mkdir -p "$BACKUP_DIR"
@@ -36,7 +37,7 @@ echo "복구 끝: $(basename "$FILE")"
 # 5. 앱을 다시 띄운다. Flyway는 덤프 안의 이력을 보고 그 뒤의 마이그레이션만 돌린다
 TAG=${2:-$(cat .deployed-tag 2>/dev/null || true)}
 if [ -n "${2:-}" ]; then IMAGE_TAG=$TAG "${COMPOSE[@]}" pull web backend; fi
-IMAGE_TAG=$TAG "${COMPOSE[@]}" up -d --no-build --wait web backend
+IMAGE_TAG=$TAG "${COMPOSE[@]}" up -d --no-build --wait web backend worker
 # 다른 태그로 띄웠으면 다음 배포의 "이전 버전"도 그것이다
 if [ -n "${2:-}" ]; then echo "$TAG" > .deployed-tag; fi
 echo "앱이 다시 떴다: ${TAG:-local}"
