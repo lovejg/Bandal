@@ -3011,6 +3011,10 @@ Postgres, Redis)를 무료로 계속 띄워 두고 싶다. 그리고 지금 `app
 
 - **날짜**: 2026-10-19
 - **상태**: 확정 (로컬에서 구현과 확인 끝, 2026-10-19. 서버에는 아직 안 올림). 그림은 DESIGN.md 6번 "배포 구조"
+- **두 번째 앱(2026-10-29)**: codeXray(`lovejg/codeXray_Spring`)가 `/srv/codexray`에 자기 compose 묶음(frontend, backend, Postgres, Redis, Kafka)으로 올라갔다.
+  설계대로 바깥 Nginx에는 server 블록 둘(`codexray.org`, www는 이동)만 더했고 edge에는 그 앱의 입구(`codexray-web`)만 붙었다.
+  인증서는 `cert.sh issue codexray.org www.codexray.org`(YE1, 2027-01-27 만료, renew cron이 같이 갱신). 적용은 `nginx -t` 뒤 reload라 bandal.site는 계속 200이었다.
+  HSTS는 Bandal과 같은 단계로 하루부터 시작했다(ADR-073 방식). 그 앱의 배포는 Bandal과 같은 방식(SHA 태그, SSH, 되돌리기, 배포 직전 백업)이고 deploy 사용자와 키를 같이 쓴다
 
 **맥락**
 한 서버에 앱 둘이 각자의 Compose 프로젝트로 돈다(ADR-063). Compose는 프로젝트마다 사설 네트워크를 따로 만들어서, 두 앱은 서로를

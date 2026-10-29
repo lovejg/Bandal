@@ -59,7 +59,8 @@ chown "$DEPLOY_USER:$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh/authorized_keys"
 chmod 600 "/home/$DEPLOY_USER/.ssh/authorized_keys"
 
 step "폴더와 edge 네트워크"
-install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/bandal /srv/bandal/backups /srv/edge /srv/monitoring
+# /srv/codexray: 같은 서버의 두 번째 앱(lovejg/codeXray_Spring). 그 저장소의 배포 작업이 이 폴더에 올린다
+install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" /srv/bandal /srv/bandal/backups /srv/edge /srv/monitoring /srv/codexray /srv/codexray/backups
 docker network inspect edge > /dev/null 2>&1 || docker network create edge > /dev/null
 docker network inspect monitoring > /dev/null 2>&1 || docker network create monitoring > /dev/null
 
@@ -89,6 +90,8 @@ crontab -u "$DEPLOY_USER" - <<'EOF'
 # bash로 부른다: 파일의 실행 권한이 git에서 빠져도 돈다(2026-10-28 batch.sh가 실행 권한 없이 올라간 적이 있다)
 30 19 * * * [ -f /srv/bandal/.deployed-tag ] && bash /srv/bandal/batch.sh notificationCleanupJob >> /srv/bandal/batch.log 2>&1
 17 3,15 * * * [ -d /srv/edge/letsencrypt/live ] && /srv/edge/cert.sh renew >> /srv/edge/cert.log 2>&1
+# 18시 40분 = 한국 새벽 3시 40분. codeXray DB 백업(Bandal 백업 4시와 겹치지 않게). 스크립트는 그 저장소의 deploy/backup.sh
+40 18 * * * [ -f /srv/codexray/.deployed-tag ] && bash /srv/codexray/backup.sh daily >> /srv/codexray/backups/backup.log 2>&1
 EOF
 
 step "끝"
