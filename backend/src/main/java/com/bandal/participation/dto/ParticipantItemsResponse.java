@@ -20,7 +20,7 @@ public record ParticipantItemsResponse(
         return new ParticipantItemsResponse(
                 participation.getId(),
                 participation.getUser().getId(),
-                participation.getUser().getNickname(),
+                participation.getUser().displayName(),
                 host,
                 items.stream().map(OrderItemResponse::of).toList(),
                 items.stream().mapToLong(OrderItem::getAmount).sum()

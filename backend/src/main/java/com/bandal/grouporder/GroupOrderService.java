@@ -90,7 +90,7 @@ public class GroupOrderService {
                 r.getStoreName(),
                 r.getPickupSpot().getId(),
                 r.getPickupSpot().getName(),
-                r.getHost().getNickname(),
+                r.getHost().displayName(),
                 r.getMinOrderAmount(),
                 sums.getOrDefault(r.getId(), 0L),
                 counts.getOrDefault(r.getId(), 0L),

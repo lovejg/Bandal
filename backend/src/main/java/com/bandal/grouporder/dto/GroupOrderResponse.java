@@ -34,7 +34,7 @@ public record GroupOrderResponse(
         return new GroupOrderResponse(
                 groupOrder.getId(),
                 groupOrder.getHost().getId(),
-                groupOrder.getHost().getNickname(),
+                groupOrder.getHost().displayName(),
                 groupOrder.getPickupSpot().getId(),
                 groupOrder.getPickupSpot().getName(),
                 groupOrder.getStoreName(),

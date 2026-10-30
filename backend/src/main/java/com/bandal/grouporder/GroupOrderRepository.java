@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,6 +35,18 @@ public interface GroupOrderRepository extends JpaRepository<GroupOrder, Long> {
     // 이 사람이 방장인 방 중에 이 상태인 방이 하나라도 있는지. 정산중인 방장의 계좌 변경을 막을 때 쓴다
     // 메서드 이름으로 만드는 쿼리다. host.id와 status로 찾고, exists라 하나만 찾으면 멈춘다
     boolean existsByHostIdAndStatus(Long hostId, GroupOrderStatus status);
+
+    // 이 사람이 방장이거나 참여 중인 방 중에 아직 끝나지 않은 방(finished에 없는 상태)이 있는지.
+    // 닉네임 변경을 막을 때 쓴다. 방장도 참여 줄이 있는지는 기대지 않고 host와 참여 줄을 둘 다 본다
+    // 참여 줄은 서브쿼리 EXISTS로 본다. JOIN으로 붙이면 참여자 수만큼 줄이 불어난다(여기선 있는지만 알면 된다)
+    @Query("""
+        SELECT COUNT(go) > 0 FROM GroupOrder go
+        WHERE go.status NOT IN :finished
+          AND (go.host.id = :userId
+               OR EXISTS (SELECT p.id FROM Participation p WHERE p.groupOrder = go AND p.user.id = :userId))
+        """)
+    boolean existsUnfinishedFor(@Param("userId") Long userId,
+                                @Param("finished") Collection<GroupOrderStatus> finished);
 
     // 방 목록 조회용 쿼리
     @Query("""

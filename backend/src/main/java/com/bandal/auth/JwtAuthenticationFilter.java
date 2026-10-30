@@ -42,10 +42,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     @NonNull HttpServletResponse response,
                                     @NonNull FilterChain filterChain) throws ServletException, IOException {
         Long userId = resolveUserId(request);
-        // 토큰은 멀쩡한데 그 사용자가 없을 수 있다. 탈퇴한 계정의 토큰이 아직 안 만료된 경우다.
-        // 그때는 인증을 아예 하지 않아서 비로그인(401)으로 떨어뜨린다.
+        // 토큰은 멀쩡한데 그 사용자가 없거나 탈퇴했을 수 있다. 탈퇴하고 나서 액세스 토큰(15분)이 아직 안 만료된 경우다.
+        // 그때는 인증을 아예 하지 않아서 비로그인(401)으로 떨어뜨린다. 탈퇴 뒤 남은 토큰으로 방을 만들거나 참여하지 못하게 하는 자리가 여기다.
         // "이메일 인증이 필요합니다"(403)는 인증할 계정조차 없는 사람에게 할 말이 아니다
-        User user = (userId == null) ? null : userRepository.findById(userId).orElse(null);
+        User user = (userId == null) ? null : userRepository.findById(userId)
+                .filter(found -> !found.isDeleted())
+                .orElse(null);
 
         if (user != null) {
             // principal을 사용자 id로 둔다. 컨트롤러에서 @AuthenticationPrincipal로 받는다
