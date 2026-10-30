@@ -11,6 +11,10 @@
   --ink: #1c1b19;
   --sub: #6e6a61;
   --line: #dcd6c8;
+  /* 칸을 나누는 진한 선(탭 아래, 강조 카드, 합계 점선 등). 라이트에서 글자색 그대로 쓰니 너무 검어서 한 단계 연하게.
+     올려 둘 때(hover)는 그보다 진하게. 다크는 글자색 그대로 둔다 */
+  --rule: #aaa496;
+  --rule-hover: #6e6a61;
   --track: #e6e0d3;
   /* 배달 주황. 채운 버튼과 막대에 쓴다 */
   --accent: #e8590c;
@@ -39,6 +43,8 @@
   --ink: #ece7dc;
   --sub: #a39e92;
   --line: #3a3732;
+  --rule: #ece7dc;
+  --rule-hover: #ece7dc;
   --track: #2e2c28;
   --accent: #f2702b;
   --on-accent: #161513;
@@ -60,6 +66,8 @@
     --ink: #ece7dc;
     --sub: #a39e92;
     --line: #3a3732;
+    --rule: #ece7dc;
+    --rule-hover: #ece7dc;
     --track: #2e2c28;
     --accent: #f2702b;
     --on-accent: #161513;
@@ -229,7 +237,7 @@ h2 {
 }
 
 .bell:hover {
-  border-color: var(--ink);
+  border-color: var(--rule-hover);
 }
 
 .bell__count {
@@ -250,14 +258,17 @@ h2 {
 
 .tabbar {
   display: flex;
-  gap: 22px;
+  gap: 6px;
   margin: 4px 0 6px;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
+/* 탭 폭을 같게 둔다. 글자 폭을 따르면 "내 방"만 막대가 짧아진다 */
 .tabbar a {
   position: relative;
+  width: 72px;
   padding: 10px 0 11px;
+  text-align: center;
   color: var(--sub);
   font-size: 15px;
   font-weight: 600;
@@ -578,9 +589,9 @@ h2 {
   background: var(--surface);
 }
 
-/* 지금 내가 할 일(보낼 돈, 받은 환불)이 있는 카드. 잉크 테두리에 위쪽 주황 띠 */
+/* 지금 내가 할 일(보낼 돈, 받은 환불)이 있는 카드. 진한 테두리에 위쪽 주황 띠 */
 .card--accent {
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--rule);
   border-top: 5px solid var(--accent);
 }
 
@@ -642,7 +653,7 @@ h2 {
 .row--strong {
   margin-top: 6px;
   padding-top: 10px;
-  border-top: 1.5px dashed var(--ink);
+  border-top: 1.5px dashed var(--rule);
   font-size: 16px;
 }
 
@@ -703,7 +714,7 @@ h2 {
 }
 
 .btn--ghost:hover:not(:disabled) {
-  border-color: var(--ink);
+  border-color: var(--rule-hover);
 }
 
 .btn--danger {
@@ -774,7 +785,7 @@ h2 {
   align-items: center;
   gap: 8px;
   padding: 5px 5px 5px 11px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--rule);
   border-radius: var(--radius);
   background: var(--surface);
   font-size: 15px;
@@ -1129,7 +1140,7 @@ textarea {
 
 .roomcard:hover,
 .myroom:hover {
-  border-color: var(--ink);
+  border-color: var(--rule-hover);
 }
 
 .roomcard:active,
@@ -1166,7 +1177,7 @@ textarea {
   margin-top: 16px;
   padding: 20px;
   border: 1px solid var(--line);
-  border-top: 3px solid var(--ink);
+  border-top: 3px solid var(--rule);
   border-radius: var(--radius);
   background: var(--surface);
 }
@@ -1309,7 +1320,7 @@ textarea {
   gap: 12px;
   margin: 8px 0 4px;
   padding: 14px;
-  border: 1px dashed var(--ink);
+  border: 1px dashed var(--rule);
   border-radius: var(--radius);
   background: var(--bg);
 }
@@ -1482,7 +1493,7 @@ textarea {
 .segment {
   display: flex;
   margin-bottom: 14px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--rule);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -1502,7 +1513,7 @@ textarea {
 }
 
 .segment button + button {
-  border-left: 1px solid var(--ink);
+  border-left: 1px solid var(--rule);
 }
 
 .segment button.on {
@@ -1577,7 +1588,7 @@ textarea {
 }
 
 .noti:hover {
-  border-color: var(--ink);
+  border-color: var(--rule-hover);
 }
 
 /* 안 읽은 알림은 진한 글씨에 왼쪽 주황 선(내 방 목록의 할 일 표시와 같은 말투) */
@@ -1629,7 +1640,7 @@ textarea {
   place-items: center;
   width: 52px;
   height: 52px;
-  border: 1.5px solid var(--ink);
+  border: 1.5px solid var(--rule);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--accent-ink);

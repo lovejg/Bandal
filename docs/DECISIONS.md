@@ -4344,6 +4344,38 @@ Phase 6의 완료 기준은 "배치 실행 시간이 유의미하게 측정된�
 - `loadtest/seed.sql`은 부하 테스트 서버 전용(양이 많고 이름이 번호)이라 따로 둔다.
 
 ---
+
+## ADR-088. 화면 파일은 web(화면 Nginx)에서 gzip으로 보낸다. 바깥 Nginx가 HTTP/1.0으로 넘기므로 gzip_http_version 1.0을 같이 건다
+
+- **날짜**: 2026-10-30
+- **상태**: 로컬에서 운영과 같은 길(앞에 기본 설정 Nginx)로 확인. 운영 배포 뒤 숫자는 아직
+
+**맥락**
+- 같은 서버의 codeXray에서 먼저 겪었다. 느린 회선 흉내로 재 보니 첫 화면이 10초였고, 화면 Nginx에 gzip이 꺼져 1.7MB JS를 그대로 보내고 있었다.
+  gzip을 켜고 배포했는데 운영에서는 응답에 `Vary: Accept-Encoding`만 붙고 압축이 안 됐다.
+- 원인: 바깥 Nginx는 안쪽으로 HTTP/1.0으로 넘긴다(`proxy_http_version` 기본값). gzip은 기본으로 HTTP/1.1 요청에만 압축한다(`gzip_http_version 1.1`).
+  브라우저가 화면 컨테이너에 직접 붙던 로컬 측정에서는 드러나지 않았다. 운영 컨테이너의 설정을 가져와 HTTP/1.0과 1.1로 물으니 1.1에만 `Content-Encoding: gzip`이 붙었다.
+- bandal.site도 같았다. JS 215KB, CSS 21KB를 압축 없이 보냈고, `/assets/`에 `Cache-Control` 줄이 두 개 나갔다(`expires`와 `add_header`를 같이 써서).
+  Bandal에서는 위 문제를 codeXray에서 먼저 보고 피해 갔다.
+
+**결정**
+- `frontend/nginx.conf`에 `gzip on`, 대상은 JS, CSS, JSON, SVG(HTML은 기본), 1KB 미만은 그대로, 압축 6단계, `gzip_vary on`, `gzip_http_version 1.0`.
+- `/assets/`의 캐시는 `add_header Cache-Control "public, max-age=31536000, immutable"` 한 줄로.
+
+**측정** (Playwright, 캐시 없음, 느린 4G 흉내: 지연 150ms · 1.6Mbps, CPU 4배 느리게, 화면마다 5번의 중앙값. 로그인 전 화면 `/login`, `/signup`)
+
+| | 받은 JS | FCP |
+|---|---|---|
+| 운영, 고치기 전 | 215KB | 2,164ms |
+| 로컬, 앞에 기본 설정 Nginx를 둔 운영과 같은 길 | 67KB | 1,241ms |
+
+**버린 대안**
+- *바깥 Nginx에서 `proxy_http_version 1.1`*: 앱마다 화면 Nginx를 고치지 않아도 되지만, 바깥 Nginx는 배포 워크플로가 올리지 않아 손으로 적용해야 하고,
+  앱의 응답 성질이 앱 저장소 밖의 설정에 기대게 된다.
+- *바깥 Nginx에서 압축*: 두 앱이 한 번에 해결되지만 위와 같은 이유. 그리고 화면 Nginx가 이미 압축해 보내면 바깥은 할 일이 없다.
+- *빌드 때 미리 압축(.gz 파일 + gzip_static)*: 요청마다 압축하는 CPU를 아끼지만 vite 플러그인이 하나 더 들고, 이 규모에서는 차이가 작다.
+
+---
 ## 아직 결정 안 한 것
 
 `DESIGN.md` 8번 열린 질문 참고. 코드를 쓰다 보면 답이 나오는 것들이라 미리 정하지 않는다.
