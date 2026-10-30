@@ -188,6 +188,24 @@ join university u on u.email_domain = r.school
 join d_user_id h on h.school = r.school and h.n = r.host_n
 join pickup_spot sp on sp.university_id = u.id and sp.name = r.spot;
 
+-- 방의 음식 카테고리(1~3개). 목록의 카테고리 필터를 시연할 수 있게 겹치는 것도 섞는다(치킨이면서 야식)
+-- 방이 지워지면 이 줄도 같이 지워진다(on delete cascade). 그래서 1번의 지우기는 이 표를 따로 몰라도 된다
+create temp table d_category (store text, category text);
+insert into d_category values
+    ('반달 마라탕', 'CHINESE'), ('골목 떡볶이', 'BUNSIK'), ('24시 치킨나라', 'CHICKEN'), ('24시 치킨나라', 'LATE_NIGHT'),
+    ('분식왕 김밥', 'BUNSIK'), ('초록 샐러드', 'WESTERN'), ('심야 피자', 'PIZZA'), ('심야 피자', 'LATE_NIGHT'),
+    ('돈까스 연구소', 'CUTLET_SASHIMI'), ('만리 반점', 'CHINESE'), ('달빛 쌀국수', 'ASIAN'), ('화덕 피자공방', 'PIZZA'),
+    ('뜨끈 국밥집', 'KOREAN'), ('오늘의 디저트', 'CAFE_DESSERT'), ('스시 한 접시', 'CUTLET_SASHIMI'),
+    ('불맛 닭갈비', 'KOREAN'), ('불맛 닭갈비', 'MEAT'), ('수제 버거랩', 'FAST_FOOD'), ('한그릇 우동', 'CUTLET_SASHIMI');
+
+insert into group_order_category (group_order_id, category)
+select g.id, c.category
+from d_category c
+join d_room r on r.store = c.store
+join university u on u.email_domain = r.school
+join pickup_spot sp on sp.university_id = u.id and sp.name = r.spot
+join group_order g on g.pickup_spot_id = sp.id and g.store_name = r.store;
+
 -- 가게 이름 → 방 id. 시연 방의 가게 이름은 모두 다르다
 create temp table d_room_id as
 select r.store, r.school, r.status, g.id as room_id, g.host_id, g.deadline_at, g.settlement_started_at, g.delivery_fee

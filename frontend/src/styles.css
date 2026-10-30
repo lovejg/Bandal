@@ -1170,6 +1170,68 @@ textarea {
   font-size: 13px;
 }
 
+/* 방의 음식 카테고리. 카드와 방 맨 위에 작게 */
+.roomcard__cats {
+  margin-top: 4px;
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* ---------- 음식 카테고리 칩 ---------- */
+
+/* 목록 위 거르기. 15개라 한 줄로 두고 옆으로 민다. 스크롤 막대는 숨긴다 */
+.catfilter {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.catfilter::-webkit-scrollbar {
+  display: none;
+}
+
+/* 방 만들기에서 고르기. 줄을 바꿔 다 보이게 */
+.catpick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.catchip {
+  flex: none;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--sub);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.catchip:hover:not(:disabled) {
+  border-color: var(--rule-hover);
+}
+
+/* 고른 칩은 마우스를 올려도 주황 테두리를 지킨다. 안 그러면 위의 :hover(더 구체적인 선택자)가 이겨 회색이 된다 */
+.catchip--on,
+.catchip--on:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+
+.catchip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ---------- 방 한 개 ---------- */
 
 /* 영수증 맨 위. 가게 이름이 상호처럼 크게 */

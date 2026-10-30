@@ -1,6 +1,9 @@
 package com.bandal.auth;
 
 import com.bandal.auth.dto.LoginRequest;
+import com.bandal.auth.dto.MessageResponse;
+import com.bandal.auth.dto.PasswordResetConfirmRequest;
+import com.bandal.auth.dto.PasswordResetRequest;
 import com.bandal.auth.dto.RefreshRequest;
 import com.bandal.auth.dto.SignUpRequest;
 import com.bandal.auth.dto.SignUpResponse;
@@ -27,6 +30,23 @@ public class AuthController {
 
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
+
+    // 비밀번호를 잊었다. 가입된 주소든 아니든 같은 202와 같은 문장으로 답한다(가입처럼 "메일을 보냈다"까지만)
+    // 로그인 전에 부르는 곳이라 /api/auth/** permitAll에 들어 있다
+    @PostMapping("/password-reset")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public MessageResponse requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
+        passwordResetService.request(request.email());
+        return new MessageResponse(PasswordResetService.REQUEST_MESSAGE);
+    }
+
+    // 메일 링크의 화면에서 새 비밀번호를 정했다. 끝나면 모든 기기가 로그아웃되고, 화면은 로그인으로 보낸다
+    @PostMapping("/password-reset/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest request) {
+        passwordResetService.confirm(request.token(), request.newPassword());
+    }
 
     // 응답은 "메일을 보냈다"까지만 말한다. 계정이 생겼는지는 메일함을 봐야 안다
     @PostMapping("/signup")

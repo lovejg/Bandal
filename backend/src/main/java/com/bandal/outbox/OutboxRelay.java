@@ -1,6 +1,7 @@
 package com.bandal.outbox;
 
 import com.bandal.auth.EmailVerificationService;
+import com.bandal.auth.PasswordResetService;
 import com.bandal.auth.VerificationMailSender;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +19,7 @@ public class OutboxRelay {
 
     private final OutboxService outboxService;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
     private final VerificationMailSender mailSender;
     private final GroupOrderStatusPublisher groupOrderStatusPublisher;
 
@@ -49,6 +51,9 @@ public class OutboxRelay {
         }
         else if(c.type() == OutboxType.ALREADY_REGISTERED_MAIL) {
             mailSender.sendAlreadyRegistered(c.email());
+        }
+        else if(c.type() == OutboxType.PASSWORD_RESET_MAIL) {
+            passwordResetService.send(c.userId(), c.email());
         }
         else if(c.type() == OutboxType.GROUP_ORDER_STATUS_CHANGED) {
             groupOrderStatusPublisher.publish(c.id(), c.groupOrderId(), c.payload());

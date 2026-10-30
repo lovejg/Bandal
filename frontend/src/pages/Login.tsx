@@ -63,6 +63,8 @@ export default function Login() {
 
       <p className="login__switch sub">
         처음 왔나요? <Link to="/signup">학교 메일로 가입하기</Link>
+        <br />
+        <Link to="/forgot-password">비밀번호를 잊었어요</Link>
       </p>
 
       {import.meta.env.DEV && (

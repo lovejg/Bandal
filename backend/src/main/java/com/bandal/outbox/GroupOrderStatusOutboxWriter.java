@@ -35,16 +35,20 @@ public class GroupOrderStatusOutboxWriter {
     public void on(GroupOrderStatusChanged event) {
         GroupOrder groupOrder = groupOrderRepository.findByIdOrThrow(event.groupOrderId());
 
-        // settlement를 통해 유저마다 얼마 내야 되는지 구하기
+        // settlement를 통해 유저마다 얼마 내야 되는지, 보냈는지 구하기
         Map<Long, Long> amounts = new HashMap<>(); // <누가, 얼마>
+        Map<Long, Boolean> paid = new HashMap<>(); // <누가, 보냈나(보냈어요 또는 방장 확인)>
         for(Settlement line : settlementRepository.findByGroupOrderId(groupOrder.getId())) {
             amounts.put(line.getUser().getId(), line.getTotalAmount());
+            paid.put(line.getUser().getId(), line.getMarkedPaidAt() != null || line.getConfirmedPaidAt() != null);
         }
 
-        // participation을 통해서 참여자 목록 구하기 + 위에서 구한 금액 찾아서 넣어준 최종 참여자 리스트 만들기
+        // participation을 통해서 참여자 목록 구하기 + 위에서 구한 금액, 보냈는지 찾아서 넣어준 최종 참여자 리스트 만들기
+        // 정산표가 없으면(정산 전) 둘 다 null
         List<GroupOrderStatusPayload.Participant> participants = participationRepository
             .findRosterWithUser(groupOrder.getId()).stream()
-            .map(p -> new GroupOrderStatusPayload.Participant(p.getUser().getId(), amounts.get(p.getUser().getId())))
+            .map(p -> new GroupOrderStatusPayload.Participant(p.getUser().getId(),
+                amounts.get(p.getUser().getId()), paid.get(p.getUser().getId())))
             .toList();
 
         GroupOrderStatusPayload payload = new GroupOrderStatusPayload(

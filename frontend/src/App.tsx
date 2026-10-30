@@ -5,6 +5,8 @@ import { useAuth } from './auth'
 import { ThemeToggle, useAction } from './components'
 import Login from './pages/Login'
 import SignUp from './pages/SignUp'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import Board from './pages/Board'
 import NewRoom from './pages/NewRoom'
 import RoomPage from './pages/Room'
@@ -18,6 +20,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<SignUp />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<Shell />}>
         <Route index element={<Board />} />
         <Route path="rooms/new" element={<NewRoom />} />

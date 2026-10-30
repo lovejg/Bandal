@@ -14,6 +14,7 @@ import com.bandal.university.UniversityRepository;
 import com.bandal.user.NicknameConflict;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
+import com.bandal.user.WithdrawnEmailHasher;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -36,6 +37,7 @@ public class AuthService {
     private final JwtProvider jwtProvider;
     private final RefreshTokenStore refreshTokenStore;
     private final OutboxMessageRepository outboxMessageRepository;
+    private final WithdrawnEmailHasher withdrawnEmailHasher;
 
     // 계정 열거 방지용 가짜 해시
     // 사용자를 못 찾았을 때도 이걸로 대조를 한 번 돌려서 응답 시간을 맞춘다
@@ -86,6 +88,9 @@ public class AuthService {
         }
 
         User user = new User(university, email, hashed, nickname);
+        // 점수가 낮은 채 탈퇴했던 메일이면 그 점수로 시작한다. 탈퇴하고 다시 가입해 점수를 되돌리지 못하게
+        Integer previousScore = userRepository.findLowestWithdrawnTrustScore(withdrawnEmailHasher.hash(email));
+        if (previousScore != null) user.inheritTrustScore(previousScore);
         // id를 DB가 만드는(IDENTITY) 엔티티라 save가 그 자리에서 INSERT를 보낸다. unique 제약에 걸리면 여기서 예외가 난다
         // 닉네임이 겹친 것만 409로 바꾼다. 같은 이메일로 동시에 가입하는 경우는 아직 재현해 보지 않아 그대로 둔다
         try {

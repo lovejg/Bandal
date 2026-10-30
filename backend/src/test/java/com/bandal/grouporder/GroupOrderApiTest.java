@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Set;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
@@ -114,7 +115,7 @@ class GroupOrderApiTest {
     CreateGroupOrderRequest validRequest() {
         return new CreateGroupOrderRequest(
                 pickupSpot.getId(), "○○마라탕", 15_000L,
-                Instant.now().plus(2, ChronoUnit.HOURS), 4);
+                Instant.now().plus(2, ChronoUnit.HOURS), 4, Set.of(FoodCategory.CHICKEN));
     }
 
     @Test
@@ -168,7 +169,7 @@ class GroupOrderApiTest {
     @DisplayName("가게 이름이 비면 400이고 이유가 돌아온다")
     void rejectsBlankStoreName() throws Exception {
         CreateGroupOrderRequest request = new CreateGroupOrderRequest(
-                pickupSpot.getId(), "  ", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4);
+                pickupSpot.getId(), "  ", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4, Set.of(FoodCategory.CHICKEN));
 
         mockMvc.perform(post("/api/group-orders")
                         .header("Authorization", bearer(host.getId()))
@@ -183,7 +184,7 @@ class GroupOrderApiTest {
     @DisplayName("마감 시각이 이미 지났으면 400이다")
     void rejectsPastDeadline() throws Exception {
         CreateGroupOrderRequest request = new CreateGroupOrderRequest(
-                pickupSpot.getId(), "○○마라탕", 15_000L, Instant.now().minusSeconds(60), 4);
+                pickupSpot.getId(), "○○마라탕", 15_000L, Instant.now().minusSeconds(60), 4, Set.of(FoodCategory.CHICKEN));
 
         mockMvc.perform(post("/api/group-orders")
                         .header("Authorization", bearer(host.getId()))
@@ -196,7 +197,7 @@ class GroupOrderApiTest {
     @DisplayName("정원이 1명이면 400이다")
     void rejectsCapacityOfOne() throws Exception {
         CreateGroupOrderRequest request = new CreateGroupOrderRequest(
-                pickupSpot.getId(), "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 1);
+                pickupSpot.getId(), "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 1, Set.of(FoodCategory.CHICKEN));
 
         mockMvc.perform(post("/api/group-orders")
                         .header("Authorization", bearer(host.getId()))
@@ -322,7 +323,7 @@ class GroupOrderApiTest {
     @DisplayName("없는 거점을 고르면 404다")
     void rejectsUnknownPickupSpot() throws Exception {
         CreateGroupOrderRequest request = new CreateGroupOrderRequest(
-                999_999L, "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4);
+                999_999L, "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4, Set.of(FoodCategory.CHICKEN));
 
         mockMvc.perform(post("/api/group-orders")
                         .header("Authorization", bearer(host.getId()))
@@ -338,7 +339,7 @@ class GroupOrderApiTest {
         University minguk = universityRepository.save(new University("민국대학교", "minguk.ac.kr"));
         PickupSpot mingukSpot = pickupSpotRepository.save(new PickupSpot(minguk, "민국대 정문", null));
         CreateGroupOrderRequest request = new CreateGroupOrderRequest(
-                mingukSpot.getId(), "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4);
+                mingukSpot.getId(), "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4, Set.of(FoodCategory.CHICKEN));
 
         mockMvc.perform(post("/api/group-orders")
                         .header("Authorization", bearer(host.getId()))

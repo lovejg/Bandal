@@ -63,6 +63,29 @@ public interface GroupOrderRepository extends JpaRepository<GroupOrder, Long> {
                                      @Param("now") Instant now,
                                      Pageable pageable);
 
+    // 방 목록, 카테고리로 거른 것. 고른 카테고리 중 하나라도 있는 방(OR)
+    // 카테고리 표를 JOIN으로 붙이면 카테고리가 둘 맞는 방이 두 줄이 되어 쪽 나누기가 틀어진다. 그래서 방마다 "있나"만 묻는 EXISTS로 거른다
+    // go.categories는 @ElementCollection이라 JPQL에서 JOIN으로 원소(c)를 꺼낼 수 있다
+    @Query("""
+        SELECT go FROM GroupOrder go
+        JOIN FETCH go.host
+        JOIN FETCH go.pickupSpot ps
+        WHERE go.status = com.bandal.grouporder.GroupOrderStatus.RECRUITING
+        AND ps.university.id = :universityId
+        AND go.deadlineAt > :now
+        AND go.participantCount < go.capacity
+        AND EXISTS (SELECT 1 FROM GroupOrder g JOIN g.categories c WHERE g = go AND c IN :categories)
+        ORDER BY go.deadlineAt ASC
+        """)
+    Slice<GroupOrder> findRecruitingIn(@Param("universityId") Long universityId,
+                                       @Param("now") Instant now,
+                                       @Param("categories") Collection<FoodCategory> categories,
+                                       Pageable pageable);
+
+    // 여러 방의 카테고리를 한 번에. [방 id, 카테고리] 줄들이다. 목록이 방마다 따로 읽지 않게(N+1) 쓴다
+    @Query("SELECT go.id, c FROM GroupOrder go JOIN go.categories c WHERE go.id IN :ids")
+    List<Object[]> findCategoriesByIds(@Param("ids") Collection<Long> ids);
+
     // 스케줄러가 넘길 후보의 id. 모집중은 마감 시각으로, 나머지는 그 상태가 된 시각으로 고른다
     // 기준 시각(~Before)은 서비스 쪽에서 now에서 기간을 빼서 넘긴다. 최종 판단은 엔티티가 다시 한다
     // 엔티티 대신 id만 받는 건 방마다 따로 읽어서 따로 처리하기 위해서다

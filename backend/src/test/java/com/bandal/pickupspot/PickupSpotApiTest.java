@@ -1,5 +1,6 @@
 package com.bandal.pickupspot;
 
+import com.bandal.grouporder.FoodCategory;
 import com.bandal.TestcontainersConfiguration;
 import com.bandal.auth.JwtProvider;
 import com.bandal.grouporder.GroupOrderRepository;
@@ -26,6 +27,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Set;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
@@ -281,7 +283,7 @@ class PickupSpotApiTest {
         long spotId = created.get("id").asLong();
 
         CreateGroupOrderRequest room = new CreateGroupOrderRequest(
-                spotId, "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4);
+                spotId, "○○마라탕", 15_000L, Instant.now().plus(2, ChronoUnit.HOURS), 4, Set.of(FoodCategory.CHICKEN));
         mockMvc.perform(post("/api/group-orders")
                         .header("Authorization", bearer(minsu))
                         .contentType(MediaType.APPLICATION_JSON)

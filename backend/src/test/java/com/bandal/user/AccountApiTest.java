@@ -265,7 +265,7 @@ class AccountApiTest {
         String roomBody() {
             return """
                     {"pickupSpotId": %d, "storeName": "△△치킨", "minOrderAmount": 15000,
-                     "deadlineAt": "%s", "capacity": 4}
+                     "deadlineAt": "%s", "capacity": 4, "categories": ["CHICKEN"]}
                     """.formatted(pickupSpot.getId(), Instant.now().plus(2, ChronoUnit.HOURS));
         }
 

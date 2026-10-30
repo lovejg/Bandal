@@ -118,7 +118,7 @@ class GroupOrderListCacheRaceTest {
 
     // B는 다른 스레드다. 같은 스레드면 A의 트랜잭션 안에서 읽어서 커밋 전 참여가 보여 버린다
     GroupOrderListResponse openListAsAnotherUser() throws Exception {
-        return CompletableFuture.supplyAsync(() -> groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE))
+        return CompletableFuture.supplyAsync(() -> groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE, null))
                 .get();
     }
 
@@ -126,7 +126,7 @@ class GroupOrderListCacheRaceTest {
     @DisplayName("지운 뒤 커밋 전에 다른 사람이 목록을 열어도, 커밋 뒤의 목록에는 새 인원이 보인다")
     void listShowsCommittedChange() throws Exception {
         // 처음 목록. 인원 1이 캐시에 담긴다
-        assertThat(participantCount(groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE))).isEqualTo(1);
+        assertThat(participantCount(groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE, null))).isEqualTo(1);
 
         // A의 트랜잭션. join의 @Transactional은 바깥 트랜잭션에 합류해서, 커밋은 이 블록이 끝날 때 한 번 일어난다
         transactionTemplate.executeWithoutResult(status -> {
@@ -145,19 +145,19 @@ class GroupOrderListCacheRaceTest {
         assertThat(redisTemplate.hasKey(key))
                 .as("커밋 전에 B가 담은 옛 목록(인원 1)이 남아 있으면 안 된다")
                 .isFalse();
-        assertThat(participantCount(groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE))).isEqualTo(2);
+        assertThat(participantCount(groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE, null))).isEqualTo(2);
     }
 
     @Test
     @DisplayName("트랜잭션이 롤백되면 목록은 그대로다")
     void rollbackKeepsList() {
-        assertThat(participantCount(groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE))).isEqualTo(1);
+        assertThat(participantCount(groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE, null))).isEqualTo(1);
 
         transactionTemplate.executeWithoutResult(status -> {
             participationService.join(room.getId(), joiner.getId());
             status.setRollbackOnly();
         });
 
-        assertThat(participantCount(groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE))).isEqualTo(1);
+        assertThat(participantCount(groupOrderService.findList(viewer.getId(), 0, RoomListCache.CACHED_SIZE, null))).isEqualTo(1);
     }
 }

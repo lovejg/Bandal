@@ -1,6 +1,7 @@
 package com.bandal.grouporder.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 // 방 목록의 한 줄. 참여할 방을 고르는 데 필요한 것만 담는다
 // 화면은 "○○마라탕 · 제1기숙사 로비 · 8,000 / 15,000 (53%) · 2/4명 · 19:30 마감" 같은 모양이다
@@ -16,6 +17,8 @@ public record GroupOrderSummaryResponse(
         long menuTotalAmount,
         long participantCount,
         int capacity,
-        Instant deadlineAt
+        Instant deadlineAt,
+        // 음식 카테고리 이름들(FoodCategory). 카드에 작게 보인다. 카테고리를 넣기 전에 만든 방은 빈 목록
+        List<String> categories
 ) {
 }

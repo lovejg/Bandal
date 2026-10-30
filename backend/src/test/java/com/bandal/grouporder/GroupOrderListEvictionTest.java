@@ -166,7 +166,7 @@ class GroupOrderListEvictionTest {
 
         String body = """
                 {"pickupSpotId": %d, "storeName": "새 방", "minOrderAmount": 15000,
-                 "deadlineAt": "%s", "capacity": 4}
+                 "deadlineAt": "%s", "capacity": 4, "categories": ["CHICKEN"]}
                 """.formatted(dorm.getId(), inHours(2));
         mockMvc.perform(post("/api/group-orders").header("Authorization", bearer(user("새방장")))
                         .contentType(MediaType.APPLICATION_JSON).content(body))

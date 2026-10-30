@@ -37,6 +37,9 @@ public class User {
     // 탈퇴한 시각. 값이 있으면 탈퇴한 사용자다. 줄은 지난 방과 정산표가 가리켜서 남긴다
     private Instant deletedAt;
 
+    // 점수가 기본값보다 낮은 채 탈퇴했을 때만 남기는 메일의 해시(WithdrawnEmailHasher). 같은 메일로 다시 가입하면 이 점수를 이어받는다
+    private String withdrawnEmailHash;
+
     // 닉네임을 마지막으로 바꾼 시각. 가입 때 정한 건 바꾼 게 아니라 null이다
     private Instant nicknameChangedAt;
 
@@ -51,12 +54,21 @@ public class User {
     // 예금주 이름. 실명이라 밖으로 나갈 때는 마스킹한다
     private String accountHolder;
 
+    // 신뢰도 점수의 시작값
+    public static final int BASE_TRUST_SCORE = 50;
+
     public User(University university, String email, String password, String nickname) {
         this.university = university;
         this.email = email;
         this.password = password;
         this.nickname = nickname;
-        this.trustScore = 50;
+        this.trustScore = BASE_TRUST_SCORE;
+    }
+
+    // 점수가 낮은 채 탈퇴했던 메일로 다시 가입했다. 그때 점수로 시작한다(탈퇴, 재가입으로 점수를 되돌리지 못하게)
+    // 기본값보다 높은 점수는 이어받지 않는다(애초에 높은 점수는 남기지 않는다)
+    public void inheritTrustScore(int previousScore) {
+        this.trustScore = Math.min(this.trustScore, previousScore);
     }
 
     public void verifyEmail(Instant now) {
@@ -82,9 +94,13 @@ public class User {
     // 탈퇴. 줄은 남기고 사람을 알아볼 수 있는 값을 모두 지운다
     // 남는 것: id(지난 방과 정산표가 가리킨다), 소속 학교, 신뢰도 점수
     // 비밀번호는 칸을 비울 수 없어서, 아무도 모르는 값을 해시해 넣은 걸 받는다. 메일도 비워서 어차피 로그인할 길이 없지만 한 겹 더 막는다
+    // 점수가 기본값보다 낮으면 메일의 해시만 남긴다(emailHash). 다시 가입해 점수를 되돌리지 못하게. 높거나 같으면 아무것도 남기지 않는다
     // 끝나지 않은 방이나 남은 환불이 있는지는 다른 표를 봐야 해서 서비스가 먼저 확인한다
-    public void withdraw(String unusablePasswordHash, Instant now) {
+    public void withdraw(String unusablePasswordHash, String emailHash, Instant now) {
         if (isDeleted()) return;
+        if (this.trustScore < BASE_TRUST_SCORE) {
+            this.withdrawnEmailHash = emailHash;
+        }
         this.email = null;
         this.nickname = null;
         this.nicknameChangedAt = null;
