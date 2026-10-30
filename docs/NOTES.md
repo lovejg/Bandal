@@ -1213,6 +1213,20 @@ HSTS 기간은 마지막으로 접속한 날부터 다시 센다. 그래서 운�
 `includeSubDomains`는 모든 서브도메인에 같은 규칙을 건다. `preload`는 브라우저에 미리 심긴 목록에 넣어 달라는 신청이다. 처음 오는
 요청까지 막지만, 빼는 데 몇 달이 걸린다. HSTS를 거두려면 `max-age=0`을 보내야 하고, 그 응답을 받으러 다시 온 브라우저만 잊는다.
 
+### gzip 압축과 프록시 뒤의 HTTP 버전 (ADR-088)
+
+브라우저는 요청에 `Accept-Encoding: gzip`을 붙여 "압축해서 보내도 풀 수 있다"고 알린다. 서버가 압축하면 응답에 `Content-Encoding: gzip`이
+붙고, 같은 주소라도 받는 쪽에 따라 내용이 달라지니 `Vary: Accept-Encoding`을 붙여 중간 캐시가 섞지 않게 한다. JS나 CSS 같은 글자 파일은
+보통 3분의 1 이하로 준다. 이미 압축된 파일(PNG, JPG)은 다시 압축해도 거의 안 줄어서 대상에서 뺀다.
+
+Nginx가 다른 Nginx 뒤에 있으면 앞쪽(바깥 Nginx)은 기본으로 HTTP/1.0으로 넘긴다(`proxy_http_version`). Nginx gzip은 기본으로 HTTP/1.1
+요청에만 압축한다(`gzip_http_version 1.1`). HTTP/1.0에는 "길이를 모르는 채로 조각조각 보내기(chunked)"가 없어서, 압축하며 바로 보내려면
+연결을 끊어 끝을 알려야 하기 때문이다. 그래서 뒤쪽 Nginx에 gzip만 켜면 `Vary`만 붙고 압축은 안 된다. 뒤쪽에 `gzip_http_version 1.0`을 주거나,
+앞쪽에 `proxy_http_version 1.1`을 준다. 브라우저가 뒤쪽에 직접 붙는 로컬에서는 이 차이가 안 보인다.
+
+`expires 1y`는 `Expires`와 `Cache-Control: max-age=...`를 만든다. 같은 곳에 `add_header Cache-Control ...`을 또 쓰면 `Cache-Control` 줄이
+두 개가 된다. 브라우저는 둘을 합쳐 읽어 대개 문제는 없지만, 한 줄로 쓰는 게 분명하다.
+
 ### docker 그룹은 사실상 root다
 
 docker 그룹 사용자는 `docker run -v /:/host ...`처럼 서버 디스크 전체를 컨테이너에 붙여 root로 고칠 수 있다. 그래서 "배포 사용자에게
