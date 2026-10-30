@@ -11,6 +11,8 @@ public record ParticipantItemsResponse(
         Long participationId,
         Long userId,
         String nickname,
+        // 신뢰도 점수. 방장이 참여자 명단에서 본다
+        int trustScore,
         boolean host,
         List<OrderItemResponse> items,
         long participationTotal
@@ -21,6 +23,7 @@ public record ParticipantItemsResponse(
                 participation.getId(),
                 participation.getUser().getId(),
                 participation.getUser().displayName(),
+                participation.getUser().getTrustScore(),
                 host,
                 items.stream().map(OrderItemResponse::of).toList(),
                 items.stream().mapToLong(OrderItem::getAmount).sum()

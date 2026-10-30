@@ -13,7 +13,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
-// 인증 메일을 만들어 보낸다. 로컬에서는 Mailpit(localhost:1025)이 받는다
+// 계정 메일(인증, 이미 가입됨 안내, 비밀번호 재설정)을 만들어 보낸다. 로컬에서는 Mailpit(localhost:1025)이 받는다
 // HTML과 글자만 있는 본문을 같이 넣는다. 메일 앱이 HTML을 보여 주면 버튼이, 못 보여 주면 글자 본문이 보인다
 // 글자만 보내던 때는 주소를 링크로 바꿔 주지 않는 메일 앱에서 눌리지 않았다
 @Component
@@ -31,6 +31,9 @@ public class VerificationMailSender {
     // 메일 문구의 만료 시간이 실제 토큰 수명과 어긋나지 않게 같은 설정을 읽는다
     @Value("${app.verification-token-minutes}")
     private long tokenMinutes;
+
+    @Value("${app.password-reset-minutes}")
+    private long passwordResetMinutes;
 
     // 가입했거나 재전송을 눌렀을 때
     public void sendVerification(String email, String token) {
@@ -76,7 +79,31 @@ public class VerificationMailSender {
         send(email, "[반달] 이미 가입된 계정입니다", text, html);
     }
 
-    // 두 메일이 같이 쓰는 틀. 메일 앱은 style 태그와 바깥 CSS를 지우는 곳이 많아서 모든 꾸밈을 태그 안(style="")에 쓴다
+    // 비밀번호 재설정. 링크는 API가 아니라 화면(/reset-password)으로 간다. 새 비밀번호를 입력받아야 해서다
+    public void sendPasswordReset(String email, String token) {
+        String link = URI.create(verifyLinkBase).resolve("/reset-password").toString()
+                + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+        String text = """
+                반달 비밀번호 재설정을 요청하셨습니다.
+                아래 링크를 열어 새 비밀번호를 정해 주세요.
+
+                %s
+
+                이 링크는 %d분 동안 한 번만 쓸 수 있습니다.
+                비밀번호를 바꾸면 모든 기기에서 로그아웃됩니다.
+                요청한 적이 없다면 이 메일은 무시하셔도 됩니다. 비밀번호는 그대로입니다.
+                """.formatted(link, passwordResetMinutes);
+        String html = layout(
+                "비밀번호를 다시 정해 주세요",
+                "반달 비밀번호 재설정을 요청하셨습니다.<br>아래 버튼을 눌러 새 비밀번호를 정해 주세요. 바꾸면 모든 기기에서 로그아웃됩니다.",
+                "새 비밀번호 정하기", link,
+                "이 링크는 " + passwordResetMinutes + "분 동안 한 번만 쓸 수 있습니다. 버튼이 눌리지 않으면 아래 주소를 브라우저에 붙여 넣어 주세요.<br>"
+                        + "<span style=\"word-break:break-all;color:#6e6a61\">" + link + "</span>",
+                "요청한 적이 없다면 이 메일은 무시하셔도 됩니다. 비밀번호는 그대로입니다.");
+        send(email, "[반달] 비밀번호 재설정", text, html);
+    }
+
+    // 메일들이 같이 쓰는 틀. 메일 앱은 style 태그와 바깥 CSS를 지우는 곳이 많아서 모든 꾸밈을 태그 안(style="")에 쓴다
     // 칸 나누기도 같은 이유로 div 대신 table로 한다. 들어가는 문구는 우리가 정한 것과 링크뿐이라 따로 이스케이프하지 않는다
     private static String layout(String title, String body, String buttonText, String buttonLink,
                                  String afterButton, String footer) {

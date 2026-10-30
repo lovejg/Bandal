@@ -13,8 +13,10 @@ import org.springframework.data.domain.DomainEvents;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 // 공구방. 같은 거점에서 같은 가게에 함께 주문한다.
 @Entity
@@ -68,6 +70,18 @@ public class GroupOrder {
     // 취소된 방에만 값이 있다. 누가, 어느 상태에서 취소했는지
     @Enumerated(EnumType.STRING)
     private CancelType cancelType;
+
+    // 음식 카테고리(1~3개). 방 하나에 여러 개라 따로 표(group_order_category)에 둔다
+    // @ElementCollection: 엔티티가 아닌 값(enum)의 모음을 그 엔티티에 딸린 표로 저장한다. 방이 지워지면 같이 지워진다
+    // 기본이 지연 로딩이다. 목록은 방마다 따로 읽지 않게 서비스가 id 목록으로 한 번에 모아 읽는다(N+1 방지)
+    // 이 표를 넣기 전에 만든 방은 비어 있다
+    @ElementCollection
+    @CollectionTable(name = "group_order_category", joinColumns = @JoinColumn(name = "group_order_id"))
+    @Column(name = "category")
+    @Enumerated(EnumType.STRING)
+    private Set<FoodCategory> categories = new LinkedHashSet<>();
+
+    public static final int MAX_CATEGORIES = 3;
 
     // 아래 다섯은 그 상태가 된 시각이다. 그 상태를 거치지 않았으면 null
     // 스케줄러가 "이 상태로 너무 오래 멈춰 있는가"를 이걸로 잰다
@@ -124,6 +138,19 @@ public class GroupOrder {
         this.capacity = capacity;
         this.status = GroupOrderStatus.RECRUITING;
         this.participantCount = 1; // 방장 1명으로 시작
+    }
+
+    // 카테고리를 고른다. 방을 만들 때 서비스가 부른다(생성자는 카테고리를 몰라도 되는 테스트와 시연 데이터가 많이 쓴다)
+    // 1~3개. 다 고르면 거르는 의미가 없고, 하나도 없으면 필터에 안 걸린다
+    public void chooseCategories(Set<FoodCategory> chosen) {
+        if (chosen == null || chosen.isEmpty()) {
+            throw new IllegalArgumentException("음식 카테고리를 하나 이상 골라주세요");
+        }
+        if (chosen.size() > MAX_CATEGORIES) {
+            throw new IllegalArgumentException("음식 카테고리는 " + MAX_CATEGORIES + "개까지 고를 수 있습니다");
+        }
+        this.categories.clear();
+        this.categories.addAll(chosen);
     }
 
     public boolean isHost(Long userId) {

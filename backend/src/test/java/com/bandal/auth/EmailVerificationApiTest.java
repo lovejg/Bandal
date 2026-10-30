@@ -189,7 +189,7 @@ class EmailVerificationApiTest {
     String createRoomBody() {
         return """
                 {"pickupSpotId": %d, "storeName": "○○마라탕", "minOrderAmount": 15000,
-                 "deadlineAt": "%s", "capacity": 4}
+                 "deadlineAt": "%s", "capacity": 4, "categories": ["CHICKEN"]}
                 """.formatted(pickupSpot.getId(), Instant.now().plus(2, ChronoUnit.HOURS));
     }
 

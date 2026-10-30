@@ -9,6 +9,8 @@ import com.bandal.grouporder.GroupOrderStatus;
 import com.bandal.notification.NotificationRepository;
 import com.bandal.outbox.OutboxMessageRepository;
 import com.bandal.settlement.SettlementRepository;
+import com.bandal.trust.TrustScoreRepository;
+import com.bandal.user.dto.TrustScoreChangeResponse;
 import com.bandal.user.dto.ChangeNicknameRequest;
 import com.bandal.user.dto.ChangePasswordRequest;
 import com.bandal.user.dto.RegisterAccountRequest;
@@ -36,6 +38,16 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final RefreshTokenStore refreshTokenStore;
+    private final WithdrawnEmailHasher withdrawnEmailHasher;
+    private final TrustScoreRepository trustScoreRepository;
+
+    // 내 신뢰도 점수의 최근 변동(최대 20줄). 내 정보 화면이 "왜 바뀌었나"를 보여 준다
+    @Transactional(readOnly = true)
+    public List<TrustScoreChangeResponse> trustScoreChanges(Long userId) {
+        return trustScoreRepository.findTop20ByUserIdOrderByIdDesc(userId).stream()
+                .map(TrustScoreChangeResponse::of)
+                .toList();
+    }
 
     // 계좌 등록 및 변경
     @Transactional
@@ -120,7 +132,9 @@ public class UserService {
         }
 
         // 비밀번호 칸은 비울 수 없다. 아무도 모르는 난수를 해시해 넣는다(평문은 어디에도 남지 않는다)
-        user.withdraw(passwordEncoder.encode(UUID.randomUUID().toString()), Instant.now());
+        // 메일 해시는 점수가 낮을 때만 엔티티가 남긴다. 메일을 지우기 전에 미리 만들어 넘긴다
+        user.withdraw(passwordEncoder.encode(UUID.randomUUID().toString()),
+                withdrawnEmailHasher.hash(user.getEmail()), Instant.now());
 
         // 받을 사람이 없는 알림, 보낼 주소가 없는 메일을 지운다
         notificationRepository.deleteByUserId(userId);

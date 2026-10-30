@@ -52,6 +52,13 @@ public record GroupOrderStatusPayload(
     }
 
     // 참여자 한 명(방장 포함). 금액은 정산표가 있을 때만 있다(메뉴 합계 + 배달비 몫)
-    public record Participant(Long userId, Long totalAmount) {
+    // paid: 정산표가 있을 때만. "보냈어요"를 눌렀거나 방장이 받았다고 확인했으면 true. 신뢰도 점수가 정산 시간 초과 때 누가 안 보냈는지 본다
+    // 이 칸을 넣기 전의 옛 글에는 없어서 null로 풀린다(모름)
+    public record Participant(Long userId, Long totalAmount, Boolean paid) {
+
+        // 정산 전이거나 보냈는지가 필요 없는 곳(테스트 등)
+        public Participant(Long userId, Long totalAmount) {
+            this(userId, totalAmount, null);
+        }
     }
 }

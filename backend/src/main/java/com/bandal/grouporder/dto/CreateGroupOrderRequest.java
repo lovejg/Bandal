@@ -1,12 +1,16 @@
 package com.bandal.grouporder.dto;
 
+import com.bandal.grouporder.FoodCategory;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
+import java.util.Set;
 
 // 방장은 본문이 아니라 토큰에서 읽는다. 본문으로 받으면 남을 방장으로 만들 수 있다
 public record CreateGroupOrderRequest(
@@ -29,6 +33,11 @@ public record CreateGroupOrderRequest(
 
         @NotNull(message = "정원을 정해주세요")
         @Min(value = 2, message = "정원은 2명 이상이어야 합니다")
-        Integer capacity
+        Integer capacity,
+
+        // 음식 카테고리 1~3개. 개수 규칙은 엔티티(chooseCategories)도 다시 지킨다
+        @NotEmpty(message = "음식 카테고리를 하나 이상 골라주세요")
+        @Size(max = 3, message = "음식 카테고리는 3개까지 고를 수 있습니다")
+        Set<FoodCategory> categories
 ) {
 }

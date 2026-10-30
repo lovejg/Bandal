@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, type PickupSpot } from '../api'
+import { api, FOOD_CATEGORIES, type FoodCategory, type PickupSpot } from '../api'
 import { useAuth } from '../auth'
 import { Card, InlineError, useAction } from '../components'
-import { isoToLocalInput, localInputToIso } from '../format'
+import { CATEGORY_LABEL, isoToLocalInput, localInputToIso } from '../format'
 
 // 새 방 만들기. 방장은 자동으로 첫 참여자가 된다
 export default function NewRoom() {
@@ -17,6 +17,10 @@ export default function NewRoom() {
   const [minOrder, setMinOrder] = useState('15000')
   const [deadline, setDeadline] = useState(() => isoToLocalInput(new Date(Date.now() + 60 * 60 * 1000)))
   const [capacity, setCapacity] = useState(4)
+  // 음식 카테고리 1~3개. 3개를 고르면 나머지 칩은 막는다(서버도 같은 규칙)
+  const [categories, setCategories] = useState<FoodCategory[]>([])
+  const toggleCategory = (c: FoodCategory) =>
+    setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : prev.length >= 3 ? prev : [...prev, c]))
   const [addingSpot, setAddingSpot] = useState(false)
   const [newSpot, setNewSpot] = useState('')
 
@@ -43,12 +47,14 @@ export default function NewRoom() {
     e.preventDefault()
     void run(async () => {
       if (spotId === '') throw new Error('받을 곳을 골라 주세요')
+      if (categories.length === 0) throw new Error('음식 종류를 하나 이상 골라 주세요')
       const room = await api.createRoom({
         pickupSpotId: spotId,
         storeName: storeName.trim(),
         minOrderAmount: Number(minOrder),
         deadlineAt: localInputToIso(deadline),
         capacity,
+        categories,
       })
       navigate(`/rooms/${room.id}`, { replace: true })
     }, '방을 열었어요')
@@ -77,6 +83,27 @@ export default function NewRoom() {
               <span className="field__label">어디서 시켜요?</span>
               <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="배달앱에 뜨는 가게 이름" required />
             </label>
+
+            <div className="field">
+              <span className="field__label">어떤 음식이에요? (1~3개)</span>
+              <div className="catpick" role="group" aria-label="음식 카테고리">
+                {FOOD_CATEGORIES.map((c) => {
+                  const on = categories.includes(c)
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      className={`catchip${on ? ' catchip--on' : ''}`}
+                      aria-pressed={on}
+                      disabled={!on && categories.length >= 3}
+                      onClick={() => toggleCategory(c)}
+                    >
+                      {CATEGORY_LABEL[c]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
 
             <div className="field">
               <span className="field__label">어디서 받아요?</span>

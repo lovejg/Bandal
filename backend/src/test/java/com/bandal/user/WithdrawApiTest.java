@@ -202,7 +202,7 @@ class WithdrawApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"pickupSpotId": %d, "storeName": "○○마라탕", "minOrderAmount": 15000,
-                                 "deadlineAt": "%s", "capacity": 4}
+                                 "deadlineAt": "%s", "capacity": 4, "categories": ["CHICKEN"]}
                                 """.formatted(pickupSpot.getId(), Instant.now().plus(2, ChronoUnit.HOURS))))
                 .andExpect(status().isUnauthorized());
     }
@@ -248,6 +248,42 @@ class WithdrawApiTest {
 
         User again = userRepository.findByEmail(JISU_EMAIL).orElseThrow();
         assertThat(again.getId()).isNotEqualTo(jisu.getId());
+    }
+
+    @Test
+    @DisplayName("점수가 50점보다 낮은 채 탈퇴하고 같은 메일로 다시 가입하면 그 점수로 시작한다(대소문자가 달라도)")
+    void lowScoreCarriesOver() throws Exception {
+        ReflectionTestUtils.setField(jisu, "trustScore", 35);
+        userRepository.save(jisu);
+        withdraw(field(login(JISU_EMAIL), "accessToken"), PASSWORD).andExpect(status().isNoContent());
+        // 메일 자체는 지워지고, 되돌릴 수 없는 해시만 남는다
+        assertThat(reload(jisu).getEmail()).isNull();
+        assertThat(reload(jisu).getWithdrawnEmailHash()).isNotNull().doesNotContain("jisu");
+
+        signUp("Jisu@Hankuk.ac.kr", "새닉네임").andExpect(status().isAccepted());
+
+        assertThat(userRepository.findByEmail(JISU_EMAIL).orElseThrow().getTrustScore()).isEqualTo(35);
+    }
+
+    @Test
+    @DisplayName("점수가 50점 이상이면 탈퇴할 때 아무것도 남기지 않고, 다시 가입하면 50점에서 시작한다")
+    void highScoreLeavesNothing() throws Exception {
+        ReflectionTestUtils.setField(jisu, "trustScore", 70);
+        userRepository.save(jisu);
+        withdraw(field(login(JISU_EMAIL), "accessToken"), PASSWORD).andExpect(status().isNoContent());
+        assertThat(reload(jisu).getWithdrawnEmailHash()).isNull();
+
+        signUp(JISU_EMAIL, "새닉네임").andExpect(status().isAccepted());
+
+        assertThat(userRepository.findByEmail(JISU_EMAIL).orElseThrow().getTrustScore()).isEqualTo(50);
+    }
+
+    ResultActions signUp(String email, String nickname) throws Exception {
+        return mockMvc.perform(post("/api/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"email": "%s", "password": "%s", "nickname": "%s", "universityId": %d}
+                        """.formatted(email, PASSWORD, nickname, hankuk.getId())));
     }
 
     @Test

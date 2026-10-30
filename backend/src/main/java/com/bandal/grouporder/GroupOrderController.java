@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Set;
+
 @RestController
 @RequestMapping("/api/group-orders")
 @RequiredArgsConstructor
@@ -37,10 +39,12 @@ public class GroupOrderController {
     // page, size가 주소에 없으면 기본값을 쓴다. /api/group-orders 만 불러도 첫 페이지 20개가 나온다
     // 기본 크기는 화면, 캐시하는 크기와 같다. 그래야 기본 요청이 캐시를 탄다
     @GetMapping
+    // categories: 음식 카테고리로 거르기. ?categories=CHICKEN,PIZZA 처럼 쉼표로 여럿. 하나라도 맞으면 나온다. 없으면 전체
     public GroupOrderListResponse findList(@AuthenticationPrincipal Long userId,
                                            @RequestParam(defaultValue = "0") int page,
-                                           @RequestParam(defaultValue = "" + RoomListCache.CACHED_SIZE) int size) {
-        return groupOrderService.findList(userId, page, size);
+                                           @RequestParam(defaultValue = "" + RoomListCache.CACHED_SIZE) int size,
+                                           @RequestParam(required = false) Set<FoodCategory> categories) {
+        return groupOrderService.findList(userId, page, size, categories);
     }
 
     // 단건. 로그인은 필터가 확인한다

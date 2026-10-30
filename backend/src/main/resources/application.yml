@@ -83,6 +83,17 @@ jwt:
 app:
   # 메일은 사람이 여는 매체라 액세스 토큰(15분)보다 길게 준다
   verification-token-minutes: 30
+  # 비밀번호 재설정 링크 수명. 메일함이 털렸을 때 악용할 수 있는 시간이라 짧게
+  password-reset-minutes: 30
+  trust-score:
+    # 이 시각 뒤의 방 상태 변경만 점수에 센다(2026-10-31 0시, 한국 시간). 새 컨슈머 그룹이 토픽 맨 앞부터 읽어
+    # 지난 글로 소급해 점수가 매겨지는 걸 막는다
+    counted-since: 2026-10-30T15:00:00Z
+    # 이 점수보다 낮으면 방을 만들 수 없다. 방장은 남의 돈을 먼저 받는 자리다
+    min-to-host: 30
+  # 점수가 낮은 채 탈퇴한 사람의 메일 해시(HMAC)에 섞는 키. 따로 비밀을 늘리지 않으려고 JWT 키를 쓴다
+  # JWT 키를 바꾸면 그 전 해시와 맞지 않게 되어 재가입 점수 이어받기만 끊긴다(로그인과는 상관없다)
+  withdrawn-email-hash-key: ${jwt.secret}
   # 재전송 제한. 창 안에서 이 횟수를 넘으면 429
   resend-limit: 5
   resend-window-minutes: 60

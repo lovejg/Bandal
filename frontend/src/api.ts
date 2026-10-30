@@ -28,12 +28,23 @@ export interface RoomSummary {
   participantCount: number
   capacity: number
   deadlineAt: string
+  // 카테고리를 넣기 전에 만든 방은 빈 배열
+  categories: FoodCategory[]
 }
+
+// 음식 카테고리. 배민 분류를 따른다. 문구는 format.ts의 CATEGORY_LABEL
+export const FOOD_CATEGORIES = [
+  'CHICKEN', 'FAST_FOOD', 'JJIM_TANG', 'BUNSIK', 'CHINESE', 'KOREAN', 'PIZZA', 'CUTLET_SASHIMI',
+  'CAFE_DESSERT', 'MEAT', 'JOKBAL_BOSSAM', 'WESTERN', 'LUNCHBOX', 'ASIAN', 'LATE_NIGHT',
+] as const
+export type FoodCategory = (typeof FOOD_CATEGORIES)[number]
 
 export interface Room {
   id: number
   hostId: number
   hostNickname: string
+  // 방장의 신뢰도 점수(0~100, 시작 50)
+  hostTrustScore: number
   pickupSpotId: number
   pickupSpotName: string
   storeName: string
@@ -47,6 +58,7 @@ export interface Room {
   cancelType: string | null
   // 주문완료 뒤에만 있다. 배달앱이 알려 준 도착 예정 시각
   expectedArrivalAt: string | null
+  categories: FoodCategory[]
   myParticipationId: number | null
 }
 
@@ -59,6 +71,17 @@ export interface OrderItem {
   quantity: number
   amount: number
   editedByHost: boolean
+}
+
+// 신뢰도 점수 변동 한 줄. reason의 문구는 format.ts가 정한다
+export type TrustReason = 'DELIVERED' | 'HOST_CANCELED_AFTER_CLOSE' | 'HOST_CANCELED_WHILE_SETTLING' | 'HOST_DID_NOT_ORDER' | 'DID_NOT_PAY'
+
+export interface TrustScoreChange {
+  groupOrderId: number
+  storeName: string
+  reason: TrustReason
+  delta: number
+  occurredAt: string
 }
 
 export interface MyItems {
@@ -76,6 +99,7 @@ export interface ReviewList {
     participationId: number
     userId: number
     nickname: string
+    trustScore: number
     host: boolean
     items: OrderItem[]
     participationTotal: number
@@ -287,9 +311,14 @@ export const api = {
     get<{ universities: Campus[] }>(`/api/universities?domain=${encodeURIComponent(domain)}`).then((r) => r.universities),
   signUp: (input: SignUpInput) => post<{ message: string }>('/api/auth/signup', input),
   resendVerification: () => post<void>('/api/auth/verify/resend'),
+  // 가입된 주소든 아니든 같은 문장이 온다
+  requestPasswordReset: (email: string) => post<{ message: string }>('/api/auth/password-reset', { email }),
+  confirmPasswordReset: (token: string, newPassword: string) =>
+    post<void>('/api/auth/password-reset/confirm', { token, newPassword }),
   registerAccount: (bankName: string, accountNumber: string, accountHolder: string) =>
     put<void>('/api/users/me/account', { bankName, accountNumber, accountHolder }),
   changeNickname: (nickname: string) => patch<void>('/api/users/me/nickname', { nickname }),
+  trustScoreChanges: () => get<TrustScoreChange[]>('/api/users/me/trust-score-changes'),
   // 탈퇴. 끝나면 서버가 이 기기의 토큰도 무효로 하니, 부르는 쪽이 로그아웃 처리(저장한 토큰 지우기)를 이어서 한다
   withdraw: (password: string) => del<void>('/api/users/me', { password }),
   // 바꾸면 서버가 다른 기기의 토큰을 무효로 하고 이 기기용 새 토큰을 준다. 갈아끼우지 않으면 이 기기도 곧 로그아웃된다
@@ -300,11 +329,20 @@ export const api = {
   createPickupSpot: (name: string, description: string | null) =>
     post<PickupSpot>('/api/pickup-spots', { name, description }),
 
-  rooms: (page: number, size: number) =>
-    get<{ rooms: RoomSummary[]; hasNext: boolean }>(`/api/group-orders?page=${page}&size=${size}`),
+  // categories가 비어 있으면 전체. 있으면 하나라도 맞는 방(서버는 이 요청을 캐시하지 않는다)
+  rooms: (page: number, size: number, categories: FoodCategory[] = []) =>
+    get<{ rooms: RoomSummary[]; hasNext: boolean }>(
+      `/api/group-orders?page=${page}&size=${size}${categories.length ? `&categories=${categories.join(',')}` : ''}`,
+    ),
   room: (id: number) => get<Room>(`/api/group-orders/${id}`),
-  createRoom: (body: { pickupSpotId: number; storeName: string; minOrderAmount: number; deadlineAt: string; capacity: number }) =>
-    post<Room>('/api/group-orders', body),
+  createRoom: (body: {
+    pickupSpotId: number
+    storeName: string
+    minOrderAmount: number
+    deadlineAt: string
+    capacity: number
+    categories: FoodCategory[]
+  }) => post<Room>('/api/group-orders', body),
   closeRoom: (id: number) => post<Room>(`/api/group-orders/${id}/close`),
   cancelRoom: (id: number, reason: string | null) => post<Room>(`/api/group-orders/${id}/cancel`, { reason }),
 

@@ -12,7 +12,7 @@ import {
 } from '../api'
 import { useAuth } from '../auth'
 import { Card, CopyButton, Progress, Row, StatusChip, useAction } from '../components'
-import { clock, clockAfter, REFUND_LABEL, remaining, serial, timeInputToIso, untilArrival, won } from '../format'
+import { CATEGORY_LABEL, clock, clockAfter, REFUND_LABEL, remaining, serial, timeInputToIso, untilArrival, won } from '../format'
 
 const REFUND_CANCEL_TYPES = ['HOST_WHILE_SETTLING', 'SETTLING_TIMEOUT']
 
@@ -99,8 +99,10 @@ export default function RoomPage() {
           <span className="sub num">{serial(room.id)}</span>
         </div>
         <h1 className="roomhero__store">{room.storeName}</h1>
+        {room.categories.length > 0 && <p className="roomcard__cats">{room.categories.map((c) => CATEGORY_LABEL[c]).join(' · ')}</p>}
         <p className="roomhero__meta">
           {room.pickupSpotName}에서 받아요 · 방장 <b>{room.hostNickname}</b>
+          <span className="sub"> · 신뢰도 {room.hostTrustScore}</span>
           {isHost && <span className="badge">나</span>}
         </p>
         <div className="facts">
@@ -462,6 +464,7 @@ function HostReview({
               <span className="strong">
                 {p.nickname}
                 {p.host && <span className="badge">방장</span>}
+                <span className="sub small"> · 신뢰도 {p.trustScore}</span>
               </span>
               <span className="num sub">{won(p.participationTotal)}원</span>
             </div>
@@ -646,7 +649,7 @@ function HostPanel({
             }}
           >
             <label className="field">
-              <span className="field__label">배달앱에 뜬 배달비</span>
+              <span className="field__label">배달앱에 뜬 배달비 (10,000원까지)</span>
               <div className="suffix">
                 <input className="num" inputMode="numeric" value={fee} onChange={(e) => setFee(e.target.value.replace(/\D/g, ''))} placeholder="3000" required />
                 <span>원</span>

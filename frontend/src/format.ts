@@ -1,4 +1,32 @@
-import type { AppNotification, MyRoom, RefundStatus, Status } from './api'
+import type { AppNotification, FoodCategory, MyRoom, RefundStatus, Status, TrustReason } from './api'
+
+// 음식 카테고리 문구(배민 분류)
+export const CATEGORY_LABEL: Record<FoodCategory, string> = {
+  CHICKEN: '치킨',
+  FAST_FOOD: '패스트푸드',
+  JJIM_TANG: '찜/탕',
+  BUNSIK: '분식',
+  CHINESE: '중식',
+  KOREAN: '한식',
+  PIZZA: '피자',
+  CUTLET_SASHIMI: '돈까스/회',
+  CAFE_DESSERT: '카페/디저트',
+  MEAT: '고기',
+  JOKBAL_BOSSAM: '족발/보쌈',
+  WESTERN: '양식',
+  LUNCHBOX: '도시락',
+  ASIAN: '아시안',
+  LATE_NIGHT: '야식',
+}
+
+// 신뢰도 점수가 움직인 이유
+export const TRUST_REASON_LABEL: Record<TrustReason, string> = {
+  DELIVERED: '배달완료까지 함께했어요',
+  HOST_CANCELED_AFTER_CLOSE: '방장으로서 마감 뒤에 방이 취소됐어요',
+  HOST_CANCELED_WHILE_SETTLING: '방장으로서 정산 중에 방을 취소했어요',
+  HOST_DID_NOT_ORDER: '모두 송금했는데 주문하지 않아 방이 취소됐어요',
+  DID_NOT_PAY: '정산 시간 안에 송금하지 않아 방이 취소됐어요',
+}
 
 export const won = (n: number) => n.toLocaleString('ko-KR')
 

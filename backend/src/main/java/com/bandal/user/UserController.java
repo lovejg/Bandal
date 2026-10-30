@@ -4,12 +4,15 @@ import com.bandal.auth.dto.TokenResponse;
 import com.bandal.user.dto.ChangeNicknameRequest;
 import com.bandal.user.dto.ChangePasswordRequest;
 import com.bandal.user.dto.RegisterAccountRequest;
+import com.bandal.user.dto.TrustScoreChangeResponse;
 import com.bandal.user.dto.WithdrawRequest;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -48,6 +51,12 @@ public class UserController {
     public void changeNickname(@AuthenticationPrincipal Long userId,
                                @Valid @RequestBody ChangeNicknameRequest request) {
         userService.changeNickname(userId, request);
+    }
+
+    // 내 신뢰도 점수의 최근 변동. 점수 자체는 내 정보(/api/auth/me)에 있다
+    @GetMapping("/me/trust-score-changes")
+    public List<TrustScoreChangeResponse> trustScoreChanges(@AuthenticationPrincipal Long userId) {
+        return userService.trustScoreChanges(userId);
     }
 
     // 탈퇴. 대상은 "나"라는 자원이라 DELETE /me. 확인용 비밀번호를 본문으로 받는다

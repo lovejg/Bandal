@@ -1,8 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
-import { api } from '../api'
+import { api, type TrustScoreChange } from '../api'
 import { Card, Row, useAction } from '../components'
-import { clock } from '../format'
+import { clock, dateClock, TRUST_REASON_LABEL } from '../format'
 
 // 내 정보, 돈 받을 계좌, 닉네임, 비밀번호, 탈퇴
 export default function MePage() {
@@ -39,9 +39,11 @@ export default function MePage() {
 
       <Card>
         <Row label="메일 인증" value={me.emailVerified ? '완료' : '대기 중'} />
-        {/* 신뢰도는 점수가 움직이는 규칙이 아직 없어 늘 50이다. 규칙이 생기면 다시 보여 준다 */}
+        <Row label="신뢰도" value={`${me.trustScore}점`} />
         <Row label="돈 받을 계좌" value={me.hasAccount ? '등록됨' : '없음'} />
       </Card>
+
+      <TrustCard score={me.trustScore} />
 
       <Card title={me.hasAccount ? '계좌 바꾸기' : '계좌 등록하기'}>
         <p className="sub small">방장이 되면 참여자들이 이 계좌로 보내요. 예금주 이름은 가운데를 가려서 보여줘요.</p>
@@ -126,6 +128,39 @@ function WithdrawCard() {
           </button>
         </div>
       </form>
+    </Card>
+  )
+}
+
+// 신뢰도 점수의 최근 변동. 점수가 왜 바뀌었는지 보여 준다. 30점보다 낮으면 방을 만들 수 없다는 것도 여기서 알린다
+function TrustCard({ score }: { score: number }) {
+  const [changes, setChanges] = useState<TrustScoreChange[] | null>(null)
+
+  useEffect(() => {
+    api.trustScoreChanges().then(setChanges).catch(() => setChanges([]))
+  }, [score])
+
+  return (
+    <Card title="신뢰도 변동" aside={`${score}점`}>
+      <p className="sub small">
+        50점에서 시작해요. 배달완료까지 함께하면 오르고, 방장이 정산 중에 취소하거나 송금하지 않으면 내려가요. 30점보다 낮으면 방을 만들 수 없어요.
+      </p>
+      {changes === null ? null : changes.length === 0 ? (
+        <p className="sub small">아직 변동이 없어요.</p>
+      ) : (
+        changes.map((c, i) => (
+          <Row
+            key={i}
+            label={
+              <>
+                {TRUST_REASON_LABEL[c.reason]}
+                <span className="sub small"> · {c.storeName} · {dateClock(c.occurredAt)}</span>
+              </>
+            }
+            value={c.delta > 0 ? `+${c.delta}` : `${c.delta}`}
+          />
+        ))
+      )}
     </Card>
   )
 }

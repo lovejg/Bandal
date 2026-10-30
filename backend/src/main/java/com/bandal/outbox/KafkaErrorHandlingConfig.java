@@ -34,8 +34,9 @@ import java.util.List;
 @Configuration
 public class KafkaErrorHandlingConfig {
 
-    // DLT 카운터를 다는 컨슈머 그룹들. NotificationConsumer, StatisticsConsumer의 groupId와 같다
-    static final List<String> CONSUMER_GROUPS = List.of("notification", "statistics");
+    // DLT 카운터를 다는 컨슈머 그룹들. NotificationConsumer, StatisticsConsumer, TrustScoreConsumer의 groupId와 같다
+    // 컨슈머를 더하면 여기도 더한다. 빠지면 그 그룹의 첫 DLT에 경고가 울리지 않는다(아래 0부터 만드는 이유)
+    static final List<String> CONSUMER_GROUPS = List.of("notification", "statistics", "trust-score");
 
     @Bean
     DefaultErrorHandler kafkaErrorHandler(KafkaTemplate<String, String> kafkaTemplate, MeterRegistry meterRegistry,

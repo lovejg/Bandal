@@ -12,14 +12,18 @@ import com.bandal.settlement.SettlementRepository;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 // 방을 만들고, 보여주고, 상태를 넘긴다. 트랜잭션 경계는 여기다
@@ -36,14 +40,23 @@ public class GroupOrderService {
     private final SettlementRepository settlementRepository;
     private final RoomListCache roomListCache;
 
+    // 방을 만들 수 있는 최소 신뢰도 점수
+    @Value("${app.trust-score.min-to-host}")
+    private int minTrustScoreToHost;
 
     // 방 생성. 방장도 참여 행을 하나 가진다
     @Transactional
     public GroupOrderResponse create(Long hostId, CreateGroupOrderRequest request) {
         User host = userRepository.findByIdOrThrow(hostId);
+        // 신뢰도 점수가 기준보다 낮으면 방장이 될 수 없다. 방장은 참여자들의 돈을 먼저 받는 자리다
+        // 참여는 막지 않는다. 참여자는 돈을 보내는 쪽이라 위험을 지는 사람이 본인이다
+        if (host.getTrustScore() < minTrustScoreToHost) {
+            throw new IllegalStateException("신뢰도 점수가 " + minTrustScoreToHost + "점보다 낮아 방을 만들 수 없습니다");
+        }
         PickupSpot pickupSpot = pickupSpotRepository.findByIdOrThrow(request.pickupSpotId());
         GroupOrder groupOrder = new GroupOrder(host, pickupSpot, request.storeName(),
             request.minOrderAmount(), request.deadlineAt(), request.capacity());
+        groupOrder.chooseCategories(request.categories());
 
         groupOrderRepository.save(groupOrder);
         roomListCache.evict(pickupSpot.getUniversity().getId()); // 목록 캐시는 커밋 뒤에 지워진다
@@ -63,11 +76,14 @@ public class GroupOrderService {
 
     // 방 목록 조회
     @Transactional(readOnly = true)
-    public GroupOrderListResponse findList(Long userId, int page, int size) {
+    public GroupOrderListResponse findList(Long userId, int page, int size, Set<FoodCategory> categories) {
         Long universityId = userRepository.findByIdOrThrow(userId).getUniversity().getId();
+        boolean filtered = categories != null && !categories.isEmpty();
 
         // 해당 요청을 캐시로 받을 수 있는지 확인하고, 되면 캐시 반환
-        boolean cacheable = roomListCache.covers(page, size);
+        // 카테고리로 거른 요청은 캐시하지 않는다. 고르는 조합이 많아(15개 중 여러 개) 같은 요청이 다시 올 일이 드물고 메모리만 먹는다
+        // 캐시는 거르지 않은 첫 페이지(가장 많이 열리는 화면) 하나만 맡는다
+        boolean cacheable = !filtered && roomListCache.covers(page, size);
         if(cacheable) {
             GroupOrderListResponse cached = roomListCache.get(universityId);
             if(cached != null) {
@@ -76,13 +92,20 @@ public class GroupOrderService {
         }
 
         // 페이지 번호는 0부터 시작한다
-        Slice<GroupOrder> slice = groupOrderRepository.findRecruiting(universityId, Instant.now(), PageRequest.of(page, size));
+        Slice<GroupOrder> slice = filtered
+            ? groupOrderRepository.findRecruitingIn(universityId, Instant.now(), categories, PageRequest.of(page, size))
+            : groupOrderRepository.findRecruiting(universityId, Instant.now(), PageRequest.of(page, size));
         List<GroupOrder> results = slice.getContent();
         List<Long> ids = results.stream().map(GroupOrder::getId).toList();
 
         // GROUP BY 결과는 방 순서와 맞지 않고, 인원이나 메뉴가 없는 방은 줄이 빠진다. 그래서 방 id로 찾는 Map으로 바꾼다
         Map<Long, Long> counts = toMap(participationRepository.countByGroupOrderIds(ids));
         Map<Long, Long> sums = toMap(orderItemRepository.sumAmountByGroupOrderIds(ids));
+        // 카테고리도 방마다 따로 읽지 않고 id 목록으로 한 번에. 카테고리가 없는 옛 방은 빈 목록
+        Map<Long, List<String>> categoryNames = new HashMap<>();
+        for (Object[] row : groupOrderRepository.findCategoriesByIds(ids)) {
+            categoryNames.computeIfAbsent((Long) row[0], k -> new ArrayList<>()).add(((FoodCategory) row[1]).name());
+        }
 
         List<GroupOrderSummaryResponse> rooms = results.stream()
             .map(r -> new GroupOrderSummaryResponse(
@@ -95,7 +118,8 @@ public class GroupOrderService {
                 sums.getOrDefault(r.getId(), 0L),
                 counts.getOrDefault(r.getId(), 0L),
                 r.getCapacity(),
-                r.getDeadlineAt()
+                r.getDeadlineAt(),
+                categoryNames.getOrDefault(r.getId(), List.of())
             )).toList();
 
         // 캐시가 없을 경우 캐시 만들어주기
