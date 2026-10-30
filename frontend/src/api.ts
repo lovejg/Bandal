@@ -13,6 +13,8 @@ export interface Me {
   emailVerified: boolean
   trustScore: number
   hasAccount: boolean
+  // 닉네임을 다시 바꿀 수 있는 때. 한 번도 안 바꿨으면 null
+  nicknameChangeableAt: string | null
 }
 
 export interface RoomSummary {
@@ -268,7 +270,8 @@ async function request<T>(method: string, path: string, body?: unknown, retry = 
 const get = <T,>(path: string) => request<T>('GET', path)
 const post = <T,>(path: string, body?: unknown) => request<T>('POST', path, body)
 const put = <T,>(path: string, body?: unknown) => request<T>('PUT', path, body)
-const del = <T,>(path: string) => request<T>('DELETE', path)
+const patch = <T,>(path: string, body?: unknown) => request<T>('PATCH', path, body)
+const del = <T,>(path: string, body?: unknown) => request<T>('DELETE', path, body)
 
 export const api = {
   login: (email: string, password: string) =>
@@ -286,6 +289,12 @@ export const api = {
   resendVerification: () => post<void>('/api/auth/verify/resend'),
   registerAccount: (bankName: string, accountNumber: string, accountHolder: string) =>
     put<void>('/api/users/me/account', { bankName, accountNumber, accountHolder }),
+  changeNickname: (nickname: string) => patch<void>('/api/users/me/nickname', { nickname }),
+  // 탈퇴. 끝나면 서버가 이 기기의 토큰도 무효로 하니, 부르는 쪽이 로그아웃 처리(저장한 토큰 지우기)를 이어서 한다
+  withdraw: (password: string) => del<void>('/api/users/me', { password }),
+  // 바꾸면 서버가 다른 기기의 토큰을 무효로 하고 이 기기용 새 토큰을 준다. 갈아끼우지 않으면 이 기기도 곧 로그아웃된다
+  changePassword: (currentPassword: string, newPassword: string) =>
+    patch<Tokens>('/api/users/me/password', { currentPassword, newPassword }).then((t) => tokenStore.set(t)),
 
   pickupSpots: () => get<{ spots: PickupSpot[] }>('/api/pickup-spots').then((r) => r.spots),
   createPickupSpot: (name: string, description: string | null) =>

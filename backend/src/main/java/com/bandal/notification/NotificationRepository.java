@@ -116,4 +116,11 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Modifying
     @Query("delete from Notification n where n.id in :ids")
     int deleteByIdIn(@Param("ids") List<Long> ids);
+
+    // ===== 탈퇴가 쓰는 것 =====
+
+    // 탈퇴한 사람의 알림을 모두 지운다. 받은 사람이 없는 알림은 아무도 볼 수 없다
+    @Modifying
+    @Query("delete from Notification n where n.userId = :userId")
+    int deleteByUserId(@Param("userId") Long userId);
 }

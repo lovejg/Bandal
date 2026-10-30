@@ -11,10 +11,12 @@ import com.bandal.outbox.OutboxMessageRepository;
 import com.bandal.outbox.OutboxType;
 import com.bandal.university.University;
 import com.bandal.university.UniversityRepository;
+import com.bandal.user.NicknameConflict;
 import com.bandal.user.User;
 import com.bandal.user.UserRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,8 +68,9 @@ public class AuthService {
             .orElseThrow(() -> new IllegalArgumentException("이메일과 고른 학교가 맞지 않습니다"));
 
         // 닉네임은 방 목록에 그대로 보이는 공개 정보라 감출 게 없다. 그대로 알려준다
+        // 동시에 같은 닉네임으로 가입하면 둘 다 여기를 통과한다. 그 경우는 아래 save에서 DB가 막는다
         if(userRepository.existsByNickname(nickname)) {
-            throw new IllegalStateException("이미 쓰이고 있는 닉네임입니다");
+            throw new IllegalStateException(NicknameConflict.MESSAGE);
         }
 
         // 있는 주소든 아니든 해시를 먼저 만든다. 새 주소만 해시(약 50ms)하면 있는 주소가 5ms에 돌아와 응답 시간으로 가입 여부가 샌다
@@ -83,7 +86,14 @@ public class AuthService {
         }
 
         User user = new User(university, email, hashed, nickname);
-        userRepository.save(user);
+        // id를 DB가 만드는(IDENTITY) 엔티티라 save가 그 자리에서 INSERT를 보낸다. unique 제약에 걸리면 여기서 예외가 난다
+        // 닉네임이 겹친 것만 409로 바꾼다. 같은 이메일로 동시에 가입하는 경우는 아직 재현해 보지 않아 그대로 둔다
+        try {
+            userRepository.save(user);
+        } catch (DataIntegrityViolationException e) {
+            if (NicknameConflict.isCause(e)) throw new IllegalStateException(NicknameConflict.MESSAGE);
+            throw e;
+        }
 
         outboxMessageRepository.save(OutboxMessage.mail(OutboxType.VERIFICATION_MAIL, user.getId(), Instant.now()));
 

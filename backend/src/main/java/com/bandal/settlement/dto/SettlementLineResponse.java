@@ -32,7 +32,7 @@ public record SettlementLineResponse(
         return new SettlementLineResponse(
                 settlement.getId(),
                 settlement.getUser().getId(),
-                settlement.getUser().getNickname(),
+                settlement.getUser().displayName(),
                 settlement.isHost(),
                 settlement.getMenuTotalAmount(),
                 settlement.getFeeShare(),

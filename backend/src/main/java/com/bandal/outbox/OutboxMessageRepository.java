@@ -1,6 +1,7 @@
 package com.bandal.outbox;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,4 +27,11 @@ public interface OutboxMessageRepository extends JpaRepository<OutboxMessage, Lo
             for update skip locked
             """, nativeQuery = true)
     List<OutboxMessage> findDueForUpdate(@Param("now") Instant now, @Param("limit") int limit);
+
+    // 탈퇴한 사람에게 아직 안 보낸 메일 줄을 지운다. 남겨 두면 집배원이 메일 주소가 없는 사용자에게 보내려다 실패를 되풀이한다
+    // 방 상태 줄(GROUP_ORDER_STATUS_CHANGED)은 사람이 아니라 방의 일이라 건드리지 않는다. 메일 줄만 userId가 있다
+    // 집배원이 막 찜해 보내는 중인 줄을 지우면 그 줄의 보냄 기록이 갈 곳을 잃는다. 탈퇴와 그 순간이 겹치는 드문 경우라 받아들인다
+    @Modifying
+    @Query("DELETE FROM OutboxMessage o WHERE o.userId = :userId AND o.status = com.bandal.outbox.OutboxStatus.PENDING")
+    int deletePendingMailFor(@Param("userId") Long userId);
 }

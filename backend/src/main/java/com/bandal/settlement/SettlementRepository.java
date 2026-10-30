@@ -1,5 +1,6 @@
 package com.bandal.settlement;
 
+import com.bandal.grouporder.CancelType;
 import com.bandal.participation.GroupOrderValue;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,12 +9,29 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface SettlementRepository extends JpaRepository<Settlement, Long> {
 
     List<Settlement> findByGroupOrderId(Long groupOrderId);
+
+    // 이 사람이 얽힌 환불이 아직 끝나지 않았는지. 탈퇴와 닉네임 변경을 막을 때 쓴다
+    // 받을 사람(내 줄)이든 돌려줄 방장(내 방의 줄)이든 다 본다. 끝나지 않음 = 대기 또는 보냄(아직 "돌려받았어요" 전)
+    // 환불 대상의 조건은 Settlement.isRefundTarget과 같다: 방장 줄이 아니고, 정산중에 취소된 방이고, 보냈거나 확인된 줄
+    // "입금 안 됐어요"(paymentDeniedAt)는 방장이 돈을 못 받았다는 답이라 돌려줄 게 없어 끝난 것으로 본다
+    @Query("""
+        SELECT COUNT(s) > 0 FROM Settlement s
+        WHERE (s.user.id = :userId OR s.groupOrder.host.id = :userId)
+          AND s.host = false
+          AND s.groupOrder.cancelType IN :settlingCancels
+          AND (s.markedPaidAt IS NOT NULL OR s.confirmedPaidAt IS NOT NULL)
+          AND s.refundReceivedAt IS NULL
+          AND s.paymentDeniedAt IS NULL
+        """)
+    boolean existsUnresolvedRefundFor(@Param("userId") Long userId,
+                                      @Param("settlingCancels") Collection<CancelType> settlingCancels);
 
     Optional<Settlement> findByGroupOrderIdAndUserId(Long groupOrderId, Long userId);
 
