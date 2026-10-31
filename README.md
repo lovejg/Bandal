@@ -24,6 +24,81 @@ Bandal에서는 같은 수령 장소(기숙사 로비, 건물 앞)에서 받을 
 - 방이 끝나면 신뢰도 점수가 움직인다. 배달완료는 +2, 주문 안 한 방장은 -15, 안 보낸 참여자는 -5. 30점 아래로 떨어지면 방을 못 연다.
 - 방을 열 때 음식 카테고리를 1~3개 고르고, 목록은 카테고리로 거를 수 있다.
 
+## 화면
+
+방 하나를 모집부터 주문까지 진행하며 찍었다. 방장은 야식요정, 참여자는 마라중독이다. 계좌번호는 시연용 가짜 번호다.
+
+### 가입
+
+<table>
+  <tr>
+    <td valign="top" width="50%"><img src="docs/images/01-signup.png" width="260"><br>학교 메일을 넣으면 어느 학교인지 바로 보인다. 목록에 없는 도메인은 가입이 안 된다.</td>
+    <td valign="top" width="50%"><img src="docs/images/02-verify-email.png" width="260"><br>인증 메일. 링크를 누르기 전에는 구경만 하고 방을 열거나 들어갈 수 없다.</td>
+  </tr>
+</table>
+
+### 방 찾기, 방 열기
+
+<table>
+  <tr>
+    <td valign="top" width="50%"><img src="docs/images/03-board.png" width="260"><br>같은 학교의 모집중 방만 보인다. 막대는 방 전체 메뉴가 최소금액을 얼마나 채웠는지다. 위의 카테고리로 거를 수 있다.</td>
+    <td valign="top" width="50%"><img src="docs/images/04-new-room.png" width="260"><br>가게, 음식 종류(1~3개), 수령 장소, 최소금액, 인원, 마감 시각을 정해 연다.</td>
+  </tr>
+</table>
+
+### 모집중
+
+<table>
+  <tr>
+    <th>방장</th>
+    <th>참여자</th>
+  </tr>
+  <tr>
+    <td valign="top" width="50%"><img src="docs/images/05-room-host-recruiting.png" width="260"><br>방장도 자기 메뉴를 담는다. 아래 "전체 주문 모아보기"에 사람별 메뉴가 모인다.</td>
+    <td valign="top" width="50%"><img src="docs/images/06-room-member-recruiting.png" width="260"><br>참여자는 자기 메뉴만 담고 고친다. 방장 닉네임 옆에 신뢰도가 보인다.</td>
+  </tr>
+</table>
+
+### 마감
+
+<table>
+  <tr>
+    <td valign="top" width="50%"><img src="docs/images/07-room-host-closable.png" width="260"><br>2명 이상 모이고 최소금액을 넘기면 마감 시각 전에도 닫을 수 있다.</td>
+    <td valign="top" width="50%"><img src="docs/images/08-room-host-closed.png" width="260"><br>마감 뒤에는 방장이 배달앱 장바구니와 맞춰 보고 틀린 메뉴를 고칠 수 있다. 배달앱에 뜬 배달비를 넣으면 정산이 시작된다.</td>
+  </tr>
+</table>
+
+### 정산중
+
+<table>
+  <tr>
+    <th>참여자</th>
+    <th>방장</th>
+  </tr>
+  <tr>
+    <td valign="top" width="50%"><img src="docs/images/10-room-member-pay.png" width="260"><br>낼 돈은 15,500원. 내 메뉴 14,000원에 배달비 3,000원을 둘이 나눈 1,500원을 더했다. 방장 계좌로 직접 보내고 "보냈어요"를 누른다.</td>
+    <td valign="top" width="50%"><img src="docs/images/09-room-host-settling.png" width="260"><br>방장은 누가 보냈고 누가 아직인지 본다. 통장에 들어온 걸 확인하면 "받았어요"를 누른다.</td>
+  </tr>
+</table>
+
+### 주문
+
+<table>
+  <tr>
+    <td valign="top" width="50%"><img src="docs/images/11-room-host-confirmed.png" width="260"><br>전원의 입금이 확인돼야 주문완료로 넘어간다. 방장은 배달앱으로 결제하고 앱에 뜬 도착 예정 시각을 적는다.</td>
+    <td valign="top" width="50%"><img src="docs/images/12-room-host-ordered.png" width="260"><br>주문 뒤에는 마감 시각 자리에 도착 예정이 뜬다. 배달이 오면 방장이 "배달 왔어요"로 끝낸다.</td>
+  </tr>
+</table>
+
+### 알림
+
+<table>
+  <tr>
+    <td valign="top" width="50%"><img src="docs/images/13-notifications.png" width="260"><br>상태가 바뀔 때마다 참여자에게 알림이 간다. 종에 안 읽은 개수가 뜬다.</td>
+    <td width="50%"></td>
+  </tr>
+</table>
+
 ## 기술 스택
 
 | | 쓴 것 | 왜 |
@@ -156,4 +231,3 @@ cd frontend && npm install && npm run dev  # http://localhost:5173
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 설계 결정 94개. 결정마다 버린 대안과 버린 이유를 같이 적었다 |
 | [docs/JOURNAL.md](docs/JOURNAL.md) | 실제로 겪은 문제. 상황, 에러 메시지, 원인, 해결 순서 |
 | [docs/NOTES.md](docs/NOTES.md) | 만들면서 공부한 개념 정리(flush, 락, 트랜잭션 전파 같은 것) |
-| [docs/REVIEW.md](docs/REVIEW.md) | 단계별 복습 안내와 면접식 질문 |

@@ -1862,7 +1862,7 @@ Using generated security password: (값)
 
 ## 2026-10-20 진짜 서버에 bootstrap을 돌렸더니 아무 출력 없이 10분 넘게 멈췄다
 
-**상황** OCI 서버(오사카, 1 OCPU/6GB)가 잡혀서 `deploy/server/bootstrap.sh <IP>`를 Claude가 터미널 없는 셸에서 돌렸다. 리허설에서는 20초에 끝났다.
+**상황** OCI 서버(오사카, 1 OCPU/6GB)가 잡혀서 `deploy/server/bootstrap.sh <IP>`를 터미널 없는 셸에서 돌렸다. 리허설에서는 20초에 끝났다.
 
 **증상** `Permanently added '...' (ED25519) to the list of known hosts.` 다음 줄이 나오지 않고 10분 넘게 멈췄다. 따로 `BatchMode=yes`로 접속해 보니
 `Permission denied (publickey)`였고, 자세한 기록(`ssh -v`)에는 `No more authentication methods to try`가 있었다.
@@ -2456,7 +2456,7 @@ DB를 살린 뒤 `dlt-replay.sh replay`로 다시 넣자 알림 1줄(방장 빼�
 (`select n.id from Notification n where n.readAt < :cutoff order by n.id`, 쪽 크기 1,000), Writer는 그 id들을 `deleteByIdIn`으로 지운다.
 테스트(`NotificationCleanupJobTest`)에 지울 줄 2,500, 남길 줄 500(경계 1초 안쪽에 읽음 300, 안 읽음 200)을 넣고 돌렸다.
 
-먼저 컴파일 에러가 하나 났다. Claude가 준 참고본(`deleteByIdIn(chunk.getItems())`)이 틀렸다.
+먼저 컴파일 에러가 하나 났다. 처음 쓴 `deleteByIdIn(chunk.getItems())`가 틀렸다.
 ```
 error: incompatible types: List<CAP#1> cannot be converted to List<Long>
 ```
@@ -2502,8 +2502,8 @@ setup.sh에 적은 cron 줄(`/srv/bandal/batch.sh ...`)을 그대로 넣었다�
 
 **뒤이어(같은 날)** `update-index`는 커밋에 들어가지 않았다. 디스크의 파일이 644인 채라 다음 `git add`가 다시 644로 덮은 것으로 보인다.
 그래서 WSL에서 여섯 개 파일에 `chmod +x`를 하고 `git add`로 커밋했다(`026c00b`, `mode change 100644 => 100755` 여섯 줄).
-그 뒤 배치 감시를 붙이려고 Windows 쪽 편집기(Claude의 파일 편집, `\\wsl.localhost` 경로)로 `batch.sh`를 고쳤더니 `git diff --summary`에 `mode change 100755 => 100644`가 다시 나왔다.
-원인은 이것이다. Windows에서 WSL 파일을 새로 쓰면 실행 비트가 없는 파일이 된다. Claude가 만든 스크립트가 처음부터 644였던 것도 같은 이유다.
+그 뒤 배치 감시를 붙이려고 Windows 쪽 편집기(`\\wsl.localhost` 경로)로 `batch.sh`를 고쳤더니 `git diff --summary`에 `mode change 100755 => 100644`가 다시 나왔다.
+원인은 이것이다. Windows에서 WSL 파일을 새로 쓰면 실행 비트가 없는 파일이 된다. Windows 쪽에서 만든 스크립트가 처음부터 644였던 것도 같은 이유다.
 고칠 때마다 WSL에서 `chmod +x`를 다시 하고, 커밋 전에 `git diff --summary`에 `mode change`가 없는지 본다.
 
 **배운 것** 파일 권한은 git에 커밋된 모드를 따라간다. 로컬에서 보이는 권한과 다를 수 있으니 서버에서 확인하고, 스크립트는 `bash 파일`로 불러 권한에 기대지 않는다.
