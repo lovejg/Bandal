@@ -60,13 +60,19 @@ function Shell() {
         </Link>
         <Bell />
         <ThemeToggle />
+        {/* 내 정보. 보통 앱처럼 오른쪽 끝에 사람 모양으로 둔다. 지금 내 정보 화면이면 테두리가 주황이 된다 */}
+        <NavLink to="/me" className="bell" aria-label="내 정보">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </NavLink>
       </header>
       <nav className="tabbar" aria-label="주요 메뉴">
         <NavLink to="/" end>
           모집 중
         </NavLink>
         <NavLink to="/mine">내 방</NavLink>
-        <NavLink to="/me">내 정보</NavLink>
       </nav>
       {!me.emailVerified && <VerifyNotice />}
       <main>

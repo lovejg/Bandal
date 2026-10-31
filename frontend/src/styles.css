@@ -209,7 +209,12 @@ h2 {
   background: linear-gradient(90deg, var(--accent) 50%, transparent 50%);
 }
 
+/* 오른쪽 버튼이 넷이라 좁은 폰에서 학교 이름이 길면 줄바꿈 대신 말줄임으로 자른다 */
 .topbar__school {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   padding: 2px 7px;
   border: 1px solid var(--line);
   border-radius: 2px;
@@ -218,7 +223,7 @@ h2 {
   font-weight: 600;
 }
 
-/* 오른쪽 끝 묶음(유의사항, 종, 테마)의 첫째를 여기서 밀어낸다 */
+/* 오른쪽 끝 묶음(유의사항, 종, 테마, 내 정보)의 첫째를 여기서 밀어낸다 */
 .topbar__end {
   margin-left: auto;
 }
@@ -238,6 +243,12 @@ h2 {
 
 .bell:hover {
   border-color: var(--rule-hover);
+}
+
+/* 내 정보 버튼은 NavLink라 그 화면에 있으면 active가 붙는다 */
+.bell.active {
+  border-color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .bell__count {
